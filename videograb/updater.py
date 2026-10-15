@@ -40,7 +40,7 @@ SOURCES = [
 API_SUFFIX = "?ref=" + BRANCH
 
 RELEASE_PAGE = "https://github.com/" + REPO + "/releases/latest"
-USER_AGENT = "BiliGrab/" + __version__ + " (+https://github.com/" + REPO + ")"
+USER_AGENT = "Video-Grabing/" + __version__ + " (+https://github.com/" + REPO + ")"
 
 
 class UpdaterError(Exception):
@@ -384,7 +384,7 @@ def download_installer(info: dict, progress=None) -> dict:
 
     target_dir = update_dir()
     target_dir.mkdir(parents=True, exist_ok=True)
-    name = installer.get("name") or ("BiliGrab-Setup-" + str(info.get("latest") or "") + ".exe")
+    name = installer.get("name") or ("Video-Grabing-Setup-" + str(info.get("latest") or "") + ".exe")
     target = target_dir / name
 
     if progress:
@@ -415,7 +415,7 @@ def download_installer(info: dict, progress=None) -> dict:
 
 
 def update_dir() -> Path:
-    return Path(tempfile.gettempdir()) / "BiliGrab-update"
+    return Path(tempfile.gettempdir()) / "Video-Grabing-update"
 
 
 def launch_installer(path: str) -> dict:

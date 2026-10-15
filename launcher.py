@@ -1,7 +1,7 @@
 """PyInstaller 打包入口。
 
 和 start.py 的区别：这里不做 sys.path 操作，直接按普通包导入 ——
-PyInstaller 的静态分析最喜欢这种写法，能自动把 biligrab 整个包收集进去。
+PyInstaller 的静态分析最喜欢这种写法，能自动把 videograb 整个包收集进去。
 
 另外这里还要处理"没有控制台"这件事：桌面版是 windowed（无控制台）构建，
 PyInstaller 会把 sys.stdout 直接设成 None，任何 print 都会炸。
@@ -44,7 +44,7 @@ def redirect_io_to_log() -> None:
     """没有控制台时把 print 导向日志文件，顺便给用户留一份可排查的记录。"""
     if sys.stdout is not None and sys.stderr is not None:
         return
-    log_path = base_dir() / "data" / "BiliGrab.log"
+    log_path = base_dir() / "data" / "Video-Grabing.log"
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         if log_path.exists() and log_path.stat().st_size > LOG_MAX_BYTES:
@@ -66,13 +66,13 @@ def show_error(message: str) -> None:
         return
     try:
         import ctypes
-        ctypes.windll.user32.MessageBoxW(None, message, "哔哩采集器 BiliGrab", 0x10)
+        ctypes.windll.user32.MessageBoxW(None, message, "Video-Grabing", 0x10)
     except Exception:
         pass
 
 
 def main() -> int:
-    from biligrab.__main__ import main as cli_main
+    from videograb.__main__ import main as cli_main
 
     argv = sys.argv[1:]
     # 双击 exe 时没有参数，默认启动界面；带参数则原样交给命令行
@@ -93,5 +93,5 @@ if __name__ == "__main__":
         print(detail, file=sys.stderr)
         last = [line for line in detail.strip().splitlines() if line.strip()][-1]
         show_error("程序启动失败：\n\n" + last +
-                   "\n\n完整日志：\n" + str(base_dir() / "data" / "BiliGrab.log"))
+                   "\n\n完整日志：\n" + str(base_dir() / "data" / "Video-Grabing.log"))
         sys.exit(1)

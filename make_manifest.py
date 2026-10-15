@@ -20,8 +20,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
-from biligrab import __version__                     # noqa: E402
-from biligrab.updater import RELEASE_PAGE, REPO      # noqa: E402
+from videograb import __version__                     # noqa: E402
+from videograb.updater import RELEASE_PAGE, REPO      # noqa: E402
 
 MANIFEST = ROOT / "update" / "manifest.json"
 
@@ -34,7 +34,7 @@ SOURCE_FILES = [
     "launcher.py", "start.py", "build.py", "make_manifest.py", "create_shortcut.py",
     "run.bat", "requirements.txt", "README.md",
 ]
-SOURCE_DIRS = ["biligrab"]
+SOURCE_DIRS = ["videograb"]
 
 SKIP_SUFFIX = {".pyc", ".pyo", ".log", ".tmp"}
 SKIP_DIRS = {"__pycache__", ".git", ".venv", ".build-venv", ".deps", "dist",
@@ -91,7 +91,7 @@ def find_installer() -> dict:
     dist = ROOT / "dist"
     if not dist.is_dir():
         return {}
-    candidates = sorted(dist.glob("BiliGrab-Setup-*.exe"))
+    candidates = sorted(dist.glob("Video-Grabing-Setup-*.exe"))
     if not candidates:
         return {}
     setup = candidates[-1]

@@ -1,7 +1,11 @@
-# 哔哩采集器 · BiliGrab
+# Video-Grabing
 
-一个用来抓取哔哩哔哩指定视频的桌面小工具：**十条互相独立的抓取通道**、**自选清晰度**、
-**多线程断点续传下载**，以及一个**完全复刻 Kazumi 视觉语言的 Material 3 界面**。
+一个跨平台的视频采集器：粘贴链接或 App 分享文案就能解析并下载，
+支持 **B站 / 抖音 / 小红书 / 芒果TV / 腾讯视频 / 优酷 / 爱奇艺** 七个平台。
+
+- 在 B 站上做到了 **十条互相独立的抓取通道**，可自选清晰度、可勾选分 P 批量下载
+- **多线程断点续传下载**，没有 ffmpeg 也能合并 DASH 音视频
+- 一个**完全复刻 Kazumi 视觉语言的 Material 3 界面**，独立桌面窗口、不依赖浏览器
 
 - **独立桌面窗口**：内置 WebView2 渲染，不依赖浏览器、没有标签栏和地址栏
 - 后端 **纯 Python 标准库**，零第三方依赖，`python start.py` 即可运行
@@ -13,9 +17,44 @@
 
 ---
 
-## 一、十条抓取通道
+## 一、支持的平台
 
-每条通道都是独立实现，有各自的接口、签名方式和失败模式。界面的「时间表」页会把同一个视频
+粘贴链接或 App 分享文案即可，程序会自动识别平台。**下面每一行的能力都是实测出来的**，
+不是照着文档写的：
+
+| 平台 | 状态 | 实测能力 | 已知限制 |
+|---|---|---|---|
+| **哔哩哔哩** | 可用 | 10 条独立抓取通道；未登录 DASH 480P / 单文件 720P；内置 yt-dlp 通道实测 **1080P** | 1080P+ 需填 SESSDATA，4K/HDR 需大会员 |
+| **抖音** | 可用 | 免登录拿**无水印成品直链**；实测 4K HEVC 单文件 377.7 MB 下载成功 | CDN 强制校验抖音 Referer（已处理）；私密/已删作品取不到 |
+| **小红书** | 可用 | 视频笔记成品 mp4；实测 720×1280 / 14.9 MB 下载成功 | 只支持视频笔记，图文笔记如实报错；走国际版 RedNote 移动页 |
+| **芒果TV** | 可用 | 720P/576P/480P 三档 **HLS**；实测 31 个分片拼成 46.1 MB | 只下发 HLS，输出 MPEG-TS（装 ffmpeg 后自动转 MP4）；1080P 需会员 |
+| **腾讯视频** | 可用 | 免签名免登录拿 MP4 直链；UGC 实测完整 720P / 58.5 MB | 会员内容只有约 180 秒试看；vkey 有效期约 6 小时 |
+| **优酷** | 可用 | 移动页内嵌数据拿单文件直链；实测 720P / 3.4 MB | 匿名只能拿平台下发的那一档，不能自选画质；会员片不下发播放源 |
+| **爱奇艺** | 可用 | 复现了 vf 签名；免费剧集实测 8 段 720P 全片 416 MB | 未登录最高 720P（请求更高会被静默降级）；会员片只有约 6 分钟试看 |
+
+### 各平台是怎么拿到的
+
+- **抖音**：短链 302 取出 `aweme_id`，再请求 SEO 落地页 `douyin.com/shipin/0?modal_id=`，
+  从 RSC 直出的 `__pace_f` 数据里取完整作品 JSON（`bitRateList` 里的成品 mp4）。
+  官方 `/aweme/v1/web/aweme/detail/` 需要 `a_bogus` 签名，已放弃。
+- **小红书**：`xhslink.com` 短链 307 展开；国内站无 token 时只回登录壳，
+  兜底走国际版 RedNote 移动页 `rednote.com/discovery/item/{id}` 的内嵌数据。
+- **芒果TV**：`pcweb player/video` 拿元数据与 `pm2` → `tinker.glb.mgtv.com/player/getSource`
+  拿分档地址 → 拼域名再请求一次得到 m3u8 直链。
+- **腾讯视频**：`vv.video.qq.com/getinfo` 免签名直接返回带 `vkey` 的 MP4 直链。
+- **优酷**：元数据走官方开放接口 `openapi.youku.com/v2/videos/show.json`；
+  播放地址在移动页 `m.youku.com` 的 `window.__INITIAL_DATA__` 里（**必须用移动端 UA**，桌面 UA 会被风控）。
+- **爱奇艺**：短号→`tvid` 的异或换位算法、以及 `cache.video.iqiyi.com/dash` 的 `vf` 签名
+  都从官方播放器 bundle 里读出来复现了；分片地址再经 `data.video.iqiyi.com/videos` 换成 CDN 直链。
+  注意 dash 接口会把请求的画质静默降级，只有标了 `_selected` 的那一档才真正带分片表。
+
+> 所有适配器都只用 Python 标准库，不装任何第三方包。
+> 遇到风控、会员墙、地区限制时会**如实报错**并写清原因，不会伪造地址。
+
+---
+## 二、十条抓取通道（哔哩哔哩）
+
+B 站是唯一做了多通道的平台：每条通道都是独立实现，有各自的接口、签名方式和失败模式。界面的「时间表」页会把同一个视频
 丢给全部通道跑一遍，逐条报告**此刻这台机器上**的真实可用性 —— 而不是写死的宣传。
 
 | # | 通道 | 做法 | 实测结果（未登录） |
@@ -56,7 +95,7 @@
 
 ---
 
-## 二、清晰度
+## 三、清晰度
 
 支持 B 站全部 13 档清晰度：
 
@@ -77,10 +116,12 @@
 
 ---
 
-## 三、下载与合并
+## 四、下载与合并
 
 - **分块多线程**：默认 8 连接，4MB 一块，块级断点续传（中断后重跑自动跳过已完成的块）
 - **主备 CDN 自动切换**：主地址失败会依次尝试 `backupUrl` 里的其它 CDN
+- **HLS 分片下载**：芒果TV 这类只给 m3u8 的平台，按播放列表逐片下载再拼接成文件
+  （未加密的 MPEG-TS，纯标准库即可；带 #EXT-X-KEY 加密时会明确报错而不是产出坏文件）
 - **分 P 勾选批量下载**：多 P 视频会列出每一 P 的标题和时长，勾选后逐个建立独立任务
   （每个 P 的进度、重试、失败原因互不影响），带全选 / 反选 / 清空
 - **五种下载模式**：自动 / 单文件 MP4（免合并）/ 强制 DASH / 仅音频 / 仅元数据
@@ -108,7 +149,7 @@ B 站的 `.m4s` 是 CMAF 分片格式：`ftyp → free → moov → sidx → (mo
 
 ---
 
-## 四、界面：复刻 Kazumi
+## 五、界面：复刻 Kazumi
 
 界面按 Kazumi（`Predidit/Kazumi`）的设计语言逐项对齐，设计令牌直接取自其源码：
 
@@ -141,7 +182,7 @@ B 站的 `.m4s` 是 CMAF 分片格式：`ftyp → free → moov → sidx → (mo
 
 ---
 
-## 五、快速开始
+## 六、快速开始
 
 ### 方式一：直接用打包好的 exe（不需要装 Python）
 
@@ -149,15 +190,15 @@ B 站的 `.m4s` 是 CMAF 分片格式：`ftyp → free → moov → sidx → (mo
 
 | 产物 | 说明 |
 |---|---|
-| `dist\BiliGrab\BiliGrab.exe` | **完整版**，约 42 MB。内置 Python 运行时 + 界面资源 + yt-dlp，启动快，`bin\` 目录可自行替换 ffmpeg |
-| `dist\BiliGrab.exe` | **单文件便携版**，约 10 MB。一个文件拷走就能用，适合放 U 盘 |
-| `dist\BiliGrab-Setup-1.0.0.exe` | **安装程序**，约 43 MB。装到 `%LOCALAPPDATA%\Programs\BiliGrab`，自动建快捷方式并注册到「应用和功能」 |
+| `dist\Video-Grabing\Video-Grabing.exe` | **完整版**，约 42 MB。内置 Python 运行时 + 界面资源 + yt-dlp，启动快，`bin\` 目录可自行替换 ffmpeg |
+| `dist\Video-Grabing.exe` | **单文件便携版**，约 10 MB。一个文件拷走就能用，适合放 U 盘 |
+| `dist\Video-Grabing-Setup-1.0.0.exe` | **安装程序**，约 43 MB。装到 `%LOCALAPPDATA%\Programs\Video-Grabing`，自动建快捷方式并注册到「应用和功能」 |
 
 安装程序支持静默安装（适合脚本批量部署）：
 
 ```bat
-BiliGrab-Setup-1.0.0.exe                            :: 图形界面安装
-BiliGrab-Setup-1.0.0.exe /S /D=D:\Tools\BiliGrab   :: 静默安装到指定目录
+Video-Grabing-Setup-1.0.0.exe                            :: 图形界面安装
+Video-Grabing-Setup-1.0.0.exe /S /D=D:\Tools\Video-Grabing   :: 静默安装到指定目录
 ```
 
 卸载既可以从「应用和功能」里点，也可以运行安装目录下的 `uninstall.exe`。
@@ -166,8 +207,8 @@ BiliGrab-Setup-1.0.0.exe /S /D=D:\Tools\BiliGrab   :: 静默安装到指定目�
 程序第一次运行时会在 **exe 所在的目录**创建两个文件夹：
 
 ```
-BiliGrab/
-├── BiliGrab.exe
+Video-Grabing/
+├── Video-Grabing.exe
 ├── data/          配置与下载历史（换机器直接删掉即可重置）
 ├── downloads/     下载产物
 ├── bin/           想手动放 ffmpeg.exe / yt-dlp.exe 就丢这里
@@ -186,14 +227,14 @@ python create_shortcut.py --start-menu   :: 桌面 + 开始菜单
 python create_shortcut.py --remove       :: 删掉
 ```
 
-快捷方式指向**完整版** `BiliGrab.exe`，带图标和工作目录，双击即启动并自动打开浏览器。
+快捷方式指向**完整版** `Video-Grabing.exe`，带图标和工作目录，双击即启动并自动打开浏览器。
 它用系统 API 取真实桌面路径，所以开了 OneDrive 桌面重定向也不会建错地方。
 
 为了让它双击起来像个正常程序，目录版是用 `--windowed`（无控制台）打的，同时做了这几件事：
 
 - **不弹黑框，但命令行照样能用**。`launcher.py` 会先尝试 `AttachConsole` 接回父进程的控制台，
-  所以 `BiliGrab.exe probe BV1xx411c7mD` 在终端里有输出，双击时则安静启动。
-- **有日志**。没有控制台时输出写到 `data\BiliGrab.log`（超过 1MB 自动轮转）。
+  所以 `Video-Grabing.exe probe BV1xx411c7mD` 在终端里有输出，双击时则安静启动。
+- **有日志**。没有控制台时输出写到 `data\Video-Grabing.log`（超过 1MB 自动轮转）。
 - **出错看得见**。启动失败会弹消息框，而不是默默什么都不发生。
 - **单实例**。重复双击不会报「端口被占用」，而是直接把已经在跑的那个界面打开。
 - **能从界面退出**。「我的 → 程序 → 退出程序」会停掉后台服务；关掉浏览器标签页是不会停的。
@@ -229,7 +270,7 @@ python start.py download BV1GJ411x7h7 --mode audio
 
 ---
 
-## 六、HTTP API
+## 七、HTTP API
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -250,11 +291,11 @@ python start.py download BV1GJ411x7h7 --mode audio
 
 ---
 
-## 七、项目结构
+## 八、项目结构
 
 ```
-biligrab/
-├── dist/                       打包产物：BiliGrab.exe
+videograb/
+├── dist/                       打包产物：Video-Grabing.exe
 ├── build.py                    打包脚本：自动装 PyInstaller 并生成 exe
 ├── create_shortcut.py          创建桌面 / 开始菜单快捷方式
 ├── make_manifest.py            生成自检基线 update/manifest.json
@@ -262,14 +303,17 @@ biligrab/
 ├── update/manifest.json        自检基线（需提交到仓库）
 ├── launcher.py                 PyInstaller 入口
 ├── start.py / run.bat          源码方式启动
-├── biligrab/
+├── videograb/
 │   ├── config.py               设置持久化与全局上下文
 │   ├── net.py                  HTTP 客户端：限速、风控冷却、重试、Range
 │   ├── wbi.py                  WBI 签名
 │   ├── appsign.py              APP / TV 端 appkey 签名
-│   ├── refs.py                 BV / av / 链接 / 短链 / 番剧链接解析
+│   ├── refs.py                 输入解析（BV / av / 链接 / 短链 / 番剧 / 各平台 ID）
 │   ├── quality.py              清晰度码表、编码偏好
-│   ├── engines/                十条抓取通道（e1 … e10）
+│   ├── sites/                  平台适配层：bilibili / douyin / xiaohongshu /
+│   │                           mgtv / vqq / youku / iqiyi
+│   ├── engines/                B 站的十条抓取通道（e1 … e10）
+│   ├── hls.py                  HLS(m3u8) 分片下载与拼接
 │   ├── downloader.py           分块多线程下载器
 │   ├── muxer.py                ffmpeg 探测 + 自写 fMP4 合并器
 │   ├── extras.py               弹幕 / 封面 / 字幕 / NFO
@@ -282,7 +326,7 @@ biligrab/
 
 ---
 
-## 八、自己打包成 exe
+## 九、自己打包成 exe
 
 `build.py` 会自动建一个构建用的虚拟环境并安装 PyInstaller，不需要你事先准备任何东西：
 
@@ -304,7 +348,7 @@ python build.py --onedir --with-ffmpeg   :: 顺手把静态 ffmpeg 一起打进�
 
 ### 打包版里 yt-dlp 是怎么工作的
 
-exe 里的 `sys.executable` 是 `BiliGrab.exe` 而不是 python，
+exe 里的 `sys.executable` 是 `Video-Grabing.exe` 而不是 python，
 所以 `python -m yt_dlp` 这种调用方式在打包后会失效，`pip` 也不存在。
 通道 10 因此走了一条**进程内**路径：直接把 `yt_dlp` 当普通模块导入并调用它的 Python API，
 不需要任何外部解释器。相应地，打包版里的「一键安装 yt-dlp」按钮会改为提示
@@ -317,7 +361,7 @@ exe 里的 `sys.executable` 是 `BiliGrab.exe` 而不是 python，
 
 ---
 
-## 九、独立桌面窗口
+## 十、独立桌面窗口
 
 程序**不依赖浏览器**。启动后是一个属于本进程的原生窗口，任务栏图标、标题、尺寸都由自己控制。
 按可用性分三层降级，「设置 → 更新与自检 → 运行方式」会如实显示当前用的是哪一种：
@@ -334,7 +378,7 @@ HTTP 服务仍然跑在后台，但只监听 `127.0.0.1`，且所有写操作都
 
 ---
 
-## 十、自动更新与自检修复
+## 十一、自动更新与自检修复
 
 仓库里有 `update/manifest.json`，记录每个界面文件的 SHA-256。
 
@@ -367,9 +411,10 @@ exe 里的代码封在 PyInstaller 的解包目录里，改不了。所以 `web/
 
 ---
 
-## 十一、已知限制
+## 十二、已知限制
 
-- **未登录画质上限**：官方通道 DASH 480P / 单文件 720P，更高需要 `SESSDATA`；
+- **各平台的上限与限制见第一节的表格**，那里写的是实测结果。
+- **未登录画质上限**：B 站官方通道 DASH 480P / 单文件 720P，更高需要 `SESSDATA`；
   但第 10 条通道（内置 yt-dlp）实测可以直接拿到 1080P。
 - **会员内容**：4K、HDR、杜比视界、付费番剧需要对应权限，程序会如实提示而不是假装成功。
 - **第三方解析与 TV 端当前已失效**，通道保留待其恢复。

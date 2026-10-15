@@ -19,7 +19,7 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-WINDOW_TITLE = "哔哩采集器 BiliGrab"
+WINDOW_TITLE = "Video-Grabing"
 WINDOW_SIZE = (1480, 960)
 MIN_SIZE = (1040, 720)
 
@@ -30,7 +30,7 @@ def wait_until_ready(url: str, timeout: float = 25.0) -> bool:
     while time.time() < deadline:
         try:
             with urllib.request.urlopen(url + "api/ping", timeout=1.5) as response:
-                if b"BiliGrab" in response.read(256):
+                if b"Video-Grabing" in response.read(256):
                     return True
         except (urllib.error.URLError, OSError, ValueError, TimeoutError):
             time.sleep(0.15)

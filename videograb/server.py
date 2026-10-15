@@ -21,6 +21,8 @@ from .muxer import find_ffmpeg
 from .quality import (CODEC_PREFERENCES, QUALITY_TABLE, needs_login, needs_vip,
                       weight as qn_weight)
 from .refs import normalize, parse_ref
+from .sites import describe as describe_sites
+from .sites import get_site, parse_any
 from .tasks import MODES, TaskManager
 
 MAX_BODY = 4 * 1024 * 1024
@@ -44,9 +46,10 @@ def build_state(ctx: Context) -> dict:
         })
     return {
         "version": __version__,
-        "app": "BiliGrab",
-        "app_cn": "哔哩采集器",
+        "app": "Video-Grabing",
+        "app_cn": "Video-Grabing",
         "engines": describe(ctx),
+        "sites": describe_sites(),
         "settings": _public_settings(ctx),
         "theme_presets": THEME_PRESETS,
         "qualities": qualities,
@@ -81,9 +84,12 @@ def _public_settings(ctx: Context) -> dict:
 def run_probe(ctx: Context, raw_input: str, qn: int = 0) -> dict:
     """把同一个视频丢给全部通道，报告每条通道的真实结果。"""
     try:
-        ref = normalize(ctx, parse_ref(raw_input))
+        ref = _prepare_ref(ctx, raw_input)
     except ValueError as exc:
         raise ApiError(str(exc)) from None
+    if ref.site != "bilibili":
+        raise ApiError("通道体检是哔哩哔哩专属功能：B 站有 10 条互相独立的抓取通道可以横向对比，"
+                       "其它平台各自只有一条适配器路径。")
 
     engines = [e for e in describe(ctx) if e["enabled"]]
     results: dict[str, dict] = {}
@@ -175,7 +181,7 @@ def run_probe(ctx: Context, raw_input: str, qn: int = 0) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "BiliGrab"
+    server_version = "Video-Grabing"
     protocol_version = "HTTP/1.1"
     ctx: Context = None  # type: ignore[assignment]
 
@@ -261,7 +267,7 @@ class Handler(BaseHTTPRequestHandler):
         expected = getattr(self.ctx, "api_token", "")
         if not expected:
             return True
-        return self.headers.get("X-BiliGrab-Token") == expected
+        return self.headers.get("X-Video-Grabing-Token") == expected
 
     def do_POST(self):  # noqa: N802
         route = urlparse(self.path).path
@@ -296,8 +302,8 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/settings":
             return self._json({"ok": True, "settings": _public_settings(ctx)})
         if route == "/api/ping":
-            # 单实例检测用：另一个进程靠它判断"这个端口上是不是已经有一个 BiliGrab"
-            return self._json({"ok": True, "app": "BiliGrab", "version": __version__})
+            # 单实例检测用：另一个进程靠它判断"这个端口上是不是已经有一个 Video-Grabing"
+            return self._json({"ok": True, "app": "Video-Grabing", "version": __version__})
         if route == "/api/versions":
             return self._json({
                 "ok": True, "ffmpeg": find_ffmpeg() or "",
@@ -315,9 +321,21 @@ class Handler(BaseHTTPRequestHandler):
             raw = (payload.get("input") or "").strip()
             if not raw:
                 raise ApiError("请输入视频地址或 BV 号")
-            ref = normalize(ctx, parse_ref(raw))
+            ref = _prepare_ref(ctx, raw)
             engine_id = payload.get("engine") or "auto"
             qn = int(payload.get("qn") or 0)
+
+            site = get_site(ref.site)
+            if ref.site != "bilibili":
+                # 其它平台没有多通道的概念，直接问适配器
+                try:
+                    info = site.fetch_info(ctx, ref)
+                except Exception as exc:
+                    raise ApiError(f"{site.name} 解析失败：{exc}") from None
+                return self._json({
+                    "ok": True, "info": info.to_dict(), "ref": ref.to_dict(),
+                    "engine": site.id, "engine_name": site.name, "errors": [],
+                })
 
             engines = ([get_engine(engine_id)] if engine_id != "auto"
                        else [get_engine(i) for i in ctx.settings.ordered_engines()])
@@ -345,11 +363,23 @@ class Handler(BaseHTTPRequestHandler):
             raw = (payload.get("input") or "").strip()
             if not raw:
                 raise ApiError("请输入视频地址或 BV 号")
-            ref = normalize(ctx, parse_ref(raw))
+            ref = _prepare_ref(ctx, raw)
             if payload.get("p"):
                 ref.p = int(payload["p"])
             qn = int(payload.get("qn") or 0)
             engine_id = payload.get("engine") or "auto"
+
+            site = get_site(ref.site)
+            if ref.site != "bilibili":
+                try:
+                    play = site.fetch_play(ctx, ref, ref.p, qn)
+                except Exception as exc:
+                    raise ApiError(f"{site.name} 取流失败：{exc}") from None
+                return self._json({
+                    "ok": True, "play": play.to_dict(),
+                    "engine": site.id, "engine_name": site.name, "errors": [],
+                })
+
             engines = ([get_engine(engine_id)] if engine_id != "auto"
                        else [get_engine(i) for i in ctx.settings.ordered_engines()])
             errors = []
@@ -603,6 +633,12 @@ class Handler(BaseHTTPRequestHandler):
                     break
                 self.wfile.write(chunk)
                 remaining -= len(chunk)
+
+
+def _prepare_ref(ctx: Context, raw: str):
+    """解析用户输入：先判断平台，再交给该平台做联网补全（短链展开等）。"""
+    ref = parse_any(raw)
+    return get_site(ref.site).normalize(ctx, ref)
 
 
 def _inside_allowed(target: Path, ctx: Context) -> bool:

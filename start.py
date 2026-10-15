@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""哔哩采集器 一键启动脚本。
+"""Video-Grabing 一键启动脚本。
 
 用法：
     python start.py              # 启动界面并自动打开浏览器
@@ -20,7 +20,7 @@ if sys.version_info < (3, 9):
 
 os.chdir(ROOT)
 
-from biligrab.__main__ import main  # noqa: E402
+from videograb.__main__ import main  # noqa: E402
 
 if __name__ == "__main__":
     argv = sys.argv[1:]

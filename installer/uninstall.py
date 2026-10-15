@@ -1,4 +1,4 @@
-"""哔哩采集器 卸载程序。
+"""Video-Grabing 卸载程序。
 
 被安装到程序目录下，和主程序放在一起。运行时以自身所在目录为安装目录，
 删掉程序文件、快捷方式和注册表项；用户可以选择是否一并删除下载的视频和配置。
@@ -25,7 +25,7 @@ USER_DATA = {"data", "downloads", ".deps"}
 def install_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent.parent / "dist" / "BiliGrab"
+    return Path(__file__).resolve().parent.parent / "dist" / "Video-Grabing"
 
 
 def remove_all(target: Path, keep_user_data: bool) -> list[str]:

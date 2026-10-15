@@ -15,6 +15,9 @@ _AID_RE = re.compile(r"/video/av(\d+)", re.IGNORECASE)
 @dataclass
 class Ref:
     raw: str = ""
+    site: str = "bilibili"       # 平台 id，见 videograb/sites/
+    ident: str = ""              # 非 B 平台的主标识（aweme_id / note_id / vid / tvid …）
+    extra: dict = field(default_factory=dict)   # 平台自己的附加字段
     kind: str = "video"          # video | bangumi
     bvid: str = ""
     aid: int = 0
@@ -26,19 +29,24 @@ class Ref:
 
     def key(self) -> str:
         """这一集的唯一键，用于任务去重。"""
+        if self.site != "bilibili":
+            return f"{self.site}:{self.ident}_p{self.p}"
         if self.kind == "bangumi":
             return f"ep{self.ep_id}"
         ident = self.bvid or f"av{self.aid}"
         return f"{ident}_p{self.p}"
 
     def display(self) -> str:
+        if self.site != "bilibili":
+            return self.ident or self.raw
         if self.kind == "bangumi":
             return f"ep{self.ep_id}"
         return self.bvid or (f"av{self.aid}" if self.aid else self.raw)
 
     def to_dict(self) -> dict:
         return {
-            "raw": self.raw, "kind": self.kind, "bvid": self.bvid, "aid": self.aid,
+            "raw": self.raw, "site": self.site, "ident": self.ident,
+            "kind": self.kind, "bvid": self.bvid, "aid": self.aid,
             "ep_id": self.ep_id, "season_id": self.season_id, "p": self.p,
             "short_url": self.short_url, "note": self.note,
         }

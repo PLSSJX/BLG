@@ -4,16 +4,16 @@ setlocal
 cd /d "%~dp0"
 
 rem 优先使用打包好的独立 exe（不需要装 Python）
-if exist "%~dp0dist\BiliGrab\BiliGrab.exe" (
-  "%~dp0dist\BiliGrab\BiliGrab.exe" %*
+if exist "%~dp0dist\Video-Grabing\Video-Grabing.exe" (
+  "%~dp0dist\Video-Grabing\Video-Grabing.exe" %*
   goto :end
 )
-if exist "%~dp0dist\BiliGrab.exe" (
-  "%~dp0dist\BiliGrab.exe" %*
+if exist "%~dp0dist\Video-Grabing.exe" (
+  "%~dp0dist\Video-Grabing.exe" %*
   goto :end
 )
-if exist "%~dp0BiliGrab.exe" (
-  "%~dp0BiliGrab.exe" %*
+if exist "%~dp0Video-Grabing.exe" (
+  "%~dp0Video-Grabing.exe" %*
   goto :end
 )
 
@@ -23,7 +23,7 @@ where python >nul 2>nul && set "PY=python"
 if not defined PY ( where py >nul 2>nul && set "PY=py" )
 if not defined PY (
   echo.
-  echo   [x] 没有找到 BiliGrab.exe，也没有找到 Python。
+  echo   [x] 没有找到 Video-Grabing.exe，也没有找到 Python。
   echo       请运行 build.py 打包出 exe，或安装 Python 3.9+ 后重试。
   echo.
   pause
@@ -32,7 +32,7 @@ if not defined PY (
 
 echo.
 echo   ============================================
-echo      哔哩采集器 BiliGrab  ·  正在启动
+echo      Video-Grabing  ·  正在启动
 echo   ============================================
 echo.
 %PY% "%~dp0start.py" serve %*

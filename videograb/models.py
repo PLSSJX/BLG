@@ -42,6 +42,7 @@ class VideoInfo:
     pages: list = field(default_factory=list)
     stat: dict = field(default_factory=dict)
     engine: str = ""
+    site: str = "bilibili"       # 来自哪个平台
     kind: str = "video"
     extra: dict = field(default_factory=dict)
 
@@ -83,6 +84,7 @@ class Stream:
     audio_quality: int = 0
     kind: str = "video"          # video | audio
     note: str = ""
+    referer: str = ""            # 该 CDN 要求的 Referer，留空则用平台的默认值
 
     def to_dict(self) -> dict:
         return {
@@ -108,6 +110,7 @@ class Durl:
     size: int = 0
     length: int = 0
     backups: list = field(default_factory=list)
+    referer: str = ""            # 各平台 CDN 防盗链要求不一样，跟随直链一起带
 
     def to_dict(self) -> dict:
         return {

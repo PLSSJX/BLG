@@ -9,7 +9,7 @@ export function setToken(token) {
 
 async function request(path, options = {}) {
   const headers = { 'Content-Type': 'application/json' };
-  if (API_TOKEN) headers['X-BiliGrab-Token'] = API_TOKEN;
+  if (API_TOKEN) headers['X-Video-Grabing-Token'] = API_TOKEN;
   const res = await fetch(path, { ...options, headers: { ...headers, ...(options.headers || {}) } });
   let payload = null;
   try {

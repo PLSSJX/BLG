@@ -4,7 +4,7 @@
 #   签名       hashlib / hmac
 #   并发       threading
 #   数据       json / dataclasses
-#   MP4 合并   自己实现的 fMP4 合并器（biligrab/muxer.py）
+#   MP4 合并   自己实现的 fMP4 合并器（videograb/muxer.py）
 #
 # 可选：安装 ffmpeg 后，合并会自动改走 ffmpeg -c copy（更快，也能处理更多异常格式）。
 #       不装也完全不影响使用。

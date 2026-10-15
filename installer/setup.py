@@ -1,9 +1,9 @@
-"""哔哩采集器 安装程序。
+"""Video-Grabing 安装程序。
 
 用 PyInstaller 打包成单个 exe，内部以 payload.zip 的形式携带整个应用。
 安装过程：解包 → 创建快捷方式 → 注册到「应用和功能」→ 写入卸载程序。
 
-支持静默安装：BiliGrab-Setup-x.y.z.exe /S /D=<安装目录>
+支持静默安装：Video-Grabing-Setup-x.y.z.exe /S /D=<安装目录>
 """
 from __future__ import annotations
 
@@ -17,7 +17,24 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import winutil as W  # noqa: E402
 
-APP_VERSION = "1.0.0"
+# 版本号从包里读，避免和 biligrab/videograb 的 __version__ 各写一份
+def _version() -> str:
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    for candidate in (base / "VERSION.txt", Path(__file__).resolve().parent.parent / "videograb" / "__init__.py"):
+        try:
+            text = candidate.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        import re as _re
+        match = _re.search(r'__version__s*=s*"([^"]+)"', text)
+        if match:
+            return match.group(1)
+        if text.strip():
+            return text.strip()
+    return "1.1.0"
+
+
+APP_VERSION = _version()
 APP_NAME = W.APP_NAME
 
 
@@ -67,9 +84,9 @@ def install(target: Path, progress=None, make_shortcuts: bool = True,
     if make_shortcuts:
         desktop = W.desktop_dir() / (APP_NAME + ".lnk")
         start = W.programs_dir() / (APP_NAME + ".lnk")
-        if W.create_shortcut(desktop, exe, "哔哩采集器 —— 哔哩哔哩视频采集器"):
+        if W.create_shortcut(desktop, exe, "Video-Grabing —— 多平台视频采集器"):
             created.append(str(desktop))
-        if W.create_shortcut(start, exe, "哔哩采集器 —— 哔哩哔哩视频采集器"):
+        if W.create_shortcut(start, exe, "Video-Grabing —— 多平台视频采集器"):
             created.append(str(start))
 
     W.register_uninstall(target, APP_VERSION, W.directory_size_kb(target))

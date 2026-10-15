@@ -58,7 +58,7 @@ def ensure_deps_path() -> None:
 def load_inprocess_ytdlp():
     """把 yt-dlp 作为普通模块导入，成功则返回模块对象。
 
-    打包成 exe 之后 sys.executable 是 BiliGrab.exe 而不是 python，
+    打包成 exe 之后 sys.executable 是 Video-Grabing.exe 而不是 python，
     "python -m yt_dlp" 这种调用方式就失效了。所以内置版走这条进程内路径：
     直接调它的 Python API，不需要任何外部解释器。
     """

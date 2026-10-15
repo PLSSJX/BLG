@@ -5,6 +5,7 @@ import dataclasses
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import threading
 import time
@@ -50,6 +51,7 @@ MODES = [
 class Task:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     raw_input: str = ""
+    site: str = ""           # 命中的平台 id
     page: int = 1            # 分 P 序号；多 P 批量下载时每个任务各占一 P
     engine: str = "auto"
     engine_used: str = ""
@@ -87,6 +89,7 @@ class Task:
         return {
             "id": self.id,
             "raw_input": self.raw_input,
+            "site": self.site,
             "page": self.page,
             "engine": self.engine,
             "engine_used": self.engine_used,
@@ -328,25 +331,43 @@ class TaskManager:
         settings = ctx.settings
         task.note(f"开始解析：{task.raw_input}")
 
-        ref = resolve_short(ctx, parse_ref(task.raw_input))
-        if not (ref.bvid or ref.aid or ref.ep_id or ref.season_id):
-            raise ValueError("无法识别的输入")
+        # 先判断这是哪个平台的链接，再交给对应适配器
+        from .sites import get_site, parse_any
+
+        ref = parse_any(task.raw_input)
+        site = get_site(ref.site)
+        ref = site.normalize(ctx, ref)
         # 任务自己带的分 P 号优先于输入串里可能存在的 ?p=
         if task.page and task.page > 0:
             ref.p = int(task.page)
-
-        # 1) 元数据 + 播放地址
-        engine_ids = ([task.engine] if task.engine and task.engine != "auto"
-                      else settings.ordered_engines())
-        if not engine_ids:
-            engine_ids = list(ALL_ENGINES)
-
-        from .engines import get_engine
+        task.site = ref.site
+        task.note(f"平台：{site.name}")
 
         info = None
         play = None
         errors: list[str] = []
         candidates: list[tuple] = []
+
+        # 非 B 站平台没有"多通道"这回事，直接用平台适配器拿结果；
+        # 拿到之后下面的下载流程与 B 站完全共用。
+        if ref.site != "bilibili":
+            try:
+                info = site.fetch_info(ctx, ref)
+                play = site.fetch_play(ctx, ref, ref.p, task.qn)
+            except Exception as exc:
+                raise RuntimeError(f"{site.name} 解析失败：{exc}") from None
+            task.engine_used = site.id
+            if not (play.videos or play.durl):
+                raise RuntimeError(f"{site.name} 没有返回可下载的地址")
+            task.note(f"平台「{site.name}」解析成功")
+            engine_ids: list[str] = []
+        else:
+            engine_ids = ([task.engine] if task.engine and task.engine != "auto"
+                          else settings.ordered_engines())
+            if not engine_ids:
+                engine_ids = list(ALL_ENGINES)
+
+        from .engines import get_engine
 
         # 不同模式需要的流不一样：只要单文件时，返回 DASH 的通道就得让位给下一条
         def acceptable(candidate) -> bool:
@@ -413,7 +434,9 @@ class TaskManager:
 
         # 2) 输出目录
         base = safe_filename(render_template(settings.filename_template, {
-            "title": info.title, "up": info.owner.name, "bvid": info.bvid or ref.display(),
+            "title": info.title, "up": info.owner.name,
+            "bvid": info.bvid or ref.display(), "id": ref.display(),
+            "site": ref.site, "platform": site.name,
             "quality": qn_short(task.qn), "engine": task.engine_used,
         }) or "video")
         directory = ctx.download_dir() / base
@@ -475,6 +498,16 @@ class TaskManager:
             raise RuntimeError("没有可用的视频流")
 
         task.qn = video.qn or task.qn
+
+        # 芒果TV 这类平台只给 HLS 播放列表，不能当成普通流去下（会把 m3u8 文本
+        # 当成视频存下来），必须走分片下载再拼接。
+        from .hls import is_hls
+        if is_hls(video.url, video.mime):
+            self._download_hls(task, video, directory, stem, quality_tag, play,
+                               height=video.height,
+                               label=f"HLS {video.width}x{video.height}")
+            return
+
         task.note(
             f"选中视频流 {video.width}x{video.height} · {codec_text(video.codecs)}"
             f" · {video.label} · {video.to_dict()['size_text']}"
@@ -533,6 +566,12 @@ class TaskManager:
         if not durls:
             raise RuntimeError("该通道没有返回单文件地址（durl）")
 
+        from .hls import is_hls
+        if len(durls) == 1 and is_hls(durls[0].url):
+            self._download_hls(task, durls[0], directory, stem, quality_tag, play,
+                               height=0, label="HLS 单链路")
+            return
+
         task.note(f"单文件模式：共 {len(durls)} 段，下载后直接拼成一个 MP4")
         final = directory / f"{stem}{quality_tag}.mp4"
         part_dir = directory / "_parts"
@@ -545,8 +584,7 @@ class TaskManager:
                     if task.cancel_event.is_set():
                         raise DownloadCancelled("用户已取消")
                     part = part_dir / f"part{idx:03d}.bin"
-                    self._fetch(ctx, task, item, part, f"第 {idx}/{len(durls)} 段",
-                                referer="https://www.bilibili.com/")
+                    self._fetch(ctx, task, item, part, f"第 {idx}/{len(durls)} 段")
                     with open(part, "rb") as fh:
                         shutil.copyfileobj(fh, out, 1 << 20)
                     part.unlink(missing_ok=True)
@@ -556,6 +594,66 @@ class TaskManager:
         task.files.append({"kind": "video", "path": str(final),
                            "name": final.name, "size": final.stat().st_size})
         task.note(f"写入完成：{final.name}（{final.stat().st_size / 1048576:.1f} MB）")
+
+    # ---------------- HLS（芒果TV 等） ----------------
+    def _download_hls(self, task: Task, source, directory: Path, stem: str,
+                      quality_tag: str, play, height: int = 0, label: str = "HLS") -> None:
+        """下载 m3u8 分片并拼接。TS 分片直接接起来就是可播放的 mpegts。"""
+        from .hls import HlsError
+        from .hls import download as hls_download
+
+        settings = self.ctx.settings
+        referer = (getattr(source, "referer", "") or _platform_referer(task, self.ctx))
+        task.note(f"{label}：开始下载分片")
+        last = {"t": 0.0}
+
+        def on_progress(p):
+            now = time.time()
+            if now - last["t"] < 0.3 and p.percent < 100:
+                return
+            last["t"] = now
+            task.progress = p.to_dict()
+
+        final = directory / f"{stem}{quality_tag}.ts"
+        try:
+            result = hls_download(
+                self.ctx, source.url, final,
+                threads=settings.threads_per_task,
+                referer=referer,
+                on_progress=on_progress,
+                cancel_event=task.cancel_event,
+                prefer_height=height,
+                label=label,
+            )
+        except DownloadCancelled:
+            raise
+        except HlsError as exc:
+            raise RuntimeError(f"{label} 下载失败：{exc}") from None
+
+        task.note(f"{label} 完成：{result['segments']} 个分片，"
+                  f"{result['size'] / 1048576:.1f} MB（{result['container']}）")
+
+        # 有 ffmpeg 就顺手转成 mp4，兼容性更好；没有就保留 .ts（VLC / PotPlayer /
+        # mpv 都能直接播，Windows 自带播放器不行）。
+        out = final
+        ffmpeg = find_ffmpeg()
+        if ffmpeg and result["container"] == "mpegts":
+            mp4 = final.with_suffix(".mp4")
+            try:
+                subprocess.run(
+                    [ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+                     "-i", str(final), "-c", "copy", "-bsf:a", "aac_adtstoasc", str(mp4)],
+                    capture_output=True, timeout=1800, check=True)
+                final.unlink(missing_ok=True)
+                out = mp4
+                task.note("已用 ffmpeg 转封装为 MP4")
+            except (OSError, subprocess.SubprocessError):
+                task.note("ffmpeg 转封装失败，保留 .ts（多数播放器可直接播放）")
+        elif result["container"] == "mpegts":
+            task.note("输出为 MPEG-TS，VLC / PotPlayer / mpv 可直接播放；装 ffmpeg 后会自动转成 MP4")
+
+        task.files.append({"kind": "video", "path": str(out),
+                           "name": out.name, "size": out.stat().st_size})
 
     # ---------------- 仅音频 ----------------
     def _download_audio(self, task, info, page, directory: Path, stem: str, play) -> None:
@@ -573,7 +671,10 @@ class TaskManager:
         settings = ctx.settings
         task.progress = {"phase": phase, "percent": 0.0, "speed_text": "-",
                          "eta_text": "-", "size_text": "0 B", "total_text": "0 B"}
-        referer = referer or f"https://www.bilibili.com/video/{task.raw_input}"
+        # 优先级：调用方指定 > 直链自带 > 平台默认。
+        # 以前这里写死了 B 站的地址，换成别的平台就会带着错误的 Referer 去请求 CDN。
+        referer = (referer or getattr(source, "referer", "")
+                   or _platform_referer(task, ctx))
         last = {"t": 0.0}
 
         def on_progress(p):
@@ -614,6 +715,9 @@ class TaskManager:
         settings = self.ctx.settings
         ctx = self.ctx
         stem = safe_filename(stem)
+        # 弹幕与 CC 字幕目前只有 B 站能拿到；别的平台拿它的 cid 去问 B 站接口
+        # 只会得到 404，徒增一条看不懂的失败日志。
+        is_bilibili = (task.site or "bilibili") == "bilibili"
 
         if settings.write_cover and info.cover:
             try:
@@ -625,7 +729,7 @@ class TaskManager:
             except Exception as exc:
                 task.note(f"封面保存失败：{exc}")
 
-        if settings.write_danmaku and page.cid:
+        if settings.write_danmaku and page.cid and is_bilibili:
             try:
                 path = directory / f"{stem}.xml"
                 count = extras.save_danmaku(ctx, page.cid, path)
@@ -643,7 +747,7 @@ class TaskManager:
             except Exception as exc:
                 task.note(f"弹幕保存失败：{exc}")
 
-        if settings.write_subtitle and info.bvid and page.cid:
+        if settings.write_subtitle and info.bvid and page.cid and is_bilibili:
             try:
                 written = extras.save_subtitles(ctx, info.bvid, page.cid, directory, stem)
                 for item in written:
@@ -661,11 +765,24 @@ class TaskManager:
             try:
                 path = directory / f"{stem}.nfo"
                 extras.save_nfo(info, page, path, quality=qn_label(task.qn),
-                                engine=task.engine_used)
+                                engine=task.engine_used,
+                                website=task.raw_input if task.raw_input.startswith("http") else "")
                 task.files.append({"kind": "nfo", "path": str(path),
                                    "name": path.name, "size": path.stat().st_size})
             except Exception as exc:
                 task.note(f"NFO 写入失败：{exc}")
+
+
+def _platform_referer(task: Task, ctx) -> str:
+    """按平台给出默认 Referer。"""
+    try:
+        from .sites import get_site
+        site = get_site(task.site or "bilibili")
+        if task.site and task.site != "bilibili":
+            return getattr(site, "home", "") or ""
+    except Exception:
+        pass
+    return f"https://www.bilibili.com/video/{task.raw_input}"
 
 
 def _pick_video(play, qn: int, codec_preference: str = "auto"):

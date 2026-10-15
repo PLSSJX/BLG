@@ -1,6 +1,6 @@
 # Bilibili 抓取通道实测报告
 
-- 主机: Windows, 工作区 D:\BLD, 探测脚本目录 D:\BLD\biligrab\.probe\
+- 主机: Windows, 工作区 D:\BLD, 探测脚本目录 D:\BLD\videograb\.probe\
 - Python: 3.12.14 (仅标准库 urllib/json/hashlib/struct/gzip/re)
 - 测试时间: 2026-10-15 (UTC+8 晚)
 - 网络: api.bilibili.com / www.bilibili.com / *.bilivideo.com 直连可用

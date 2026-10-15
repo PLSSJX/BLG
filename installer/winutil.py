@@ -8,12 +8,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-APP_NAME = "哔哩采集器 BiliGrab"
-APP_ID = "BiliGrab"
+APP_NAME = "Video-Grabing"
+APP_ID = "Video-Grabing"
 PUBLISHER = "PLSSJX"
-EXE_NAME = "BiliGrab.exe"
+EXE_NAME = "Video-Grabing.exe"
 UNINSTALL_NAME = "uninstall.exe"
-UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\BiliGrab"
+UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Video-Grabing"
 
 
 def default_install_dir() -> Path:
@@ -99,7 +99,7 @@ def remove_file(path: Path) -> None:
 
 
 def kill_running_app() -> int:
-    """安装前把正在运行的 BiliGrab 关掉，否则文件被占用替换不了。"""
+    """安装前把正在运行的 Video-Grabing 关掉，否则文件被占用替换不了。"""
     try:
         proc = subprocess.run(
             ["taskkill", "/F", "/IM", EXE_NAME, "/T"],

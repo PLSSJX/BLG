@@ -171,7 +171,8 @@ def _xml_text(node, tag: str, value) -> None:
     child.text = "" if value is None else str(value)
 
 
-def save_nfo(info, page, path: Path, quality: str = "", engine: str = "") -> None:
+def save_nfo(info, page, path: Path, quality: str = "", engine: str = "",
+             website: str = "") -> None:
     root = ET.Element("episodedetails")
     _xml_text(root, "title", page.part or info.title)
     _xml_text(root, "showtitle", info.title)
@@ -185,7 +186,7 @@ def save_nfo(info, page, path: Path, quality: str = "", engine: str = "") -> Non
     _xml_text(root, "cid", page.cid)
     _xml_text(root, "quality", quality)
     _xml_text(root, "source_engine", engine)
-    _xml_text(root, "website", f"https://www.bilibili.com/video/{info.bvid}")
+    _xml_text(root, "website", website or f"https://www.bilibili.com/video/{info.bvid}")
     if info.cover:
         _xml_text(root, "thumb", info.cover)
     for key, value in (info.stat or {}).items():

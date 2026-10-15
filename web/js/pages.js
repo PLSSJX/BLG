@@ -40,7 +40,9 @@ export function renderHome(view) {
       h('div', { class: 'spacer' }),
       store.config ? pill(store.config.logged_in ? '已登录 · 可解锁高画质' : '未登录 · 最高 720P',
         store.config.logged_in ? 'ok' : 'mute') : null),
-    h('p', { class: 'page-sub' }, '输入 BV 号、av 号、完整链接、b23.tv 短链或番剧链接，程序会自动挑选可用的抓取通道并列出真实可下载的画质。'),
+    h('p', { class: 'page-sub' },
+      '粘贴视频链接或 App 分享文案即可。支持 B站 / 抖音 / 小红书 / 芒果TV / 腾讯视频 / 优酷 / 爱奇艺，' +
+      '程序会自动识别平台，并列出真实可下载的画质。'),
     buildSearchCard(),
   );
 
@@ -51,7 +53,7 @@ export function renderHome(view) {
   } else {
     page.append(h('div', { style: { marginTop: '12px' } },
       emptyState('search', '还没有解析任何视频',
-        '在上面的输入框里粘贴一个 B 站视频地址，然后点「解析」。')));
+        '在上面的输入框里粘贴一个视频链接或分享文案，然后点「解析」。')));
   }
 
   view.append(page);
@@ -60,7 +62,7 @@ export function renderHome(view) {
 function buildSearchCard() {
   const input = h('input', {
     class: 'input',
-    placeholder: '例如 BV1GJ411x7h7，或 https://www.bilibili.com/video/BV1GJ411x7h7/?p=2',
+    placeholder: '粘贴视频链接或分享文案，例如 BV1GJ411x7h7 / v.douyin.com/xxx / xhslink.com/xxx',
     value: store.input,
     oninput: (e) => { store.input = e.target.value; },
     onkeydown: (e) => { if (e.key === 'Enter') runParse(); },
@@ -75,7 +77,7 @@ function buildSearchCard() {
 
   const card1 = card(
     h('div', { class: 'card-title', html: icon('link', 'outlined', 20) + '<span>视频地址</span>' }),
-    h('div', { class: 'card-desc' }, '支持：BV 号 · av 号 · 完整视频链接 · b23.tv 短链 · 番剧 ep/ss 号'),
+    h('div', { class: 'card-desc', id: 'platformHint' }, platformHintText()),
     h('div', { class: 'search-field' }, input, runBtn),
     h('div', { style: { marginTop: '14px', display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' } },
       h('div', { style: { minWidth: '260px', flex: '1' } },
@@ -86,6 +88,17 @@ function buildSearchCard() {
       } })),
   );
   return card1;
+}
+
+/** 各平台支持的输入形态，直接从注册表生成，避免文案和实现脱节。 */
+function platformHintText() {
+  const sites = store.config?.sites || [];
+  if (!sites.length) return '正在加载支持的平台…';
+  return '支持：' + sites.map((s) => s.name).join(' · ');
+}
+
+function siteOf(id) {
+  return (store.config?.sites || []).find((s) => s.id === id) || null;
 }
 
 function fillEngineOptions(select, current) {
@@ -100,7 +113,7 @@ function fillEngineOptions(select, current) {
 
 async function runParse() {
   const input = (store.input || '').trim();
-  if (!input) { toast('请先填写视频地址或 BV 号'); return; }
+  if (!input) { toast('请先粘贴视频链接或分享文案'); return; }
   const view = document.getElementById('view');
   const btn = view.querySelector('.search-field .btn');
   const original = btn.innerHTML;
@@ -181,6 +194,10 @@ function buildVideoCard() {
       ...stats.map(([label, value]) =>
         h('div', {}, label + ' ', h('b', {}, fmtCount(value))))),
     h('div', { style: { marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' } },
+      (() => {
+        const s = siteOf(info.site) || siteOf('bilibili');
+        return s ? pill(s.name) : null;
+      })(),
       pill('通道：' + (store.parsed.engine_name || store.parsed.engine)),
       info.bvid ? pill(info.bvid, 'mute') : null,
       store.play ? pill(store.play.is_dash ? 'DASH 音视频分离' : '单文件 MP4',
@@ -369,7 +386,7 @@ function buildDownloadCard() {
 
   return card(
     h('div', { class: 'card-title', html: icon('tune', 'outlined', 20) + '<span>下载设置</span>' }),
-    h('div', { class: 'card-desc' }, '清晰度列表以「本次实际下发到的流」为准 —— B 站接口常会虚报档位，这里只显示真实拿得到的。'),
+    h('div', { class: 'card-desc' }, '清晰度列表以「本次实际下发到的流」为准 —— 各平台接口都可能虚报档位，这里只显示真实拿得到的。'),
 
     h('div', { class: 'section-label' }, '下载模式'),
     modeRow,
@@ -458,7 +475,7 @@ export function renderMatrix(view) {
   clear(view);
   const page = h('div', { class: 'page' });
   const input = h('input', {
-    class: 'input', placeholder: 'BV 号或视频链接', value: store.probeInput || store.input || '',
+    class: 'input', placeholder: 'B 站 BV 号或视频链接', value: store.probeInput || store.input || '',
     oninput: (e) => { store.probeInput = e.target.value; },
     onkeydown: (e) => { if (e.key === 'Enter') runProbe(); },
   });
@@ -466,7 +483,7 @@ export function renderMatrix(view) {
   page.append(
     h('div', { class: 'page-head' }, h('h1', { class: 'page-title' }, '通道体检')),
     h('p', { class: 'page-sub' },
-      '把同一个视频同时交给全部抓取通道，逐条报告真实结果。B 站的风控和接口策略经常变，' +
+      '把同一个 B 站视频同时交给全部抓取通道，逐条报告真实结果。B 站的风控和接口策略经常变，' +
       '这里显示的是「此刻这台机器上」的实测可用性，而不是写死的宣传。'),
     card(
       h('div', { class: 'card-title', html: icon('science', 'outlined', 20) + '<span>通道体检</span>' }),
@@ -481,7 +498,7 @@ export function renderMatrix(view) {
 
 async function runProbe() {
   const input = (store.probeInput || store.input || '').trim();
-  if (!input) { toast('请先填写视频地址或 BV 号'); return; }
+  if (!input) { toast('请先填写 B 站视频地址或 BV 号'); return; }
   const view = document.getElementById('view');
   renderMatrix(view);
   const host = view.querySelector('.page');
@@ -687,6 +704,7 @@ export function renderSettings(view) {
       buildExtrasCard(settings),
       buildEnginesCard(),
       buildToolsCard(),
+      buildSitesCard(),
       buildUpdateCard(),
       buildProgramCard()),
   );
@@ -854,9 +872,9 @@ function buildExtrasCard(settings) {
     h('div', { class: 'card-desc' }, '每个视频独立目录，附加文件与视频同名，方便直接丢进播放器或媒体库。'),
     switchRow('封面', '下载最大宽度 1920 的封面图', settings.write_cover !== false,
       (v) => saveSetting({ write_cover: v }, false)),
-    switchRow('弹幕', '保存 B 站 XML 弹幕，并额外转一份 ASS 字幕', settings.write_danmaku !== false,
+    switchRow('弹幕（仅 B 站）', '保存 B 站 XML 弹幕，并额外转一份 ASS 字幕；其它平台暂时拿不到弹幕', settings.write_danmaku !== false,
       (v) => saveSetting({ write_danmaku: v }, false)),
-    switchRow('字幕', '下载 UP 主上传的 CC 字幕并转成 SRT', settings.write_subtitle === true,
+    switchRow('字幕（仅 B 站）', '下载 UP 主上传的 CC 字幕并转成 SRT', settings.write_subtitle === true,
       (v) => saveSetting({ write_subtitle: v }, false)),
     switchRow('NFO 元数据', '生成 Kodi / Jellyfin 可识别的 .nfo', settings.write_nfo === true,
       (v) => saveSetting({ write_nfo: v }, false)),
@@ -917,6 +935,31 @@ function buildEnginesCard() {
     h('div', { class: 'card-title', html: icon('route', 'outlined', 20) + '<span>抓取通道</span>' }),
     h('div', { class: 'card-desc' },
       '顺序就是「自动」模式下的尝试顺序，越靠前越优先。关掉的通道不会参与解析与体检。'),
+    list,
+  );
+}
+
+/** 支持的平台一览。把每个平台真实的限制写在界面上，比 README 更不容易被忽略。 */
+function buildSitesCard() {
+  const sites = store.config?.sites || [];
+  const list = h('div', {});
+  for (const site of sites) {
+    list.append(h('div', { class: 'site-row' },
+      h('span', { class: 'site-dot', style: { background: site.color || 'var(--md-primary)' } }),
+      h('div', { class: 'grow' },
+        h('div', { class: 'name' }, site.name,
+          site.needs_login ? pill('需要登录', 'warn') : null),
+        site.note ? h('div', { class: 'hint' }, site.note) : null,
+        site.examples?.length
+          ? h('div', { class: 'hint', style: { opacity: '.75' } },
+              '例如：' + site.examples.join('　·　'))
+          : null)));
+  }
+  return card(
+    h('div', { class: 'card-title', html: icon('language', 'outlined', 20) + '<span>支持的平台</span>' }),
+    h('div', { class: 'card-desc' },
+      '把链接或分享文案粘到「解析」页即可，程序会自动识别平台。' +
+      '各平台的风控与会员策略差别很大，下面是当前实测的能力边界。'),
     list,
   );
 }
@@ -1126,7 +1169,7 @@ function buildToolsCard() {
   return card(
     h('div', { class: 'card-title', html: icon('terminal', 'outlined', 20) + '<span>外部工具</span>' }),
     h('div', { class: 'card-desc' },
-      '装上 yt-dlp 就多一条独立实现的抓取通道：它自带一套长期维护的 B 站解析器，可以和官方接口互相印证。' +
+      '装上 yt-dlp 就多一条独立实现的抓取通道：它自带一套长期维护的解析器，可以和官方接口互相印证。' +
       '没有 ffmpeg 也完全不影响使用 —— 合并由内置的 fMP4 合并器完成。'),
     list,
     h('div', { class: 'btn-row', style: { marginTop: '12px' } }, installBtn),
