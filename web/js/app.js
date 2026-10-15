@@ -41,9 +41,12 @@ function buildNavigation() {
     bottomHost.append(make(true));
   }
 
-  // 搜索 FAB —— Kazumi 的 NavigationRail.leading 也是一枚 elevation 0 的搜索按钮
+  // 左上角的主按钮 —— Kazumi 的 NavigationRail.leading 同样是一枚 elevation 0 的按钮。
+  // 图标用加号：这一栏下面全是"看内容"的入口，左上角留给"新建一次解析"。
   const fab = document.getElementById('railSearch');
-  fab.innerHTML = icon('search', 'filled', 24);
+  fab.innerHTML = icon('add', 'filled', 24);
+  fab.title = '新建解析';
+  fab.setAttribute('aria-label', '新建解析');
   fab.onclick = openQuickSearch;
 }
 
@@ -111,11 +114,14 @@ async function pollTasks() {
 /* ------------------------------------------------------------ 快速解析 */
 async function openQuickSearch() {
   const input = h('input', {
-    class: 'input', placeholder: 'BV 号 / 视频链接 / 番剧链接',
+    class: 'input',
+    placeholder: 'BV 号 / 视频链接 / App 分享文案',
     value: store.input || '',
   });
+  const platformNames = (store.config?.sites || []).map((s) => s.name).join(' / ');
   const body = h('div', {},
-    h('p', {}, '粘贴一个 B 站地址，回车即可解析。'),
+    h('p', {}, '粘贴视频链接或 App 分享文案，回车即可解析。'),
+    h('p', { class: 'hint' }, platformNames ? '支持：' + platformNames : '正在加载支持的平台…'),
     input);
   const host = document.getElementById('dialogHost');
   const proceed = () => {
@@ -130,7 +136,7 @@ async function openQuickSearch() {
   input.addEventListener('keydown', (event) => { if (event.key === 'Enter') proceed(); });
 
   const node = h('div', { class: 'dialog' },
-    h('h3', {}, '快速解析'),
+    h('h3', {}, '新建解析'),
     body,
     h('div', { class: 'actions' },
       button('取消', { variant: 'text', onClick: () => { host.classList.remove('open'); clear(host); } }),
