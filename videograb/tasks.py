@@ -132,6 +132,7 @@ class TaskManager:
         self._dispatcher_started = False
         self._save_lock = threading.Lock()
         self._dirty = False      # 有未落盘的状态变更时置位，由调度线程批量写入
+        self._dispatch_error = ""   # 调度线程最近一次异常，供界面显示
         self._load_history()
 
     # ---------------- 历史持久化 ----------------
@@ -256,6 +257,8 @@ class TaskManager:
             "done": sum(1 for t in items if t.status == STATUS_DONE),
             "error": sum(1 for t in items if t.status == STATUS_ERROR),
             "ffmpeg": find_ffmpeg() or "",
+            # 调度线程出问题时界面能立刻看出来，而不是干等队列不动
+            "dispatch_error": self._dispatch_error,
         }
 
     # ---------------- 调度 ----------------
@@ -282,12 +285,19 @@ class TaskManager:
                     self._wake.wait(timeout=1.0)
             try:
                 self._pump()
-            except Exception:
+            except Exception as exc:
+                # 以前这里是完全静默的：配置脏了会导致队列只涨不跑、
+                # 界面上却没有任何线索。至少要让人看得见。
+                self._dispatch_error = str(exc)[:200]
                 time.sleep(0.5)
             time.sleep(0.2)
 
     def _pump(self) -> None:
-        limit = max(1, int(self.ctx.settings.max_parallel_tasks or 2))
+        try:
+            limit = int(self.ctx.settings.max_parallel_tasks)
+        except (TypeError, ValueError):
+            limit = 2
+        limit = max(1, min(8, limit))
         with self._lock:
             queued = [self._tasks[i] for i in self._order
                       if self._tasks.get(i) and self._tasks[i].status == STATUS_QUEUED]
@@ -564,7 +574,17 @@ class TaskManager:
         ctx = self.ctx
         durls = play.durl
         if not durls:
-            raise RuntimeError("该通道没有返回单文件地址（durl）")
+            # 芒果TV 这类平台只给 HLS，地址在 videos 里。用户选"单文件"只是想
+            # 少折腾，不该因此报错 —— 直接按 HLS 下，产出的同样是单个文件。
+            from .hls import is_hls
+            hls_stream = next((v for v in (play.videos or []) if is_hls(v.url, v.mime)), None)
+            if hls_stream is not None:
+                task.note("该平台只提供 HLS 分片，已按单文件方式下载并拼接")
+                directory = Path(task.directory)
+                self._download_hls(task, hls_stream, directory, stem, quality_tag, play,
+                                   height=hls_stream.height, label="HLS 单链路")
+            else:
+                raise RuntimeError("该通道没有返回单文件地址（durl）")
 
         from .hls import is_hls
         if len(durls) == 1 and is_hls(durls[0].url):
@@ -614,6 +634,8 @@ class TaskManager:
             last["t"] = now
             task.progress = p.to_dict()
 
+        # 后缀先按 TS 起（绝大多数平台都是 mpegts），拿到 container 后再定；
+        # fMP4 分片拼出来本身就是 MP4，命名成 .ts 会让部分播放器拒绝打开。
         final = directory / f"{stem}{quality_tag}.ts"
         try:
             result = hls_download(
@@ -632,6 +654,15 @@ class TaskManager:
 
         task.note(f"{label} 完成：{result['segments']} 个分片，"
                   f"{result['size'] / 1048576:.1f} MB（{result['container']}）")
+
+        # fMP4 分片拼出来本身就是 MP4，直接把后缀改对，不必劳烦 ffmpeg
+        if result["container"] == "fmp4" and final.suffix != ".mp4":
+            renamed = final.with_suffix(".mp4")
+            try:
+                final.replace(renamed)
+                final = renamed
+            except OSError:
+                pass
 
         # 有 ffmpeg 就顺手转成 mp4，兼容性更好；没有就保留 .ts（VLC / PotPlayer /
         # mpv 都能直接播，Windows 自带播放器不行）。
@@ -775,14 +806,29 @@ class TaskManager:
 
 def _platform_referer(task: Task, ctx) -> str:
     """按平台给出默认 Referer。"""
-    try:
-        from .sites import get_site
-        site = get_site(task.site or "bilibili")
-        if task.site and task.site != "bilibili":
-            return getattr(site, "home", "") or ""
-    except Exception:
-        pass
-    return f"https://www.bilibili.com/video/{task.raw_input}"
+    site_id = task.site or "bilibili"
+    if site_id != "bilibili":
+        try:
+            from .sites import get_site
+            home = getattr(get_site(site_id), "home", "") or ""
+            # 适配器内部的常量都带结尾斜杠，这里保持一致，
+            # 免得同一次下载在"取流"和"下分片"两步用了不同的 Referer
+            return home.rstrip("/") + "/" if home else ""
+        except Exception:
+            return ""
+    # raw_input 通常已是完整地址，直接往模板里塞会拼出
+    # "https://www.bilibili.com/video/https://www.bilibili.com/video/BV..."
+    ident = (task.bvid or task.ident or "").strip()
+    if not ident:
+        raw = (task.raw_input or "").strip()
+        if raw.startswith("http"):
+            return "https://www.bilibili.com/"
+        ident = raw
+    if not ident:
+        return "https://www.bilibili.com/"
+    if ident.startswith("ep") or ident.startswith("ss"):
+        return "https://www.bilibili.com/bangumi/play/" + ident
+    return "https://www.bilibili.com/video/" + ident
 
 
 def _pick_video(play, qn: int, codec_preference: str = "auto"):

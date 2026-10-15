@@ -25,6 +25,12 @@ class HlsError(Exception):
     pass
 
 
+def _cancelled() -> Exception:
+    """取消要抛下载器自己的异常类型，否则任务会被标成"失败"而不是"已取消"。"""
+    from .downloader import DownloadCancelled
+    return DownloadCancelled("已取消")
+
+
 def is_hls(url: str, mime: str = "") -> bool:
     text = ((url or "") + " " + (mime or "")).lower()
     return ".m3u8" in text or "mpegurl" in text
@@ -196,21 +202,28 @@ def download(ctx, url: str, dest: Path, *, threads: int = 8,
         raise HlsError(str(errors[0])[:160])
     if cancel.is_set():
         shutil.rmtree(work, ignore_errors=True)
-        raise HlsError("已取消")
+        raise _cancelled()
 
     # 按顺序拼接。TS 分片直接接起来就是可播放的 mpegts。
+    # 拼接阶段同样可能失败（磁盘满、没权限），临时目录里是完整的分片，
+    # 不清理的话会一直堆在 %TEMP% 里，所以这里必须 try/finally。
     written = 0
-    with open(dest, "wb") as out:
-        for index in range(total):
-            kind = items[index][0]
-            suffix = SEGMENT_SUFFIX_MP4 if kind == "init" else SEGMENT_SUFFIX_TS
-            part = Path(work) / ("%05d%s" % (index, suffix))
-            if not part.exists():
-                continue
-            with open(part, "rb") as fh:
-                shutil.copyfileobj(fh, out, 1 << 20)
-            written += part.stat().st_size
-    shutil.rmtree(work, ignore_errors=True)
+    try:
+        with open(dest, "wb") as out:
+            for index in range(total):
+                kind = items[index][0]
+                suffix = SEGMENT_SUFFIX_MP4 if kind == "init" else SEGMENT_SUFFIX_TS
+                part = Path(work) / ("%05d%s" % (index, suffix))
+                if not part.exists():
+                    continue
+                with open(part, "rb") as fh:
+                    shutil.copyfileobj(fh, out, 1 << 20)
+                written += part.stat().st_size
+    except BaseException:
+        dest.unlink(missing_ok=True)      # 半截文件没有保留价值
+        raise
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
     if written < 1024:
         raise HlsError("拼接结果异常偏小，可能分片都下载失败了")

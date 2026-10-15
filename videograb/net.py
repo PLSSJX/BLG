@@ -24,6 +24,9 @@ THROTTLED_HOSTS = (
 )
 MIN_API_GAP = 0.15          # 同一进程内两次接口请求的最小间隔（秒）
 RISK_CONTROL_CODES = (412, 429)
+# 只有这些域名会带上 B 站登录态，其余请求一律不带 Cookie
+COOKIE_HOSTS = ("bilibili.com", "b23.tv")
+
 RISK_CONTROL_HINT = "触发了 B 站风控（HTTP 412），冷却几秒后自动重试即可"
 
 
@@ -159,6 +162,21 @@ class HttpClient:
         jar.set("buvid3", (s.buvid3 or "").strip())
         return jar
 
+    def cookie_for(self, url: str, allow_cookie: bool | None = None) -> str:
+        """只把 B 站登录态发给 B 站自己的域名。
+
+        以前是无条件带上 Cookie，于是抖音/芒果/腾讯的每一次请求、
+        以及封面代理这种"跟着用户给的地址走"的请求，
+        都会把 SESSDATA 一起发出去 —— 等于把登录凭证送给第三方。
+        """
+        if allow_cookie is False:
+            return ""
+        if allow_cookie is not True:
+            host = (urllib.parse.urlparse(url).hostname or "").lower()
+            if not any(host == h or host.endswith("." + h) for h in COOKIE_HOSTS):
+                return ""
+        return self.cookie().header()
+
     def ensure_buvid(self) -> str:
         """没有 buvid3 时向官方指纹接口要一个，能显著降低风控概率。"""
         if self._buvid_fetched:
@@ -191,6 +209,7 @@ class HttpClient:
         referer: str | None = None,
         byte_range: tuple[int, int] | None = None,
         allow_redirects: bool = True,
+        allow_cookie: bool | None = None,
     ) -> HttpResult:
         settings = self.ctx.settings
         hdrs = {
@@ -201,7 +220,7 @@ class HttpClient:
             "Referer": referer if referer is not None else settings.referer,
             "Connection": "keep-alive",
         }
-        cookie = self.cookie().header()
+        cookie = self.cookie_for(url, allow_cookie)
         if cookie:
             hdrs["Cookie"] = cookie
         if byte_range is not None:
@@ -277,7 +296,7 @@ class HttpClient:
             "Accept-Encoding": "gzip, deflate",
             "Referer": referer if referer is not None else settings.referer,
         }
-        cookie = self.cookie().header()
+        cookie = self.cookie_for(url)
         if cookie:
             headers["Cookie"] = cookie
         if byte_range is not None:

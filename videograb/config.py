@@ -174,6 +174,7 @@ class Context:
         for key, value in (patch or {}).items():
             if key in valid:
                 setattr(self.settings, key, value)
+        _normalize(self.settings)
         if "sessdata" in (patch or {}) or "proxy" in (patch or {}) or "user_agent" in (patch or {}):
             self.reset_net()
         self.save()
@@ -192,6 +193,31 @@ class Context:
         return DEFAULT_DOWNLOAD_DIR
 
 
+# 数值型配置的合法区间。写坏一个值（手改 config.json、接口传字符串/列表）
+# 以前会让调度线程每次都抛异常并被静默吞掉，表现是"队列只涨不跑、没有任何报错"。
+_NUMERIC_FIELDS = {
+    "threads_per_task": (1, 32, 8),
+    "max_parallel_tasks": (1, 8, 2),
+    "request_timeout": (5, 300, 30),
+    "chunk_size_mb": (1, 64, 4),
+    "retry_times": (0, 10, 3),
+}
+
+
+def _normalize(settings: Settings) -> Settings:
+    """把数值字段夹到合法区间；转不动的就回落到默认值。"""
+    for name, (low, high, default) in _NUMERIC_FIELDS.items():
+        if not hasattr(settings, name):
+            continue
+        raw = getattr(settings, name)
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            value = default
+        setattr(settings, name, max(low, min(high, value)))
+    return settings
+
+
 def load_settings() -> Settings:
     if not CONFIG_PATH.exists():
         return Settings()
@@ -202,6 +228,6 @@ def load_settings() -> Settings:
     valid = set(Settings().__dict__.keys())
     clean = {k: v for k, v in raw.items() if k in valid}
     try:
-        return Settings(**clean)
+        return _normalize(Settings(**clean))
     except TypeError:
         return Settings()

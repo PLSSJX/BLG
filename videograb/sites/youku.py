@@ -246,7 +246,9 @@ class YoukuSite(SiteAdapter):
         for data in _node_list(initial):
             preview = data.get("preview") or {}
             match = (preview.get("vid") == vid
-                     or (data.get("player") or {}).get("upsStream", {}).get("encodedId") == vid)
+                     # 注意是 or {} 而不是 .get(..., {})：键存在但值为 null 时，
+                     # 默认值不会生效，再 .get 就是 AttributeError
+                     or ((data.get("player") or {}).get("upsStream") or {}).get("encodedId") == vid)
             if not match:
                 continue
             stream = ((data.get("player") or {}).get("upsStream") or {})

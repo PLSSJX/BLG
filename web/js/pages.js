@@ -722,6 +722,8 @@ export function renderSettings(view) {
   view.append(page);
 }
 
+/** 保存设置。返回是否成功 —— 调用方必须据此决定要不要改本地状态，
+    否则保存失败时界面会显示"已保存"，用户粘贴的内容还被清空了。 */
 async function saveSetting(patch, rerender = true) {
   try {
     const result = await api.saveSettings(patch);
@@ -734,8 +736,10 @@ async function saveSetting(patch, rerender = true) {
       });
     }
     if (rerender) renderSettings(document.getElementById('view'));
+    return true;
   } catch (error) {
     toast('保存失败：' + error.message);
+    return false;
   }
 }
 
@@ -817,7 +821,8 @@ function buildSiteCredentials(site) {
     const buttons = [button('保存', { onClick: async () => {
       const value = input.value.trim();
       if (!value) { toast('请先粘贴 ' + item.label + ' 的值'); return; }
-      await saveSetting({ [item.field]: value }, false);
+      // 只有真的写进去了才清空输入框、才把徽标改成"已配置"
+      if (!await saveSetting({ [item.field]: value }, false)) return;
       input.value = '';
       store.config.settings['has_' + item.field] = true;
       toast(site.name + ' 的 ' + item.label + ' 已保存');

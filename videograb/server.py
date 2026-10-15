@@ -93,7 +93,7 @@ def run_probe(ctx: Context, raw_input: str, qn: int = 0) -> dict:
         raise ApiError(str(exc)) from None
     if ref.site != "bilibili":
         raise ApiError("通道体检是哔哩哔哩专属功能：B 站有 10 条互相独立的抓取通道可以横向对比，"
-                       "其它平台各自只有一条适配器路径。")
+                       "其它平台各自只有一条适配器路径。", 400)
 
     engines = [e for e in describe(ctx) if e["enabled"]]
     results: dict[str, dict] = {}
@@ -196,12 +196,14 @@ class Handler(BaseHTTPRequestHandler):
         super().log_message(fmt, *args)
 
     def _send(self, status: int, body: bytes, content_type: str = "application/json; charset=utf-8",
-              extra: dict | None = None) -> None:
+              extra: dict | None = None, cache: str = "") -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        self.send_header("Cache-Control", cache or "no-store")
         for key, value in (extra or {}).items():
+            if key.lower() == "cache-control":
+                continue      # 已经发过了，再来一个浏览器会按更严格的处理
             self.send_header(key, value)
         self.end_headers()
         if self.command != "HEAD":
@@ -589,13 +591,17 @@ class Handler(BaseHTTPRequestHandler):
         "iqiyi.com": "https://www.iqiyi.com/",
     }
 
-    def _cover_referer(self, host: str, explicit: str) -> str:
-        if explicit.startswith("http"):
-            return explicit
+    def _cover_referer(self, host: str) -> str:
+        """按图床域名查 Referer。白名单外的域名返回空字符串。
+
+        这里**只认域名**，不接受调用方传入的 Referer —— 否则任何人只要塞一个
+        合法的 http 地址进来，就能让本机进程去请求任意内网地址（SSRF），
+        还能自定义发出去的 Referer。
+        """
         for suffix, referer in self.IMAGE_HOST_REFERER.items():
             if host == suffix or host.endswith("." + suffix):
                 return referer
-        return "https://www.bilibili.com/"
+        return ""
 
     def _serve_cover(self) -> None:
         query = self._query()
@@ -603,19 +609,19 @@ class Handler(BaseHTTPRequestHandler):
         if not url.startswith("http"):
             return self._error("缺少合法的图片地址", 400)
         host = (urlparse(url).hostname or "").lower()
-        referer = self._cover_referer(host, query.get("ref") or "")
-        if referer == "https://www.bilibili.com/" and not any(
-                host == h or host.endswith("." + h) for h in self.IMAGE_HOST_REFERER):
+        referer = self._cover_referer(host)
+        if not referer:
             return self._error("只允许代理受支持平台的图片地址", 403)
         try:
-            res = self.ctx.net.request(url, retries=2, referer=referer)
+            # 这是"跟着用户给的地址走"的请求，绝不能带上 B 站登录态
+            res = self.ctx.net.request(url, retries=2, referer=referer, allow_cookie=False)
         except Exception as exc:
             return self._error(f"取图失败：{exc}", 502)
         content_type = res.header("Content-Type") or "image/jpeg"
         if not content_type.startswith("image/"):
             content_type = "image/jpeg"
         self._send(200, res.body, content_type,
-                   {"Cache-Control": "public, max-age=86400"})
+                   cache="public, max-age=86400")
 
     # ---------------- 本地文件播放（支持 Range） ----------------
     def _serve_media(self) -> None:
@@ -670,9 +676,18 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def _prepare_ref(ctx: Context, raw: str):
-    """解析用户输入：先判断平台，再交给该平台做联网补全（短链展开等）。"""
-    ref = parse_any(raw)
-    return get_site(ref.site).normalize(ctx, ref)
+    """解析用户输入：先判断平台，再交给该平台做联网补全（短链展开等）。
+
+    适配器在"认不出这个链接"时会抛 SiteUnavailable。对调用方来说这属于
+    输入问题而不是程序故障，所以统一转成 400，别让用户看到"服务器内部错误"。
+    """
+    from .sites.base import SiteUnavailable
+
+    try:
+        ref = parse_any(raw)
+        return get_site(ref.site).normalize(ctx, ref)
+    except SiteUnavailable as exc:
+        raise ApiError(str(exc)) from None
 
 
 def _inside_allowed(target: Path, ctx: Context) -> bool:
