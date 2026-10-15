@@ -262,32 +262,43 @@ def repair(prefer_remote: bool = True, progress=None) -> dict:
     if _needs_whole_web(bad):
         targets = sorted({path for path in entries if path.startswith("web/")})
 
-    # 找到当前能用的那个源，后面的文件都从它取
-    active = None
+    # 命中的源排在最前面，其余源作为兜底。
+    # 这一步很关键：jsDelivr 对 @main 有缓存，刚推上去的提交它可能还在发旧内容。
+    # 只认第一个能连上的源是不够的 —— 必须逐个试到「内容哈希对得上」为止。
+    ordered = list(SOURCES)
     if source != "随包基线":
-        for candidate in SOURCES:
+        for index, candidate in enumerate(ordered):
             if source_base(candidate) == source:
-                active = candidate
+                ordered.insert(0, ordered.pop(index))
                 break
-        if active is None and SOURCES:
-            active = SOURCES[0]
+    if not ordered:
+        ordered = []
 
     repaired, failed = [], []
     for index, relative in enumerate(targets, start=1):
         if progress:
             progress(index, len(targets), relative)
-        if active is None:
+        if not ordered:
             failed.append({"path": relative, "error": "没有可用的更新源"})
-            continue
-        try:
-            data = fetch_from(active, relative, timeout=60)
-        except (urllib.error.URLError, OSError, TimeoutError, ValueError, UpdaterError) as exc:
-            failed.append({"path": relative, "error": str(exc)[:90]})
             continue
 
         expected = (entries[relative].get("sha256") or "").lower()
-        if expected and sha256_bytes(data) != expected:
-            failed.append({"path": relative, "error": "下载回来的文件哈希不匹配"})
+        data = None
+        last_error = "所有更新源都没能提供正确版本的文件"
+        for candidate in ordered:
+            try:
+                blob = fetch_from(candidate, relative, timeout=60)
+            except (urllib.error.URLError, OSError, TimeoutError, ValueError, UpdaterError) as exc:
+                last_error = candidate["label"] + "：" + str(exc)[:60]
+                continue
+            if expected and sha256_bytes(blob) != expected:
+                # 这个源给的是旧内容（CDN 缓存），换下一个
+                last_error = candidate["label"] + "：内容与基线不符（可能是 CDN 缓存未更新）"
+                continue
+            data = blob
+            break
+        if data is None:
+            failed.append({"path": relative, "error": last_error})
             continue
 
         safe = safe_relative(relative)
