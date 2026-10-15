@@ -1,6 +1,6 @@
 {
  "version": "1.0.0",
- "generated": "2026-10-15 15:09:47 UTC",
+ "generated": "2026-10-15 15:21:50 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -223,8 +223,8 @@
   },
   {
    "path": "biligrab/updater.py",
-   "sha256": "608cd056232f0d9a22f7066d9a113cd4a1c6a137e6260bdfc283fcd0ae1f172e",
-   "size": 14601
+   "sha256": "f05608ce71902ce07370ae0e674bc959312a6664dab3c5ed96a194e8c2171233",
+   "size": 16245
   },
   {
    "path": "biligrab/util.py",
