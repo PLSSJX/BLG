@@ -1,6 +1,6 @@
 {
  "version": "1.0.0",
- "generated": "2026-10-15 15:32:25 UTC",
+ "generated": "2026-10-15 15:33:58 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -239,8 +239,8 @@
  ],
  "installer": {
   "name": "BiliGrab-Setup-1.0.0.exe",
-  "size": 44762704,
-  "sha256": "63621c54bac5962d792b206683109fe48c3a68a888ba03b1e3083eeb6cc3c188",
+  "size": 44764656,
+  "sha256": "5198a7416a5b281a87b9b307954f4cda8636ee1e3bd1000886ff6914a1f9f28b",
   "url": "https://github.com/PLSSJX/BLG/releases/download/v1.0.0/BiliGrab-Setup-1.0.0.exe"
  }
 }
