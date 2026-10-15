@@ -277,6 +277,11 @@ class Handler(BaseHTTPRequestHandler):
         except BrokenPipeError:
             return
         except Exception as exc:
+            # 更新相关的失败（路径不合法、下载失败、哈希不符）是用户可纠正的，
+            # 用 400 而不是 500 回报，前端才能把消息当成提示显示出来。
+            from .updater import UpdaterError
+            if isinstance(exc, UpdaterError):
+                return self._error(str(exc), 400)
             return self._error(f"服务器内部错误：{exc}", 500)
 
     # ---------------- GET API ----------------

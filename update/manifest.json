@@ -1,6 +1,6 @@
 {
  "version": "1.0.0",
- "generated": "2026-10-15 15:02:26 UTC",
+ "generated": "2026-10-15 15:09:47 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -113,8 +113,8 @@
   },
   {
    "path": "biligrab/desktop.py",
-   "sha256": "e5880ef2ca499acfe21ca48de1691dd366d12a250ae62012ebdbd2933b172414",
-   "size": 5027
+   "sha256": "8198350960fcb3512d66f3f3da73f5ddbaf65869f1399bb3a8214de4ffd5d829",
+   "size": 5314
   },
   {
    "path": "biligrab/downloader.py",
@@ -213,8 +213,8 @@
   },
   {
    "path": "biligrab/server.py",
-   "sha256": "ce5fbfcff98eae276ad5fd6be9a2e253745905827050ef48fd8c6a712efe6fe9",
-   "size": 27002
+   "sha256": "2e1693c70810e6c042544719bd632dc582efc7d3e3f895d26fa28bfc862d49e0",
+   "size": 27349
   },
   {
    "path": "biligrab/tasks.py",
@@ -223,8 +223,8 @@
   },
   {
    "path": "biligrab/updater.py",
-   "sha256": "10ea9b023b09e37b8cac13129231d2657ddf1f163bc281f1523da160e316b8da",
-   "size": 14030
+   "sha256": "608cd056232f0d9a22f7066d9a113cd4a1c6a137e6260bdfc283fcd0ae1f172e",
+   "size": 14601
   },
   {
    "path": "biligrab/util.py",
@@ -239,8 +239,8 @@
  ],
  "installer": {
   "name": "BiliGrab-Setup-1.0.0.exe",
-  "size": 44761333,
-  "sha256": "5d80076f0781ecbdd3b31c97dbe8d16df33ce56e0f23f5495dacf25d3b208afa",
+  "size": 44761653,
+  "sha256": "3179a18e51d03e335775fd2d4c162b1817d22ebdf7739190aa13bbb4ba4f3fde",
   "url": "https://github.com/PLSSJX/BLG/releases/download/v1.0.0/BiliGrab-Setup-1.0.0.exe"
  }
 }

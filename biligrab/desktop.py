@@ -52,12 +52,11 @@ def find_edge() -> str | None:
     return None
 
 
-def _run_webview(url: str, on_closed=None) -> bool:
+def _run_webview(url: str, on_closed=None, ctx=None) -> bool:
     try:
         import webview
     except Exception:
         return False
-    # 先把模式标上：窗口一旦创建成功，界面就该显示"内置 WebView2 独立窗口"
     try:
         window = webview.create_window(
             WINDOW_TITLE, url,
@@ -68,6 +67,10 @@ def _run_webview(url: str, on_closed=None) -> bool:
         )
         if on_closed is not None:
             on_closed(window)
+        # 关键：webview.start() 会一直阻塞到窗口关闭，所以模式必须在它之前写进去，
+        # 否则窗口活着的整段时间里 /api/state 都只能报默认值。
+        if ctx is not None:
+            ctx.window_mode = "webview"
         # 显式指定 EdgeChromium：Windows 上其它后端要么是 IE，要么要额外运行库
         webview.start(gui="edgechromium", private_mode=False, storage_path=str(_storage_dir()))
         return True
@@ -127,8 +130,10 @@ def open_window(url: str, ctx=None) -> str:
             ctx.window_mode = mode
         return mode
 
-    if _run_webview(url, remember):
+    if _run_webview(url, remember, ctx):
         return announce("webview")
+    if ctx is not None:
+        ctx.window_mode = "edge-app"      # Edge 是阻塞式等待，同样要提前写
     if _run_edge_app(url):
         return announce("edge-app")
     webbrowser.open(url)

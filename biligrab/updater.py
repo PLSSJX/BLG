@@ -327,7 +327,7 @@ def download_installer(info: dict, progress=None) -> dict:
     if not url:
         raise UpdaterError("清单里没有提供安装包地址，请到发布页手动下载：" + RELEASE_PAGE)
 
-    target_dir = Path(tempfile.gettempdir()) / "BiliGrab-update"
+    target_dir = update_dir()
     target_dir.mkdir(parents=True, exist_ok=True)
     name = installer.get("name") or ("BiliGrab-Setup-" + str(info.get("latest") or "") + ".exe")
     target = target_dir / name
@@ -359,11 +359,26 @@ def download_installer(info: dict, progress=None) -> dict:
     return {"ok": True, "path": str(target), "size": target.stat().st_size, "sha256": actual}
 
 
+def update_dir() -> Path:
+    return Path(tempfile.gettempdir()) / "BiliGrab-update"
+
+
 def launch_installer(path: str) -> dict:
-    """启动安装包。安装程序会自己处理"替换正在运行的程序"。"""
-    target = Path(path)
-    if not target.exists():
-        raise UpdaterError("安装包不存在：" + path)
+    """启动安装包。安装程序会自己处理"替换正在运行的程序"。
+
+    只允许运行下载目录里的 .exe —— 这个接口是对本地 HTTP 暴露的，
+    不限制路径等于给"任意程序执行"开了个后门。
+    """
+    try:
+        target = Path(path).resolve()
+    except OSError:
+        raise UpdaterError("安装包路径无效") from None
+    try:
+        target.relative_to(update_dir().resolve())
+    except ValueError:
+        raise UpdaterError("只能运行由更新功能下载到 " + str(update_dir()) + " 的安装包") from None
+    if not target.exists() or target.suffix.lower() != ".exe":
+        raise UpdaterError("安装包不存在或不是可执行文件")
     try:
         if sys.platform == "win32":
             os.startfile(str(target))  # type: ignore[attr-defined]
