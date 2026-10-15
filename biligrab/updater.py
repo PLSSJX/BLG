@@ -27,11 +27,17 @@ REPO = "PLSSJX/BLG"
 BRANCH = "main"
 MANIFEST_PATH = "update/manifest.json"
 
-# 顺序即优先级：先试快的、稳的
+# 顺序即优先级。三个源的可用性在不同的网络环境下差别很大，实测过：
+#   - jsDelivr 最稳，但仓库刚从私有转公开时会有几分钟的传播延迟（期间 404）
+#   - raw.githubusercontent.com 在部分网络下完全不可达
+#   - GitHub 官方 API 走的是 api.github.com，前面两个都挂时它往往还活着
+# 所以三个都留着，任何一个能通就能完成自检修复。
 SOURCES = [
-    "https://cdn.jsdelivr.net/gh/" + REPO + "@" + BRANCH + "/",
-    "https://raw.githubusercontent.com/" + REPO + "/" + BRANCH + "/",
+    {"kind": "raw", "label": "jsDelivr", "base": "https://cdn.jsdelivr.net/gh/" + REPO + "@" + BRANCH + "/"},
+    {"kind": "raw", "label": "raw.githubusercontent", "base": "https://raw.githubusercontent.com/" + REPO + "/" + BRANCH + "/"},
+    {"kind": "api", "label": "GitHub API", "base": "https://api.github.com/repos/" + REPO + "/contents/"},
 ]
+API_SUFFIX = "?ref=" + BRANCH
 
 RELEASE_PAGE = "https://github.com/" + REPO + "/releases/latest"
 USER_AGENT = "BiliGrab/" + __version__ + " (+https://github.com/" + REPO + ")"
@@ -90,20 +96,38 @@ def resolve_local(relative: str) -> Path | None:
 
 
 # ---------------------------------------------------------------- 清单
+def fetch_from(source: dict, relative: str, timeout: int = 30) -> bytes:
+    """从某个更新源取一个文件。两种源的返回格式不一样，这里统一成字节。"""
+    if source.get("kind") == "api":
+        # GitHub contents 接口回的是 JSON，内容在 base64 字段里
+        payload = json.loads(_fetch(source["base"] + relative + API_SUFFIX, timeout).decode("utf-8"))
+        if isinstance(payload, list):          # 目录
+            raise UpdaterError("该路径是目录")
+        content = payload.get("content") or ""
+        import base64 as _base64
+        return _base64.b64decode(content)
+    return _fetch(source["base"] + relative, timeout)
+
+
+def source_base(source: dict) -> str:
+    """给界面显示用的源地址。"""
+    return source["base"]
+
+
 def fetch_manifest() -> tuple[dict, str]:
-    """从更新源拉清单，返回 (清单, 真正命中的源)。"""
+    """从更新源拉清单，返回 (清单, 真正命中的源标识)。"""
     errors = []
     for source in SOURCES:
-        url = source + MANIFEST_PATH
         try:
-            payload = json.loads(_fetch(url).decode("utf-8"))
-        except (urllib.error.URLError, OSError, ValueError, TimeoutError) as exc:
-            errors.append(source.split("/")[2] + "：" + str(exc)[:70])
+            raw = fetch_from(source, MANIFEST_PATH)
+            payload = json.loads(raw.decode("utf-8"))
+        except (urllib.error.URLError, OSError, ValueError, TimeoutError, UpdaterError) as exc:
+            errors.append(source["label"] + "：" + str(exc)[:60])
             continue
         if not isinstance(payload, dict) or "files" not in payload:
-            errors.append(source.split("/")[2] + "：清单格式不对")
+            errors.append(source["label"] + "：清单格式不对")
             continue
-        return payload, source
+        return payload, source_base(source)
     raise UpdaterError("所有更新源都不可用 —— " + "；".join(errors))
 
 
@@ -216,21 +240,27 @@ def repair(prefer_remote: bool = True, progress=None) -> dict:
     if _needs_whole_web(bad):
         targets = sorted({path for path in entries if path.startswith("web/")})
 
+    # 找到当前能用的那个源，后面的文件都从它取
+    active = None
+    if source != "随包基线":
+        for candidate in SOURCES:
+            if source_base(candidate) == source:
+                active = candidate
+                break
+        if active is None and SOURCES:
+            active = SOURCES[0]
+
     repaired, failed = [], []
     for index, relative in enumerate(targets, start=1):
         if progress:
             progress(index, len(targets), relative)
-        url = source + relative if source != "随包基线" else None
-        data = None
-        if url:
-            try:
-                data = _fetch(url, timeout=60)
-            except (urllib.error.URLError, OSError, TimeoutError) as exc:
-                failed.append({"path": relative, "error": str(exc)[:90]})
-                continue
-        else:
-            # 基线模式没有可用下载源，只能报出来
+        if active is None:
             failed.append({"path": relative, "error": "没有可用的更新源"})
+            continue
+        try:
+            data = fetch_from(active, relative, timeout=60)
+        except (urllib.error.URLError, OSError, TimeoutError, ValueError, UpdaterError) as exc:
+            failed.append({"path": relative, "error": str(exc)[:90]})
             continue
 
         expected = (entries[relative].get("sha256") or "").lower()
