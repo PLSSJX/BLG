@@ -16,9 +16,41 @@ UNINSTALL_NAME = "uninstall.exe"
 UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Video-Grabing"
 
 
+# CSIDL_LOCAL_APPDATA —— 环境变量缺失时用它兜底
+_CSIDL_LOCAL_APPDATA = 0x001C
+_CSIDL_APPDATA = 0x001A
+
+
+def _appdata_dir() -> Path:
+    r"""拿到 %LOCALAPPDATA% 的绝对路径。
+
+    以前这里写的是 os.environ[...] or "."，一旦环境变量缺失（从某些启动器、
+    计划任务或精简环境里拉起安装程序时就会发生），默认目录会变成
+    "Programs\Video-Grabing" 这样的**相对路径** —— 文件被解到当前工作目录，
+    而快捷方式里的 TargetPath 又被 PowerShell 按 C:\ 解析，
+    结果就是桌面图标指向一个根本不存在的 exe。
+    现在依次尝试：环境变量 → 系统 API → 用户主目录，绝不返回相对路径。
+    """
+    for name in ("LOCALAPPDATA", "USERPROFILE"):
+        value = (os.environ.get(name) or "").strip()
+        if value and os.path.isabs(value):
+            candidate = Path(value)
+            if name == "USERPROFILE":
+                candidate = candidate / "AppData" / "Local"
+            return candidate
+    for csidl in (_CSIDL_LOCAL_APPDATA, _CSIDL_APPDATA):
+        found = _known_folder(csidl)
+        if found:
+            return found
+    try:
+        return Path.home() / "AppData" / "Local"
+    except RuntimeError:
+        # 连主目录都拿不到时退回系统盘根下的用户目录，仍然是绝对路径
+        return Path(os.environ.get("SystemDrive", "C:") + "\\Users\\Default\\AppData\\Local")
+
+
 def default_install_dir() -> Path:
-    base = os.environ.get("LOCALAPPDATA") or os.environ.get("USERPROFILE") or "."
-    return Path(base) / "Programs" / APP_ID
+    return _appdata_dir() / "Programs" / APP_ID
 
 
 def _known_folder(csidl: int) -> Path | None:
@@ -69,13 +101,19 @@ $link.TargetPath = {target}
 $link.WorkingDirectory = {workdir}
 $link.IconLocation = {icon}
 $link.Description = {desc}
+$link.Arguments = {args}
 $link.WindowStyle = 1
 $link.Save()
 Write-Output 'ok'
 """
 
 
-def create_shortcut(link_path: Path, target: Path, description: str) -> bool:
+def create_shortcut(link_path: Path, target: Path, description: str,
+                    arguments: str = "") -> bool:
+    # WScript.Shell 会把相对路径按 PowerShell 自己的工作目录解析（通常是 C:\），
+    # 于是快捷方式指向一个不存在的位置。这里统一转成绝对路径。
+    link_path = Path(os.path.abspath(str(link_path)))
+    target = Path(os.path.abspath(str(target)))
     try:
         link_path.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
@@ -86,6 +124,7 @@ def create_shortcut(link_path: Path, target: Path, description: str) -> bool:
         workdir=_ps_quote(str(target.parent)),
         icon=_ps_quote(str(target) + ",0"),
         desc=_ps_quote(description),
+        args=_ps_quote(arguments),
     )
     ok, _ = _run_powershell(script)
     return ok and link_path.exists()
