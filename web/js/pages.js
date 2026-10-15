@@ -180,7 +180,7 @@ function buildVideoCard() {
   ].filter(([, v]) => v !== undefined && v !== null);
 
   const thumb = h('div', { class: 'thumb' },
-    info.cover ? h('img', { src: api.coverUrl(info.cover), alt: '', loading: 'lazy' }) : null,
+    info.cover ? h('img', { src: api.coverUrl(info.cover, siteOf(info.site)), alt: '', loading: 'lazy' }) : null,
     info.duration ? h('span', { class: 'duration' }, fmtDuration(info.duration)) : null);
 
   const metaBox = h('div', { class: 'video-meta' },
@@ -341,10 +341,21 @@ function buildDownloadCard() {
     if (!actual.length) {
       qualityRow.append(h('span', { class: 'card-desc', style: { margin: '0' } }, '当前通道没有报告画质档位'));
     }
-    for (const qn of actual) {
+    const isBilibili = (store.parsed?.info?.site || 'bilibili') === 'bilibili';
+    // B 站的 qn 有自己的中文名；其它平台的 qn 是我们折算出来的占位值，
+    // 直接显示反而会出现"qn0"这种东西，所以用流自己的描述。
+    const labelOf = (qn, index) => {
+      if (isBilibili) return qualityName(qn);
+      const desc = (play.accept_desc || [])[index];
+      if (desc) return String(desc);
+      const stream = (play.videos || []).find((v) => v.qn === qn);
+      if (stream && stream.resolution && stream.resolution !== '-') return stream.resolution;
+      return play.durl.length ? '原始画质' : qualityName(qn);
+    };
+    actual.forEach((qn, index) => {
       const stream = (play.videos || []).find((v) => v.qn === qn);
       const tag = stream ? stream.resolution : (play.durl.length ? '单文件' : '');
-      qualityRow.append(chip(qualityName(qn), {
+      qualityRow.append(chip(labelOf(qn, index), {
         active: store.qn === qn,
         tag,
         onClick: () => {
@@ -353,7 +364,7 @@ function buildDownloadCard() {
           loadStreams();
         },
       }));
-    }
+    });
     for (const qn of phantom) {
       qualityRow.append(chip(qualityName(qn), {
         phantom: true,
@@ -656,7 +667,7 @@ function buildTaskCard(task) {
   return card(
     h('div', { class: 'task' },
       h('div', { class: 'cover' },
-        task.cover ? h('img', { src: api.coverUrl(task.cover), alt: '', loading: 'lazy' }) : null),
+        task.cover ? h('img', { src: api.coverUrl(task.cover, siteOf(task.site)), alt: '', loading: 'lazy' }) : null),
       h('div', { class: 'body' },
         h('div', { class: 'name', title: task.title }, task.title || task.raw_input),
         h('div', { class: 'sub' },
@@ -699,7 +710,7 @@ export function renderSettings(view) {
     h('p', { class: 'page-sub' }, '主题外观、账号、下载选项、抓取通道、更新与自检。改动即时生效并写入 data/config.json。'),
     h('div', { class: 'split' },
       buildAppearanceCard(settings),
-      buildAccountCard(settings),
+      buildCredentialsCard(),
       buildDownloadCard2(settings),
       buildExtrasCard(settings),
       buildEnginesCard(),
@@ -761,54 +772,90 @@ function buildAppearanceCard(settings) {
   );
 }
 
-function buildAccountCard(settings) {
-  const input = h('input', {
-    class: 'input', type: 'password', placeholder: '粘贴浏览器里的 SESSDATA 值',
-    autocomplete: 'off',
-  });
-  const result = h('div', { class: 'card-desc' });
+/** 平台账号与凭据。
 
-  return card(
-    h('div', { class: 'card-title', html: icon('key', 'outlined', 20) + '<span>账号</span>' }),
+  每个平台的凭据由适配器自己声明（videograb/sites/*.py 的 credentials），
+  界面只负责渲染 —— 新增平台时不用再改前端。 */
+function buildCredentialsCard() {
+  const sites = store.config?.sites || [];
+  const withCreds = sites.filter((s) => (s.credentials || []).length);
+  const without = sites.filter((s) => !(s.credentials || []).length);
+
+  const children = [
+    h('div', { class: 'card-title', html: icon('key', 'outlined', 20) + '<span>平台账号与凭据</span>' }),
     h('div', { class: 'card-desc' },
-      '不填也能用：未登录时 DASH 最高 480P、单文件通道最高 720P。填入 SESSDATA 后可解锁 1080P 及以上（4K/HDR 另需大会员）。'),
-    h('div', { class: 'search-field' }, input,
-      button('保存', { onClick: async () => {
-        await saveSetting({ sessdata: input.value.trim() }, false);
-        input.value = '';
-        toast('已保存');
-        checkLogin(result);
-      } }),
-      button('校验', { variant: 'tonal', onClick: () => checkLogin(result) })),
-    h('div', { style: { marginTop: '10px' } }, result),
-    buildSessdataHelp(),
-  );
+      '只有需要登录态的平台才出现在下面。各平台的凭据分开存放、互不影响，' +
+      '一律只保存在本机的 data/config.json，不会上传到任何地方。'),
+  ];
+  if (!withCreds.length) {
+    children.push(h('div', { class: 'card-desc' }, '当前所有平台都无需登录即可使用。'));
+  }
+  for (const site of withCreds) children.push(buildSiteCredentials(site));
+  if (without.length) {
+    children.push(h('div', { class: 'help' },
+      h('div', { class: 'body' },
+        h('b', {}, '无需登录的平台：'),
+        without.map((s) => s.name).join(' · '))));
+  }
+  return card(...children);
 }
 
-/** SESSDATA 获取教学。写成分步说明，普通用户照着做就能拿到。 */
-function buildSessdataHelp() {
-  const step = (text) => h('li', { html: text });
-  return h('details', { class: 'help' },
-    h('summary', {}, '如何获取 SESSDATA？'),
-    h('div', { class: 'body' },
-      h('ol', {},
-        step('用浏览器打开 <a href="https://www.bilibili.com" target="_blank" rel="noreferrer">bilibili.com</a> 并<strong>登录</strong>你的账号。'),
-        step('按 <code>F12</code> 打开开发者工具（或者右键页面 → 检查）。'),
-        step('切换到 <strong>Application</strong>（中文版叫「应用」或「应用程序」）标签页。'),
-        step('在左侧展开 <strong>Cookies</strong> → 点选 <code>https://www.bilibili.com</code>。'),
-        step('在右侧列表里找到名字为 <code>SESSDATA</code> 的那一行，双击它的 <strong>Value</strong> 列并整行复制。'),
-        step('回到这里粘贴到上面的输入框，点「保存」，再点「校验」确认登录态有效。'),
-        ),
-      h('p', { class: 'tip' },
-        '小技巧：也可以在开发者工具的 Console 里执行 ',
-        h('code', {}, 'document.cookie.match(/SESSDATA=([^;]+)/)[1]'),
-        ' 直接把值打印出来。'),
-      h('p', { class: 'tip' },
-        h('b', {}, '这个值等同于你的登录凭证'),
-        '，只会保存在本机的 ',
-        h('code', {}, 'data/config.json'),
-        ' 里，不会上传到任何地方。请不要把它发给别人；在 B 站「退出登录」后它会立即失效。'),
-    ));
+function buildSiteCredentials(site) {
+  const settings = store.config?.settings || {};
+  const rows = [];
+
+  for (const item of site.credentials || []) {
+    const configured = !!settings['has_' + item.field];
+    const input = h('input', {
+      class: 'input',
+      type: item.secret ? 'password' : 'text',
+      placeholder: configured ? '已配置，重新粘贴可覆盖' : ('粘贴 ' + item.label + ' 的值'),
+      autocomplete: 'off',
+    });
+    const result = h('div', { class: 'card-desc', style: { marginTop: '6px' } });
+
+    const buttons = [button('保存', { onClick: async () => {
+      const value = input.value.trim();
+      if (!value) { toast('请先粘贴 ' + item.label + ' 的值'); return; }
+      await saveSetting({ [item.field]: value }, false);
+      input.value = '';
+      store.config.settings['has_' + item.field] = true;
+      toast(site.name + ' 的 ' + item.label + ' 已保存');
+      renderSettings(document.getElementById('view'));
+    } })];
+    // 校验目前只有 B 站有对应接口
+    if (site.id === 'bilibili' && item.key === 'sessdata') {
+      buttons.push(button('校验', { variant: 'tonal', onClick: () => checkLogin(result) }));
+    }
+
+    const details = (item.howto || []).length
+      ? h('details', { class: 'help' },
+          h('summary', {}, '如何获取 ' + item.label + '？（' + site.name + '）'),
+          h('div', { class: 'body' },
+            h('ol', {}, ...(item.howto || []).map((step) => h('li', { html: step }))),
+            item.tip ? h('p', { class: 'tip', html: item.tip }) : null,
+            item.warning ? h('p', { class: 'tip', html: '<b>' + item.warning + '</b>' }) : null))
+      : null;
+
+    rows.push(h('div', { class: 'cred-block' },
+      h('div', { class: 'cred-head' },
+        h('span', { class: 'cred-label' }, item.label),
+        configured ? pill('已配置', 'ok') : pill('未配置', 'mute')),
+      item.purpose ? h('div', { class: 'hint' }, item.purpose) : null,
+      h('div', { class: 'search-field', style: { marginTop: '8px' } }, input, ...buttons),
+      result,
+      details));
+  }
+
+  return h('div', { class: 'cred-site' },
+    h('div', { class: 'cred-site-head' },
+      h('span', { class: 'site-dot', style: { background: site.color || 'var(--md-primary)' } }),
+      h('span', { class: 'cred-site-name' }, site.name),
+      site.home
+        ? h('a', { class: 'cred-home', href: site.home, target: '_blank', rel: 'noreferrer' },
+            site.home.replace(/^https?:\/\//, ''))
+        : null),
+    ...rows);
 }
 
 async function checkLogin(host) {

@@ -58,6 +58,10 @@ export const api = {
   probeJx: (bvid) => post('/api/tools/jx', { bvid }),
 
   mediaUrl: (path) => '/media?path=' + encodeURIComponent(path),
-  // B 站图床有 Referer 防盗链，封面一律走后端代理
-  coverUrl: (url) => (url ? '/api/cover?url=' + encodeURIComponent(url) : ''),
+  // 各平台图床都有 Referer 防盗链，封面一律走后端代理，并把平台首页一起带上
+  coverUrl: (url, site) => {
+    if (!url) return '';
+    const home = site && site.home ? '&ref=' + encodeURIComponent(site.home) : '';
+    return '/api/cover?url=' + encodeURIComponent(url) + home;
+  },
 };

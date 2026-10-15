@@ -73,11 +73,15 @@ def _public_settings(ctx: Context) -> dict:
     data = asdict(ctx.settings)
     # 配置里留空表示"用默认位置"，界面要显示解析后的真实路径
     data["download_dir"] = str(ctx.download_dir())
-    # 不要把 SESSDATA 原样发回浏览器，只回显"是否已配置"
-    data["sessdata"] = ""
-    data["has_sessdata"] = bool(ctx.settings.sessdata.strip())
-    data["has_bili_jct"] = bool(ctx.settings.bili_jct.strip())
-    data["bili_jct"] = ""
+    # 凭据一律不回显原文，只告诉前端"配没配"。哪些字段算凭据由各平台适配器声明，
+    # 新增平台时只要在适配器里声明 credentials，这里自动生效。
+    for site in describe_sites():
+        for item in site.get("credentials") or []:
+            field = item.get("field")
+            if not field:
+                continue
+            data["has_" + field] = bool(str(getattr(ctx.settings, field, "") or "").strip())
+            data[field] = ""
     return data
 
 
@@ -564,17 +568,47 @@ class Handler(BaseHTTPRequestHandler):
     # ---------------- 封面代理 ----------------
     # B 站图床带 Referer 防盗链，浏览器里直接 <img src> 会被 403，
     # 所以统一由后端带上正确的 Referer 转发一次。
-    ALLOWED_IMAGE_HOSTS = ("hdslb.com", "bilibili.com", "bilivideo.com", "biliimg.com")
+    # 各平台图床的防盗链要求不一样：除了放行域名，还得带上对应平台的 Referer。
+    IMAGE_HOST_REFERER = {
+        "hdslb.com": "https://www.bilibili.com/",
+        "bilibili.com": "https://www.bilibili.com/",
+        "bilivideo.com": "https://www.bilibili.com/",
+        "biliimg.com": "https://www.bilibili.com/",
+        "douyinpic.com": "https://www.douyin.com/",
+        "douyincdn.com": "https://www.douyin.com/",
+        "douyin.com": "https://www.douyin.com/",
+        "xhscdn.com": "https://www.xiaohongshu.com/",
+        "xiaohongshu.com": "https://www.xiaohongshu.com/",
+        "rednote.com": "https://www.rednote.com/",
+        "mgtv.com": "https://www.mgtv.com/",
+        "qpic.cn": "https://v.qq.com/",
+        "qq.com": "https://v.qq.com/",
+        "ykimg.com": "https://www.youku.com/",
+        "youku.com": "https://www.youku.com/",
+        "iqiyipic.com": "https://www.iqiyi.com/",
+        "iqiyi.com": "https://www.iqiyi.com/",
+    }
+
+    def _cover_referer(self, host: str, explicit: str) -> str:
+        if explicit.startswith("http"):
+            return explicit
+        for suffix, referer in self.IMAGE_HOST_REFERER.items():
+            if host == suffix or host.endswith("." + suffix):
+                return referer
+        return "https://www.bilibili.com/"
 
     def _serve_cover(self) -> None:
-        url = self._query().get("url") or ""
+        query = self._query()
+        url = query.get("url") or ""
         if not url.startswith("http"):
             return self._error("缺少合法的图片地址", 400)
         host = (urlparse(url).hostname or "").lower()
-        if not any(host == h or host.endswith("." + h) for h in self.ALLOWED_IMAGE_HOSTS):
-            return self._error("只允许代理 B 站的图片地址", 403)
+        referer = self._cover_referer(host, query.get("ref") or "")
+        if referer == "https://www.bilibili.com/" and not any(
+                host == h or host.endswith("." + h) for h in self.IMAGE_HOST_REFERER):
+            return self._error("只允许代理受支持平台的图片地址", 403)
         try:
-            res = self.ctx.net.request(url, retries=2, referer="https://www.bilibili.com/")
+            res = self.ctx.net.request(url, retries=2, referer=referer)
         except Exception as exc:
             return self._error(f"取图失败：{exc}", 502)
         content_type = res.header("Content-Type") or "image/jpeg"

@@ -25,6 +25,17 @@ class SiteAdapter:
     # 该平台是否必须登录/会员才能拿到完整内容
     needs_login = False
     note = ""
+    # 该平台需要的登录凭据。每一项会在设置页单独渲染成一个区块：
+    #   key      凭据标识
+    #   field    存在 Settings 里的字段名
+    #   label    界面上显示的名字
+    #   purpose  这个值能换来什么
+    #   howto    分步获取说明（列表）
+    #   tip      可选的小技巧
+    #   warning  可选的风险提示
+    #   secret   是否按密码处理（不回显原文）
+    # 不需要任何凭据的平台留空列表，设置页会把它们列进"无需登录"。
+    credentials: list = []
 
     # ---------- 识别与解析 ----------
     def match(self, text: str) -> bool:
@@ -56,6 +67,7 @@ class SiteAdapter:
             "examples": list(self.examples),
             "needs_login": self.needs_login,
             "note": self.note,
+            "credentials": list(self.credentials),
         }
 
 
