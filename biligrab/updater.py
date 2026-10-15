@@ -176,8 +176,14 @@ def _entries(manifest: dict) -> list[dict]:
     return items
 
 
-def verify(prefer_remote: bool = True) -> dict:
-    """逐个文件比对哈希。返回结构直接给界面用。"""
+def verify(prefer_remote: bool = False) -> dict:
+    """逐个文件比对哈希。
+
+    默认拿**随包基线**当参照，而不是远端清单。原因：jsDelivr 会对 @main
+    做缓存，刚发完一版时远端清单可能还是旧的，拿它比对会把正常的本地文件
+    误报成"被改过"。随包基线是构建时打进去的，精确对应你装的这一版。
+    远端清单只用来判断"有没有新版本"。
+    """
     manifest, source = load_manifest(prefer_remote)
     results = []
     ok_count = 0
@@ -225,15 +231,31 @@ def repair(prefer_remote: bool = True, progress=None) -> dict:
 
     界面文件一旦有一个不对，就把整个 web/ 一起重下 —— 因为 exe 同级的 web/
     是一个"覆盖层"，它必须自洽，不能一半新一半旧。
+
+    期望哈希取自**随包基线**：下载回来的内容必须和"用户装的这一版"对得上。
+    如果远端已经发新版，下载回来的文件会哈希不符，这时如实报错并提示先更新，
+    而不是把一堆版本错配的文件悄悄盖上去。
     """
-    manifest, source = load_manifest(prefer_remote)
-    report = verify(prefer_remote=False) if source != "随包基线" else {
-        "bad": [], "source": source,
-    }
-    if source == "随包基线":
-        # 用刚拉到的清单重新算一遍（load_manifest 已经失败过一次）
-        report = {"bad": _verify_against(manifest), "source": source}
-    bad = report.get("bad") or []
+    baseline = bundled_manifest()
+    if baseline is not None:
+        manifest, source = dict(baseline), "随包基线"
+        manifest.pop("installer", None)
+    else:
+        manifest, source = load_manifest(prefer_remote)
+
+    bad = _verify_against(manifest)
+
+    # 远端有没有比本地更新的版本？有的话先提示，别做无意义的覆盖
+    remote_note = ""
+    if prefer_remote:
+        try:
+            remote, _ = fetch_manifest()
+            if _version_tuple(remote.get("version")) > _version_tuple(manifest.get("version")):
+                remote_note = ("远端已经是 v%s，比本地的 v%s 新，"
+                               "建议先在「更新与自检」里检查更新并安装新版本。"
+                               % (remote.get("version"), manifest.get("version")))
+        except UpdaterError:
+            pass
 
     entries = {entry["path"]: entry for entry in _entries(manifest)}
     targets: list[str] = [item["path"] for item in bad]
@@ -288,6 +310,9 @@ def repair(prefer_remote: bool = True, progress=None) -> dict:
             continue
         repaired.append(relative)
 
+    if remote_note and not repaired:
+        failed.append({"path": "(版本)", "error": remote_note})
+
     return {
         "ok": not failed,
         "source": source,
@@ -307,13 +332,13 @@ def _verify_against(manifest: dict) -> list[dict]:
         expected = (entry.get("sha256") or "").lower()
         local = resolve_local(relative)
         if local is None:
-            bad.append({"path": relative, "status": "missing"})
+            bad.append({"path": relative, "status": "missing", "detail": "文件不存在"})
             continue
         try:
             if sha256_file(local) != expected:
-                bad.append({"path": relative, "status": "modified"})
+                bad.append({"path": relative, "status": "modified", "detail": "内容与基线不一致"})
         except OSError:
-            bad.append({"path": relative, "status": "unreadable"})
+            bad.append({"path": relative, "status": "unreadable", "detail": "读取失败"})
     return bad
 
 
