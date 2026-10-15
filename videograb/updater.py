@@ -115,8 +115,15 @@ def source_base(source: dict) -> str:
 
 
 def fetch_manifest() -> tuple[dict, str]:
-    """从更新源拉清单，返回 (清单, 真正命中的源标识)。"""
+    """把所有更新源都问一遍，挑版本号最高的那份清单。
+
+    jsDelivr 对 @main 有缓存：刚发布的版本，它可能还在发上一版清单。
+    以前只认"第一个能连上的源"，于是缓存没刷新时"检查更新"会一直说
+    已是最新 —— 用户永远收不到新版本。这里改成全部问一遍取最新，
+    连不上或格式不对的源只记一笔错误，不影响结论。
+    """
     errors = []
+    best: tuple | None = None
     for source in SOURCES:
         try:
             raw = fetch_from(source, MANIFEST_PATH)
@@ -127,8 +134,12 @@ def fetch_manifest() -> tuple[dict, str]:
         if not isinstance(payload, dict) or "files" not in payload:
             errors.append(source["label"] + "：清单格式不对")
             continue
-        return payload, source_base(source)
-    raise UpdaterError("所有更新源都不可用 —— " + "；".join(errors))
+        key = _version_tuple(str(payload.get("version") or ""))
+        if best is None or key > best[0]:
+            best = (key, payload, source_base(source))
+    if best is None:
+        raise UpdaterError("所有更新源都不可用 —— " + "；".join(errors))
+    return best[1], best[2]
 
 
 def bundled_manifest() -> dict | None:
