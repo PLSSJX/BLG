@@ -1,0 +1,246 @@
+{
+ "version": "1.0.0",
+ "generated": "2026-10-15 15:01:21 UTC",
+ "notes": "",
+ "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
+ "files": [
+  {
+   "path": "web/css/app.css",
+   "sha256": "27848b7e8c9588cd84ca1b91949519aef812419b36150fbc5d3a73826d4d0aa3",
+   "size": 25534
+  },
+  {
+   "path": "web/index.html",
+   "sha256": "ac93492d5597c47cdd5d4a77fe252bb2d1b5a6bcc592023e720d1e2fcc562f4a",
+   "size": 1424
+  },
+  {
+   "path": "web/js/api.js",
+   "sha256": "bc1d472366dc1bd183f290973d1eb97221048c554bfdbd6afa91507b9f418f29",
+   "size": 2507
+  },
+  {
+   "path": "web/js/app.js",
+   "sha256": "e12e1c7db4d690a0e5d55f52073bec00a0576e19ad3abeb873e65819f665209b",
+   "size": 7225
+  },
+  {
+   "path": "web/js/icons.js",
+   "sha256": "a5cc49c1185e5439af0859d46accfe5968c2e9211579ec09e9af5faa20a55786",
+   "size": 37268
+  },
+  {
+   "path": "web/js/pages.js",
+   "sha256": "7dabfc4703b91f3ac4b54f0a7791394389b6c87aa53832f24b60cbee67a30e3a",
+   "size": 46663
+  },
+  {
+   "path": "web/js/theme.js",
+   "sha256": "bd124d8a351780055c178678d72fc6097f7ddab7524d7e087ad95b2b3120f4f3",
+   "size": 4898
+  },
+  {
+   "path": "web/js/ui.js",
+   "sha256": "aaa00311f10d5e83fcf0e4fb1a55f7e290019b41e3b31be459502bf3cb98e994",
+   "size": 6173
+  },
+  {
+   "path": "web/vendor/material-color-utilities.js",
+   "sha256": "5dc8b2d4fa0e819b63543423aae558d8a0fd8068f923e473966180c18caca69f",
+   "size": 67383
+  }
+ ],
+ "source_files": [
+  {
+   "path": "launcher.py",
+   "sha256": "42950d4183228d5ba6237c1a55a6140853b577dfb25fc23dc25d955bd96371e2",
+   "size": 3277
+  },
+  {
+   "path": "start.py",
+   "sha256": "6905cd4d99f105958abac7974a1b6ad13a18826bdb2941d8f9c5e4a9648e1733",
+   "size": 701
+  },
+  {
+   "path": "build.py",
+   "sha256": "a2c126b2cae7111c2635191f225f246a0c8815aa7f87cefc2985f1ca01723818",
+   "size": 14828
+  },
+  {
+   "path": "make_manifest.py",
+   "sha256": "8d39569c03980727ab8503643458e2c4389c449dc2f79a6b366523265686e38a",
+   "size": 4592
+  },
+  {
+   "path": "create_shortcut.py",
+   "sha256": "794a48843af94ddc676621f1bdc7b4860fee42c9079825598f617d97872411f6",
+   "size": 5912
+  },
+  {
+   "path": "run.bat",
+   "sha256": "3005c46bf997a27ecdee6ac911bf47ba6c5db140fe5200545e08a4e141268592",
+   "size": 955
+  },
+  {
+   "path": "requirements.txt",
+   "sha256": "f2f6b036b8549d18dc3bc66bf97bb5d510eae698a9014851a773c82ea52828dd",
+   "size": 666
+  },
+  {
+   "path": "README.md",
+   "sha256": "5f5f90a3fee461f3156a02df5718c2fa2f3137d5dccbe8a33fb68582251b7d3e",
+   "size": 19372
+  },
+  {
+   "path": "biligrab/__init__.py",
+   "sha256": "170647cecf476b27292b86d1f0ab02e63c88aaf37a33aff0bf08203434988c12",
+   "size": 289
+  },
+  {
+   "path": "biligrab/__main__.py",
+   "sha256": "0a9d20a6f63414b2cfe2dc3ccc1370b93772626894cda818c8106b02508c37df",
+   "size": 10458
+  },
+  {
+   "path": "biligrab/appsign.py",
+   "sha256": "ff828d6d8ef97419cdd64baa040ac313f48d15c80eeb4e6502e6b1dc55bdc7d4",
+   "size": 1751
+  },
+  {
+   "path": "biligrab/config.py",
+   "sha256": "6a8f1ad1bbefdf1c3395a4492529f03946b07f61a3804f8269128f9548d40c9f",
+   "size": 7703
+  },
+  {
+   "path": "biligrab/desktop.py",
+   "sha256": "e5880ef2ca499acfe21ca48de1691dd366d12a250ae62012ebdbd2933b172414",
+   "size": 5027
+  },
+  {
+   "path": "biligrab/downloader.py",
+   "sha256": "365f09e8bb656c156d6bf7bdb1dae9e87213219ee6bf8ab0235e07700c9299e5",
+   "size": 10821
+  },
+  {
+   "path": "biligrab/engines/__init__.py",
+   "sha256": "311910a382d665bc8c291576dc0f3c1896d3d366e3b8a2bf44bada5a91a8d0d1",
+   "size": 2692
+  },
+  {
+   "path": "biligrab/engines/base.py",
+   "sha256": "3893fd1be2cfe11061d67e2a3d982ca865104e3cac627e6ed5b19721c32670e4",
+   "size": 8670
+  },
+  {
+   "path": "biligrab/engines/e10_web_durl.py",
+   "sha256": "fa6671f349f819d8741e06ac6bd71fb8fac92b4a0b3ec2dd241303a9fe8e6f9b",
+   "size": 2430
+  },
+  {
+   "path": "biligrab/engines/e1_web_wbi.py",
+   "sha256": "ac7e7a823df8d95ec4b2a3a5eeba07d8fcd1bd42e79ec5394210555aef693b3b",
+   "size": 4802
+  },
+  {
+   "path": "biligrab/engines/e2_web_legacy.py",
+   "sha256": "45a848eba2e6b66a7904819806f7a7be0d36f7daa8a246e44eb6f16bf5be9107",
+   "size": 1950
+  },
+  {
+   "path": "biligrab/engines/e3_app_api.py",
+   "sha256": "ba49e01b38497db9db280792d731ea819af026195842ca4a1414798397db3eec",
+   "size": 3229
+  },
+  {
+   "path": "biligrab/engines/e4_tv_api.py",
+   "sha256": "6ead4e7b7228eaa40a627562bc5e9ccdd63549dd6e954342e58e78645ffc8e54",
+   "size": 3133
+  },
+  {
+   "path": "biligrab/engines/e5_html_scrape.py",
+   "sha256": "198afe1ff5e14068ba0cf67bc6d10d750e12f04f8b162b340a1d4249c3460297",
+   "size": 7813
+  },
+  {
+   "path": "biligrab/engines/e6_pgc_bangumi.py",
+   "sha256": "838ba3b462f4c6d5a22f31e2f131632ea98043790ac2b5a7e4f428936afd51ba",
+   "size": 5232
+  },
+  {
+   "path": "biligrab/engines/e7_thirdparty_jx.py",
+   "sha256": "8075a3953b213d1c32a7fe4616749dccb26b53ca5d293b73e572bd999f86563d",
+   "size": 7929
+  },
+  {
+   "path": "biligrab/engines/e8_external_tool.py",
+   "sha256": "9602d3ab89ada4ee329d65446f739998760d44164ca98a5d20c06654f5d75ca9",
+   "size": 12306
+  },
+  {
+   "path": "biligrab/engines/e9_html5_durl.py",
+   "sha256": "76a38151717ac55e3dfb9c1ce2cf4d152f3df0bf66416f7f6a0bc5ab662decb8",
+   "size": 2279
+  },
+  {
+   "path": "biligrab/extras.py",
+   "sha256": "788b2d79f0c16f42f1cbe208bc67d3ea1fe9c52ff05eaacdf9f4720a135b7395",
+   "size": 7798
+  },
+  {
+   "path": "biligrab/models.py",
+   "sha256": "313cdb8667d68549c3d3af5c5a1a1a8c35a9e77085e475daa738897ee0a20236",
+   "size": 5996
+  },
+  {
+   "path": "biligrab/muxer.py",
+   "sha256": "58d972170ceedb98b69c0db199067c6356983695c951b7e88e03d1e357101734",
+   "size": 21250
+  },
+  {
+   "path": "biligrab/net.py",
+   "sha256": "79a8847f5f71cd830e4693eb6400b9888220a9d3ba4eb4d3cd08fa8abe93a172",
+   "size": 13096
+  },
+  {
+   "path": "biligrab/quality.py",
+   "sha256": "41dc09316217b9621b740d0b8213a0fa8d33d6bddcc4a079ba0a96c417ad08b7",
+   "size": 4301
+  },
+  {
+   "path": "biligrab/refs.py",
+   "sha256": "3a5c02163b020bd3d4b9688f1cb8bbd7bb87b3fbfb8d24a34a7c5808173182be",
+   "size": 4620
+  },
+  {
+   "path": "biligrab/server.py",
+   "sha256": "ce5fbfcff98eae276ad5fd6be9a2e253745905827050ef48fd8c6a712efe6fe9",
+   "size": 27002
+  },
+  {
+   "path": "biligrab/tasks.py",
+   "sha256": "ab82ff25cf821443c968e8c396d2cee48122d5a41ac05835d87c0fe62df5067f",
+   "size": 28527
+  },
+  {
+   "path": "biligrab/updater.py",
+   "sha256": "10ea9b023b09e37b8cac13129231d2657ddf1f163bc281f1523da160e316b8da",
+   "size": 14030
+  },
+  {
+   "path": "biligrab/util.py",
+   "sha256": "8d33e69344f3293814e6f7c8cbd5c2ef947b282150726c820a3adc95b06dae21",
+   "size": 2549
+  },
+  {
+   "path": "biligrab/wbi.py",
+   "sha256": "4670eb14950efa72796a89ce82caf7862deac602f580f7e1176955a549dd436c",
+   "size": 1736
+  }
+ ],
+ "installer": {
+  "name": "BiliGrab-Setup-1.0.0.exe",
+  "size": 44761333,
+  "sha256": "5d80076f0781ecbdd3b31c97dbe8d16df33ce56e0f23f5495dacf25d3b208afa",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v1.0.0/BiliGrab-Setup-1.0.0.exe"
+ }
+}

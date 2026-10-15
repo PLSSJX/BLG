@@ -1,0 +1,12 @@
+# 本项目刻意只使用 Python 标准库，因此没有任何必须安装的第三方包。
+#
+#   HTTP       urllib.request / http.server
+#   签名       hashlib / hmac
+#   并发       threading
+#   数据       json / dataclasses
+#   MP4 合并   自己实现的 fMP4 合并器（biligrab/muxer.py）
+#
+# 可选：安装 ffmpeg 后，合并会自动改走 ffmpeg -c copy（更快，也能处理更多异常格式）。
+#       不装也完全不影响使用。
+# 可选：在界面「我的 → 外部工具」里一键安装 yt-dlp，可以多一条独立实现的抓取通道。
+#       （会被装进项目自带的 .deps 目录，不污染系统环境）

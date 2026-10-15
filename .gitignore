@@ -1,0 +1,28 @@
+# 运行时生成
+data/
+downloads/
+*.log
+*.log.old
+
+# 构建产物
+dist/
+build-tools/
+.build-venv/
+.deps/
+bin/
+*.spec
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 自检基线清单要提交（自检修复靠它），别被上面的规则误伤
+!update/manifest.json
