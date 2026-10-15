@@ -16,7 +16,8 @@ export const store = {
   engine: 'auto',
   qn: 0,
   mode: 'auto',
-  page: 1,
+  page: 1,                 // 流详情预览的是哪一 P
+  selectedPages: null,     // 要下载的分 P 集合（Set<number>）
   probe: null,
   probeInput: '',
 };
@@ -111,6 +112,7 @@ async function runParse() {
     store.parsed = await api.parse(input, store.engine);   // { info, ref, engine, engine_name }
     if (!store.parsed?.info) throw new Error('接口没有返回视频信息');
     store.page = 1;
+    store.selectedPages = new Set([1]);
     store.qn = 0;
     store.play = null;
     renderHome(view);
@@ -188,22 +190,97 @@ function buildVideoCard() {
   const children = [h('div', { class: 'video-hero' }, thumb, metaBox)];
 
   if ((info.pages || []).length > 1) {
-    const chips = h('div', { class: 'chips', style: { marginTop: '16px' } });
-    for (const p of info.pages) {
-      chips.append(chip('P' + p.page + (p.part ? ' · ' + p.part : ''), {
-        active: p.page === store.page,
-        title: p.part,
-        onClick: () => {
-          store.page = p.page;
-          store.play = null;
-          renderHome(document.getElementById('view'));
-          loadStreams();
-        },
-      }));
-    }
-    children.push(h('div', { class: 'section-label' }, '分 P（共 ' + info.pages.length + ' 个）'), chips);
+    children.push(buildPagePicker(info));
   }
   return card(...children);
+}
+
+/** 分 P 勾选列表：显示每一 P 的标题和时长，可以多选后批量下载。 */
+function buildPagePicker(info) {
+  const pages = info.pages || [];
+  if (!(store.selectedPages instanceof Set)) {
+    store.selectedPages = new Set([store.page || 1]);
+  }
+  // 只有当这一 P 真的存在时才保留选中状态
+  const valid = new Set(pages.map((p) => p.page));
+  for (const n of [...store.selectedPages]) if (!valid.has(n)) store.selectedPages.delete(n);
+  if (!store.selectedPages.size) store.selectedPages.add(pages[0]?.page || 1);
+
+  const counter = h('span', { class: 'pill' });
+  const previewNote = h('span', { class: 'card-desc', style: { margin: '0' } });
+  const list = h('div', { class: 'page-list' });
+  const rows = new Map();
+
+  const previewPage = () => Math.min(...store.selectedPages);
+
+  const refresh = (reloadStreams) => {
+    for (const [number, node] of rows) {
+      const on = store.selectedPages.has(number);
+      node.classList.toggle('checked', on);
+      const box = node.querySelector('.checkbox');
+      box.classList.toggle('on', on);
+      box.innerHTML = on ? icon('check', 'filled', 16) : '';
+    }
+    counter.textContent = '已选 ' + store.selectedPages.size + ' / ' + pages.length + ' 个分 P';
+    const preview = previewPage();
+    previewNote.textContent = '下方「流详情」展示的是 P' + preview +
+      '，下载会按勾选逐个建立任务。';
+    if (reloadStreams && preview !== store.page) {
+      store.page = preview;
+      store.play = null;
+      renderHome(document.getElementById('view'));
+      loadStreams();
+    }
+  };
+
+  for (const p of pages) {
+    const number = p.page;
+    const on = store.selectedPages.has(number);
+    const row = h('div', {
+      class: 'page-row' + (on ? ' checked' : ''),
+      title: p.part || ('第 ' + number + ' P'),
+      onclick: () => {
+        if (store.selectedPages.has(number)) store.selectedPages.delete(number);
+        else store.selectedPages.add(number);
+        if (!store.selectedPages.size) store.selectedPages.add(number);   // 至少留一个
+        refresh(true);
+      },
+    },
+      h('span', { class: 'checkbox' + (on ? ' on' : ''), html: on ? icon('check', 'filled', 16) : '' }),
+      h('span', { class: 'page-no' }, 'P' + number),
+      h('span', { class: 'page-name' }, p.part || '(未命名)'),
+      p.duration ? h('span', { class: 'page-dur' }, fmtDuration(p.duration)) : null);
+    rows.set(number, row);
+    list.append(row);
+  }
+
+  const toolbar = h('div', { class: 'btn-row', style: { marginBottom: '10px' } },
+    button('全选', { variant: 'text', iconName: 'check_circle', onClick: () => {
+      pages.forEach((p) => store.selectedPages.add(p.page));
+      refresh(true);
+    } }),
+    button('反选', { variant: 'text', iconName: 'sync', onClick: () => {
+      pages.forEach((p) => {
+        if (store.selectedPages.has(p.page)) store.selectedPages.delete(p.page);
+        else store.selectedPages.add(p.page);
+      });
+      if (!store.selectedPages.size) store.selectedPages.add(pages[0].page);
+      refresh(true);
+    } }),
+    button('清空', { variant: 'text', iconName: 'close', onClick: () => {
+      store.selectedPages = new Set([pages[0].page]);
+      refresh(true);
+    } }),
+    h('div', { class: 'spacer' }),
+    counter);
+
+  refresh(false);
+
+  return h('div', {},
+    h('div', { class: 'section-label' }, '分 P（共 ' + pages.length + ' 个）'),
+    toolbar,
+    list,
+    h('div', { style: { marginTop: '8px' } }, previewNote));
 }
 
 function buildDownloadCard() {
@@ -280,7 +357,8 @@ function buildDownloadCard() {
   }
   codecSelect.value = store.config?.settings?.prefer_codec || 'auto';
 
-  const startBtn = button('开始下载', {
+  const selectedCount = store.selectedPages instanceof Set ? store.selectedPages.size : 0;
+  const startBtn = button(selectedCount > 1 ? ('开始下载（' + selectedCount + ' 个分 P）') : '开始下载', {
     iconName: 'download',
     disabled: !play,
     onClick: () => submitTask(),
@@ -353,11 +431,19 @@ function qualityLabel(qn) {
 }
 
 async function submitTask() {
+  // 多 P 视频按勾选批量建任务：每个分 P 一个独立任务，
+  // 进度、重试、失败原因互不影响。
+  const selected = store.selectedPages instanceof Set
+    ? [...store.selectedPages].sort((a, b) => a - b)
+    : [store.page || 1];
   try {
     const result = await api.submit({
       input: store.input, engine: store.engine, qn: store.qn, mode: store.mode,
+      ...(selected.length > 1 ? { pages: selected } : { page: selected[0] || 1 }),
     });
-    toast('已加入下载队列');
+    toast(selected.length > 1
+      ? '已加入 ' + (result.count || selected.length) + ' 个下载任务（共 ' + selected.length + ' 个分 P）'
+      : '已加入下载队列');
     document.dispatchEvent(new CustomEvent('tasks-changed'));
     document.dispatchEvent(new CustomEvent('navigate', { detail: 'tasks' }));
     return result;

@@ -50,6 +50,7 @@ MODES = [
 class Task:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     raw_input: str = ""
+    page: int = 1            # 分 P 序号；多 P 批量下载时每个任务各占一 P
     engine: str = "auto"
     engine_used: str = ""
     qn: int = 0
@@ -86,6 +87,7 @@ class Task:
         return {
             "id": self.id,
             "raw_input": self.raw_input,
+            "page": self.page,
             "engine": self.engine,
             "engine_used": self.engine_used,
             "qn": self.qn,
@@ -174,9 +176,11 @@ class TaskManager:
                 pass
 
     # ---------------- 对外接口 ----------------
-    def submit(self, raw_input: str, *, engine: str = "auto", qn: int = 0, mode: str = "auto") -> Task:
+    def submit(self, raw_input: str, *, engine: str = "auto", qn: int = 0,
+               mode: str = "auto", page: int = 1) -> Task:
         task = Task(raw_input=raw_input.strip(), engine=engine or "auto",
-                    qn=int(qn or 0), mode=mode or "auto")
+                    qn=int(qn or 0), mode=mode or "auto",
+                    page=max(1, int(page or 1)))
         with self._lock:
             self._tasks[task.id] = task
             self._order.append(task.id)
@@ -225,8 +229,8 @@ class TaskManager:
         old = self.get(task_id)
         if not old:
             return None
-        new = self.submit(old.raw_input, engine=old.engine, qn=old.qn, mode=old.mode)
-        return new
+        return self.submit(old.raw_input, engine=old.engine, qn=old.qn,
+                           mode=old.mode, page=old.page)
 
     def clear_finished(self) -> int:
         with self._lock:
@@ -327,6 +331,9 @@ class TaskManager:
         ref = resolve_short(ctx, parse_ref(task.raw_input))
         if not (ref.bvid or ref.aid or ref.ep_id or ref.season_id):
             raise ValueError("无法识别的输入")
+        # 任务自己带的分 P 号优先于输入串里可能存在的 ?p=
+        if task.page and task.page > 0:
+            ref.p = int(task.page)
 
         # 1) 元数据 + 播放地址
         engine_ids = ([task.engine] if task.engine and task.engine != "auto"

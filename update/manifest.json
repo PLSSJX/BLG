@@ -1,13 +1,13 @@
 {
  "version": "1.0.0",
- "generated": "2026-10-15 15:23:52 UTC",
+ "generated": "2026-10-15 15:32:25 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
   {
    "path": "web/css/app.css",
-   "sha256": "27848b7e8c9588cd84ca1b91949519aef812419b36150fbc5d3a73826d4d0aa3",
-   "size": 25534
+   "sha256": "6013e9568f8a063c24acfd80255577e5e041f2ce279d869201855aa0c824e5a7",
+   "size": 27126
   },
   {
    "path": "web/index.html",
@@ -31,8 +31,8 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "7dabfc4703b91f3ac4b54f0a7791394389b6c87aa53832f24b60cbee67a30e3a",
-   "size": 46663
+   "sha256": "dea00a2feb5b77997ae9c6e561a89c531d338ee5b941ed9456c1a4e6022b9411",
+   "size": 50481
   },
   {
    "path": "web/js/theme.js",
@@ -88,8 +88,8 @@
   },
   {
    "path": "README.md",
-   "sha256": "5f5f90a3fee461f3156a02df5718c2fa2f3137d5dccbe8a33fb68582251b7d3e",
-   "size": 19372
+   "sha256": "a02c036221c356dd89907bb5940d477b284f2f28d88dbea3530fe2503325cc3b",
+   "size": 19583
   },
   {
    "path": "biligrab/__init__.py",
@@ -98,8 +98,8 @@
   },
   {
    "path": "biligrab/__main__.py",
-   "sha256": "0a9d20a6f63414b2cfe2dc3ccc1370b93772626894cda818c8106b02508c37df",
-   "size": 10458
+   "sha256": "b2a70c303c6ba88d46151fdb797764d630e3cd0a44c43de98074cb1049186228",
+   "size": 10472
   },
   {
    "path": "biligrab/appsign.py",
@@ -108,8 +108,8 @@
   },
   {
    "path": "biligrab/config.py",
-   "sha256": "6a8f1ad1bbefdf1c3395a4492529f03946b07f61a3804f8269128f9548d40c9f",
-   "size": 7703
+   "sha256": "fd0c7e996891bb395757983c394f870682fb1439f62c5af36e79f8a797ac36c9",
+   "size": 7934
   },
   {
    "path": "biligrab/desktop.py",
@@ -213,13 +213,13 @@
   },
   {
    "path": "biligrab/server.py",
-   "sha256": "2e1693c70810e6c042544719bd632dc582efc7d3e3f895d26fa28bfc862d49e0",
-   "size": 27349
+   "sha256": "19440ba8700fe1d304b1c724c02dc228744df280d94b66bae0cb4a9dac043605",
+   "size": 28263
   },
   {
    "path": "biligrab/tasks.py",
-   "sha256": "ab82ff25cf821443c968e8c396d2cee48122d5a41ac05835d87c0fe62df5067f",
-   "size": 28527
+   "sha256": "a6f0a14da4f32284a5de3707867bacb69a426460364d8baebaf162cdcce54a32",
+   "size": 28905
   },
   {
    "path": "biligrab/updater.py",

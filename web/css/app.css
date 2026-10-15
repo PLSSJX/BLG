@@ -376,6 +376,50 @@ body.mode-oled {
 .stat-row { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--md-on-surface-variant); }
 .stat-row b { color: var(--md-on-surface); font-weight: 600; }
 
+/* 分 P 勾选列表 */
+.page-list {
+  max-height: 268px;
+  overflow-y: auto;
+  border: 1px solid var(--md-outline-variant);
+  border-radius: var(--radius-card);
+  background: var(--md-surface-container-high);
+  scrollbar-width: thin;
+}
+.page-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--md-outline-variant);
+  transition: background var(--dur-short) var(--ease-standard);
+}
+.page-row:last-child { border-bottom: none; }
+.page-row:hover { background: color-mix(in srgb, var(--md-on-surface) 7%, transparent); }
+.page-row.checked { background: color-mix(in srgb, var(--md-primary) 14%, transparent); }
+.page-row .checkbox {
+  width: 20px; height: 20px; flex: none;
+  border: 2px solid var(--md-outline);
+  border-radius: 6px;
+  display: grid; place-items: center;
+  color: var(--md-on-primary);
+  transition: background var(--dur-short) var(--ease-standard),
+              border-color var(--dur-short) var(--ease-standard);
+}
+.page-row .checkbox.on { background: var(--md-primary); border-color: var(--md-primary); }
+.page-row .page-no {
+  flex: none; min-width: 42px;
+  font-variant-numeric: tabular-nums; font-weight: 600; font-size: 12.5px;
+  color: var(--md-on-surface-variant);
+}
+.page-row.checked .page-no { color: var(--md-primary); }
+.page-row .page-name {
+  flex: 1; min-width: 0; font-size: 13.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.page-row .page-dur {
+  flex: none; font-size: 12px; font-variant-numeric: tabular-nums;
+  color: var(--md-on-surface-variant);
+}
+
 /* 网格：追番/任务页复用 Kazumi 的卡片网格手感。
    用 auto-fit 而不是 auto-fill —— 只有一条任务时它会撑满整行，
    而不是孤零零地缩在左边。 */

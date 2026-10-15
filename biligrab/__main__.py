@@ -86,7 +86,7 @@ def cmd_serve(args) -> int:
         print("  正在打开独立窗口…\n")
         mode = open_window(url, ctx)
 
-    if ctx.window_mode == "":
+    if not getattr(ctx, "window_mode", ""):
         ctx.window_mode = mode
     try:
         if mode in ("browser", "server"):

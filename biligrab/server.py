@@ -383,10 +383,29 @@ class Handler(BaseHTTPRequestHandler):
             raw = (payload.get("input") or "").strip()
             if not raw:
                 raise ApiError("请输入视频地址或 BV 号")
+            engine = payload.get("engine") or "auto"
+            qn = int(payload.get("qn") or 0)
             mode = payload.get("mode") or "auto"
+
+            # 分 P 批量下载：一次请求建多个任务，每个 P 一个任务，
+            # 这样每个 P 的进度、重试、失败原因都是独立的。
+            pages = payload.get("pages")
+            if isinstance(pages, list) and pages:
+                created = []
+                for item in pages[:200]:
+                    try:
+                        number = max(1, int(item))
+                    except (TypeError, ValueError):
+                        continue
+                    created.append(ctx.tasks.submit(
+                        raw, engine=engine, qn=qn, mode=mode, page=number).to_dict())
+                if not created:
+                    raise ApiError("没有解析出有效的分 P 序号")
+                return self._json({"ok": True, "tasks": created, "count": len(created)})
+
             task = ctx.tasks.submit(
-                raw, engine=payload.get("engine") or "auto",
-                qn=int(payload.get("qn") or 0), mode=mode,
+                raw, engine=engine, qn=qn, mode=mode,
+                page=int(payload.get("page") or 1),
             )
             return self._json({"ok": True, "task": task.to_dict()})
 

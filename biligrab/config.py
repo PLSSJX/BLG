@@ -139,6 +139,9 @@ class Context:
         self._net = None
         self.tasks = None       # 由 tasks.py 注入，避免循环导入
         self.on_quit = None     # 桌面窗口模式下用来关掉窗口
+        # 必须在初始化时就存在：纯服务模式（--no-browser）根本不会走到开窗逻辑，
+        # 少了这个默认值，后面读 ctx.window_mode 会直接抛 AttributeError。
+        self.window_mode = ""
         # 本机 API 的写操作令牌。浏览器里任何网页都能向 127.0.0.1 发请求，
         # 没有这道校验的话，跨站页面就能改配置、偷走 SESSDATA。
         import secrets as _secrets
