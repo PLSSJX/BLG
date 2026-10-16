@@ -39,7 +39,8 @@ export function renderHome(view) {
       h('h1', { class: 'page-title' }, '解析'),
       h('div', { class: 'spacer' }),
       store.config ? pill(store.config.logged_in ? '已登录 · 可解锁高画质' : '未登录 · 最高 720P',
-        store.config.logged_in ? 'ok' : 'mute') : null),
+        store.config.logged_in ? 'ok' : 'mute') : null,
+      buildQuitButton()),
     h('p', { class: 'page-sub' },
       '粘贴链接或 App 分享文案即可。支持 B站 / 抖音 / 小红书 / 芒果TV / 腾讯视频 / 优酷 / 爱奇艺，' +
       '以及网易云音乐 / QQ音乐 / 酷狗音乐 / 酷我音乐（音乐可选音质与格式）。' +
@@ -1282,29 +1283,37 @@ function buildUpdateCard() {
   );
 }
 
+/** 退出程序。以前藏在设置页最下面的「程序」卡片里，找起来很费劲 ——
+    这是个高频操作，挪到首页右上角。 */
+function buildQuitButton() {
+  return button('退出程序', {
+    variant: 'text', iconName: 'stop',
+    onClick: async () => {
+      const yes = await dialog({
+        title: '退出程序？',
+        body: '后台服务会停止，正在进行的下载会中断（可重启后重试）。',
+        confirm: '退出', danger: true,
+      });
+      if (!yes) return;
+      try { await api.quit(); } catch { /* 服务关掉时连接被切断是正常的 */ }
+      document.body.innerHTML =
+        '<div style="display:grid;place-items:center;height:100vh;font:16px/1.8 system-ui;color:#888">' +
+        '<div style="text-align:center">程序已退出<br><span style="font-size:13px">现在可以关闭此页面了</span></div></div>';
+    },
+  });
+}
+
 function buildProgramCard() {
   const address = location.origin + '/';
   return card(
     h('div', { class: 'card-title', html: icon('dns', 'outlined', 20) + '<span>程序</span>' }),
     h('div', { class: 'card-desc' },
-      '桌面版没有控制台窗口，所以退出程序要从这里操作。关掉浏览器标签页并不会停止后台服务。'),
+      '桌面版没有控制台窗口。要退出程序请点「解析」页右上角的「退出程序」；' +
+      '关掉窗口或浏览器标签页并不会停止后台服务。'),
     h('div', { class: 'kv' }, h('span', {}, '访问地址'),
       h('span', {}, h('a', { href: address, style: { color: 'var(--md-primary)' } }, address))),
     h('div', { class: 'kv' }, h('span', {}, '运行方式'),
       h('span', {}, location.protocol === 'file:' ? '本地文件' : '本地服务（仅监听 127.0.0.1）')),
-    h('div', { class: 'btn-row', style: { marginTop: '14px' } },
-      button('退出程序', { variant: 'outlined', iconName: 'stop', onClick: async () => {
-        const yes = await dialog({
-          title: '退出程序？',
-          body: '后台服务会停止，正在进行的下载会中断（可重启后重试）。',
-          confirm: '退出', danger: true,
-        });
-        if (!yes) return;
-        try { await api.quit(); } catch { /* 服务关掉时连接被切断是正常的 */ }
-        document.body.innerHTML =
-          '<div style="display:grid;place-items:center;height:100vh;font:16px/1.8 system-ui;color:#888">' +
-          '<div style="text-align:center">程序已退出<br><span style="font-size:13px">现在可以关闭此页面了</span></div></div>';
-      } })),
   );
 }
 
