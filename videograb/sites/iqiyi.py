@@ -6,15 +6,27 @@
      playUrl 与 tvId）验证，4/4 完全一致，所以这一步不需要联网。
   2. 元数据：https://pcw-api.iqiyi.com/video/video/playervideoinfo?tvid={tvid}
      返回标题 vn / 封面 vpic / 简介 info / 时长 plg / 频道 cid / 上映日期 issueTime /
-     付费标记 payMark / vipType，一次请求全齐。
-  3. 播放地址：https://cache.video.iqiyi.com/dash
-     该接口要 vf 签名。签名算法同样是从播放器 bundle（pcweb.wonder.*.online.js）里
-     读出来的：vf = md5( path+query 后面再拼 32 个由固定公式生成的字符 )，见 _vf()。
+     付费标记 payMark / vipType，一次请求全齐。这是目前唯一实测可用的元数据接口。
+  3. 播放地址按顺序试两条通路：
+     a) https://cache.video.iqiyi.com/dash（PCW，主路径）—— 要 vf 签名。签名算法是从
+        播放器 bundle（pcweb.wonder.*.online.js）里读出来的：
+        vf = md5(path+query 再拼 32 个由固定公式生成的字符)，见 _vf()。
+     b) https://cache.video.iqiyi.com/jp/dash（H5/JP 变体）—— 同一套签名与参数，
+        响应外面套一层 var tvInfoJs={...}（_dash_once 会剥掉），实测两次都可用。
      带上签名后 code=A00000，program.video 里按 bid 给出 200/300/500/600 等档位。
      注意：只有「本次请求的那个 bid」会带 fs 分片表，所以要按目标档位再请求一次。
   4. 分片落地：fs[].l 是路径，拿 https://data.video.iqiyi.com/videos + 路径 换回真实
      CDN 直链（*.71edge.com）。实测该直链支持 Range，206 + Content-Range，
      字节数与 fs[].b 完全对得上。
+
+实测走不通的接口（不要再试）：
+  * cache.video.iqiyi.com/vps —— 同一套 vf 签名被回 "This sign is not correct."
+    （该端点用的是另一套盐）。
+  * cache.m.iqiyi.com/jp/tmts/...（移动端 tmts）—— 无论带不带签名、带不带 modeCode，
+    一律 code=A00001 "Rule Block"。
+  * cache.m.iqiyi.com/dash、http://cache.video.qiyi.com/dash —— 404 / 证书不匹配。
+  * pcw-api 的 baseinfo / getvideoinfo / videoinfo / album videolist 等路径 —— 一律 404。
+  * web 播放页与 m.iqiyi.com 移动播放页内嵌数据里没有播放地址（页面里没有 playUrl/m3u8）。
 
 限制：未登录时接口对会员片只下发试看片段（boss.previewTime，实测 6 分钟，
 duration 却有 106 分钟），下载到的是试看而不是全片；免费内容则是完整分片表。
@@ -38,7 +50,19 @@ DESKTOP_UA = (
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 REFERER = "https://www.iqiyi.com/"
+# H5/JP 变体只认移动端 UA
+MOBILE_UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+             "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1")
 DASH_URL = "https://cache.video.iqiyi.com/dash"
+# 取流通路表：(名称, 接口地址, ori 参数, UA 档位)
+#   1 是实测主路径（PCW 接口，返回裸 JSON，ori=pcw）；
+#   2 是同一个签名算法下的 H5/JP 变体，响应外面套一层 var tvInfoJs={...}，
+#     实测两次都拿到 A00000 + bid500 + 2 段分片，签名和参数与主路径一致。
+_DASH_ROUTES = (
+    ("cache.video.iqiyi.com/dash（PCW）", DASH_URL, "pcw", "desktop"),
+    ("cache.video.iqiyi.com/jp/dash（H5）",
+     "https://cache.video.iqiyi.com/jp/dash", "h5", "mobile"),
+)
 DD_URL = "http://pcw-data.video.iqiyi.com/videos"
 PVI_URL = "https://pcw-api.iqiyi.com/video/video/playervideoinfo"
 # 播放器下发的固定 src（PCW 端口标识），签名对这个值不敏感但保持一致更稳
@@ -156,8 +180,14 @@ class IqiyiSite(SiteAdapter):
         "https://www.iqiyi.com/v_1lg5qzzbjq8.html",
         "https://m.iqiyi.com/v_1lg5qzzbjq8.html",
     ]
-    note = "播放接口有 vf 签名（已复现）；未登录时会员片只下发试看片段"
+    note = ("播放走两条 dash 通路依次重试（PCW → H5/JP 变体），签名算法一致；"
+            "未登录时会员片只下发试看片段")
     needs_login = False
+
+    def __init__(self) -> None:
+        # 上次成功的通路（优先复用）与本条数据实际走的通路名（写进报告）
+        self._preferred = ""
+        self._route = ""
 
     # ---------------- 识别与解析 ----------------
     def match(self, text: str) -> bool:
@@ -224,43 +254,74 @@ class IqiyiSite(SiteAdapter):
             raise SiteUnavailable("Ref 里没有爱奇艺 tvid，无法继续")
         return tvid
 
-    def _dash(self, ctx, tvid: int, vid: str, bid: int) -> dict:
+    def _ordered_routes(self) -> list:
+        """上次成功的通路优先，减少故障切换时的等待。"""
+        if self._preferred:
+            return ([r for r in _DASH_ROUTES if r[1] == self._preferred]
+                    + [r for r in _DASH_ROUTES if r[1] != self._preferred])
+        return list(_DASH_ROUTES)
+
+    def _dash_once(self, ctx, base: str, ori: str, ua: str, tvid: int, vid: str,
+                   bid: int) -> dict:
+        """向指定的通路要一次播放信息，返回 data 段。"""
         tm = str(int(time.time() * 1000))
         kuid = _md5(f"{random.random()}_{random.random()}")
         # 播放器里是 md5(md5(up) + tm + tvid)，匿名时 up 为空串
         auth = _md5(_md5("") + tm + str(tvid))
         params = [
             ("tvid", str(tvid)), ("bid", str(bid)), ("vid", vid), ("src", SRC),
-            ("vt", "0"), ("rs", "1"), ("uid", ""), ("ori", "pcw"), ("ps", "1"),
+            ("vt", "0"), ("rs", "1"), ("uid", ""), ("ori", ori), ("ps", "1"),
             ("k_uid", kuid), ("pt", "0"), ("d", "0"), ("s", ""), ("lid", "0"),
             ("cf", "0"), ("ct", "0"), ("authKey", auth), ("k_tag", "1"), ("dfp", ""),
             ("locale", "zh_cn"), ("up", ""), ("qd_v", "a1"), ("tm", tm), ("sr", "1"),
         ]
-        url = DASH_URL + "?" + urllib.parse.urlencode(params)
+        url = base + "?" + urllib.parse.urlencode(params)
         url = url + "&vf=" + _vf(url)
+        headers = {
+            "User-Agent": MOBILE_UA if ua == "mobile" else DESKTOP_UA,
+            "Accept": "application/json, */*",
+            "Origin": "https://www.iqiyi.com",
+        }
         try:
-            data = ctx.net.get_json(url, headers={
-                "User-Agent": DESKTOP_UA,
-                "Accept": "application/json, */*",
-                "Origin": "https://www.iqiyi.com",
-            }, referer=REFERER, retries=2, timeout=20)
+            raw = ctx.net.get_text(url, headers=headers,
+                                   referer="https://m.iqiyi.com/" if ua == "mobile" else REFERER,
+                                   retries=2, timeout=20)
         except Exception as exc:
-            raise SiteUnavailable(f"爱奇艺播放接口请求失败：{str(exc)[:120]}") from None
+            raise SiteUnavailable(f"请求失败（{str(exc)[:90]}）") from None
+        # H5 变体外面套一层 var tvInfoJs={...}，主路径是裸 JSON，两种都认
+        found = re.search(r"tvInfoJs\s*=\s*(\{.*\})\s*;?\s*$", raw.strip(), re.S)
+        body = found.group(1) if found else raw.strip()
+        try:
+            data = json.loads(body)
+        except ValueError:
+            raise SiteUnavailable("返回的不是 JSON，可能被风控了") from None
         if not isinstance(data, dict):
-            raise SiteUnavailable("爱奇艺播放接口返回的不是 JSON，可能被风控了")
+            raise SiteUnavailable("返回的不是 JSON 对象，可能被风控了")
         code = data.get("code")
         if code != "A00000":
             msg = data.get("msg") or ""
-            if "sign" in msg.lower():
-                raise SiteUnavailable(
-                    "爱奇艺播放接口拒绝了签名（vf 算法可能又被改了），当前取不到播放地址"
-                )
-            raise SiteUnavailable(f"爱奇艺播放接口返回 {code}：{msg or '未知错误'}")
+            if "sign" in str(msg).lower():
+                raise SiteUnavailable("接口拒绝了签名（vf 算法可能又被改了）")
+            raise SiteUnavailable(f"接口返回 {code}：{msg or '未知错误'}")
         payload = data.get("data")
         if not isinstance(payload, dict):
-            raise SiteUnavailable("爱奇艺播放接口没有返回 data 段")
+            raise SiteUnavailable("接口没有返回 data 段")
         return payload
 
+    def _dash(self, ctx, tvid: int, vid: str, bid: int) -> dict:
+        reasons: list[str] = []
+        for name, base, ori, ua in self._ordered_routes():
+            try:
+                payload = self._dash_once(ctx, base, ori, ua, tvid, vid, bid)
+            except SiteUnavailable as exc:
+                reasons.append(f"{name}：{exc}")
+                continue
+            self._preferred = base
+            self._route = name
+            return payload
+        raise SiteUnavailable(
+            f"爱奇艺所有取流通路都失败（tvid={tvid}，bid={bid}）：" + "；".join(reasons)
+        )
     @staticmethod
     def _bid_entries(payload: dict) -> dict:
         """按 bid 归并档位，同一 bid 有多条音轨时留体积最大的那条。"""
@@ -340,6 +401,7 @@ class IqiyiSite(SiteAdapter):
             extra={
                 "tvid": tvid,
                 "vid": (ref.extra or {}).get("vid") or "",
+                "detail_route": "pcw-api.iqiyi.com/video/video/playervideoinfo",
                 "albumId": _int(data.get("albumId") or data.get("aid")),
                 "channelId": channel,
                 "payMark": _int(data.get("payMark")),
@@ -429,14 +491,14 @@ class IqiyiSite(SiteAdapter):
         play.is_dash = False
         play.raw = {
             "tvid": tvid, "bid": granted, "scrsz": selected.get("scrsz") or "",
-            "vsize": total, "segments": len(play.durl),
+            "vsize": total, "segments": len(play.durl), "route": self._route,
             "available_bids": sorted(entries),
         }
 
         boss = payload.get("boss") or {}
         preview = _int(boss.get("previewTime"))
         boss_data = boss.get("data") if isinstance(boss.get("data"), dict) else {}
-        notes = [f"爱奇艺 dash 接口（bid={granted} / {label}），"
+        notes = [f"爱奇艺 dash 接口（通路：{self._route or '未知'}；bid={granted} / {label}），"
                  f"音视频封装在同一分片里，共 {len(play.durl)} 段，按顺序拼接即可"]
         if granted < requested:
             notes.append(f"请求的是 {BID_LABELS.get(requested, requested)}，"

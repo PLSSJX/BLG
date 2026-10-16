@@ -10,6 +10,17 @@
      HLS(m3u8) 地址，带时效。
 
 分集列表走 episode/list，一次能拿全，标题、时长、VIP 标记都有。
+
+多通路（实测 2026-10 逐条验证）：
+  1. pcweb.api.mgtv.com/player/video + tinker.glb.mgtv.com/player/getSource —— 主路径。
+  2. mobile.api.mgtv.com/player/video + mobile.api.mgtv.com/player/getSource ——
+     移动端网关，元数据与取流都自带，下发的 stream_domain 和 pcweb 不是同一批 CDN。
+  3. pcweb.api.mgtv.com/player/getSource —— tinker 被限流时的备份取流主机。
+  分集列表在 pcweb 与 mobile.api 两个网关间也会自动切换。
+三条通路都不通时，报错里会逐条写清各自失败的原因。
+
+实测不存在的接口（不要再试）：mobileso.bz.mgtv.com/player/video（404）、
+m.api.mgtv.com（DNS 解析不了）。
 """
 from __future__ import annotations
 
@@ -24,10 +35,26 @@ from ..quality import rank_from_resolution
 from ..refs import Ref
 from .base import SiteAdapter, SiteUnavailable, make_info
 
-_PLAYER_API = "https://pcweb.api.mgtv.com/player/video"
-_EPISODE_API = "https://pcweb.api.mgtv.com/episode/list"
-_SOURCE_API = "https://tinker.glb.mgtv.com/player/getSource"
 _REFERER = "https://www.mgtv.com/"
+_PATH_PLAYER = "/player/video"
+_PATH_SOURCE = "/player/getSource"
+_PATH_EPISODE = "/episode/list"
+
+# 取流通路表：(名称, 播放/元数据接口主机, 取流接口主机)
+#   1 实测主路径：pcweb 元数据 + tinker 取流；
+#   2 移动端网关 mobile.api：player/video 与 player/getSource 实测都能用，
+#     而且它下发的 stream_domain 与 pcweb 不是同一批 CDN；
+#   3 tinker 被限流时的备份：pcweb 自己也能取流。
+_ROUTES = (
+    ("pcweb 元数据 + tinker 取流", "https://pcweb.api.mgtv.com",
+     "https://tinker.glb.mgtv.com"),
+    ("mobile.api 移动端网关", "https://mobile.api.mgtv.com",
+     "https://mobile.api.mgtv.com"),
+    ("pcweb 元数据 + pcweb 取流", "https://pcweb.api.mgtv.com",
+     "https://pcweb.api.mgtv.com"),
+)
+# 分集列表：两个网关都能给全量，pcweb 优先
+_EPISODE_HOSTS = ("https://pcweb.api.mgtv.com", "https://mobile.api.mgtv.com")
 
 _COLLECTION_RE = re.compile(r"mgtv\.com/(?:b|h)/(\d+)/(\d+)", re.I)
 _SHORT_RE = re.compile(r"mgtv\.com/s/(\d+)", re.I)
@@ -89,7 +116,8 @@ class MgtvSite(SiteAdapter):
         "https://www.mgtv.com/b/377996/12834526.html",
     ]
     needs_login = False
-    note = ("官方 pcweb 接口取流：元数据免登录；播放地址是 HLS(m3u8) 分片，"
+    note = ("三条取流通路依次重试：pcweb+tinker → mobile.api 移动端网关 → pcweb 取流；"
+            "元数据免登录，播放地址是 HLS(m3u8) 分片，"
             "未登录只有 480P/576P/720P，1080P 要芒果TV会员")
 
     # ---------- 识别与解析 ----------
@@ -117,7 +145,7 @@ class MgtvSite(SiteAdapter):
         if ref.extra.get("collection_id") or not ref.ident:
             return ref
         try:
-            data = self._player(ctx, ref.ident, _REFERER)
+            data, _route = self._player_any(ctx, ref.ident, _REFERER)
             collection = str((data.get("info") or {}).get("collection_id") or "").strip()
             if collection and collection != "0":
                 ref.extra["collection_id"] = collection
@@ -141,10 +169,14 @@ class MgtvSite(SiteAdapter):
         except Exception as exc:
             raise SiteUnavailable(f"芒果TV {what} 请求失败：{exc}") from None
 
-    def _player(self, ctx, video_id: str, referer: str) -> dict:
-        """播放接口：元数据 + atc.pm2 都在这里。"""
+    @staticmethod
+    def _api(host: str, path: str) -> str:
+        return host.rstrip("/") + path
+
+    def _player(self, ctx, video_id: str, referer: str, host: str = _ROUTES[0][1]) -> dict:
+        """播放接口：元数据 + atc.pm2 都在这里。host 由通路表决定。"""
         query = urllib.parse.urlencode({"tk2": _tk2(), "video_id": video_id, "type": "pch5"})
-        data = self._json(ctx, f"{_PLAYER_API}?{query}", referer, "播放接口")
+        data = self._json(ctx, f"{self._api(host, _PATH_PLAYER)}?{query}", referer, "播放接口")
         code = int(data.get("code") or 0)
         if code != 200:
             message = str(data.get("msg") or data.get("err_msg") or "接口没有返回内容")
@@ -157,26 +189,33 @@ class MgtvSite(SiteAdapter):
         return data.get("data") or {}
 
     def _episodes(self, ctx, collection_id: str, referer: str) -> list:
-        """分集列表：标题、时长、VIP 标记一次拿全。"""
+        """分集列表：标题、时长、VIP 标记一次拿全。两个网关任一成功即可。"""
         if not collection_id:
             return []
         query = urllib.parse.urlencode({
             "collection_id": collection_id, "page": 1, "size": 200,
             "_support": 10000000, "tk": 0,
         })
-        data = self._json(ctx, f"{_EPISODE_API}?{query}", referer, "分集接口")
-        if int(data.get("code") or 0) != 200:
-            return []
-        return ((data.get("data") or {}).get("list")) or []
+        for host in _EPISODE_HOSTS:
+            try:
+                data = self._json(ctx, f"{self._api(host, _PATH_EPISODE)}?{query}",
+                                  referer, "分集接口")
+            except SiteUnavailable:
+                continue
+            items = ((data.get("data") or {}).get("list")) or []
+            if int(data.get("code") or 0) == 200 and items:
+                return items
+        return []
 
-    def _source(self, ctx, video_id: str, pm2: str, tk2: str, referer: str) -> dict:
-        """用 pm2 换各档清晰度的相对地址。"""
+    def _source(self, ctx, video_id: str, pm2: str, tk2: str, referer: str,
+                host: str = _ROUTES[0][2]) -> dict:
+        """用 pm2 换各档清晰度的相对地址。host 由通路表决定。"""
         query = urllib.parse.urlencode({
             "_support": 10000000, "tk2": tk2, "pm2": pm2, "video_id": video_id,
             "type": "pch5", "auth_mode": 1, "cxid": "", "supportMse": 1,
             "src": "intelmgtv", "abroad": 10, "allowedRC": 1,
         })
-        data = self._json(ctx, f"{_SOURCE_API}?{query}", referer, "取流接口")
+        data = self._json(ctx, f"{self._api(host, _PATH_SOURCE)}?{query}", referer, "取流接口")
         code = int(data.get("code") or 0)
         if code != 200:
             message = str(data.get("msg") or data.get("err_msg") or "接口没有返回内容")
@@ -205,13 +244,53 @@ class MgtvSite(SiteAdapter):
             return target if isinstance(target, str) and target.startswith("http") else ""
         return ""
 
+    # ---------- 通路调度 ----------
+    def _player_any(self, ctx, video_id: str, referer: str) -> tuple[dict, str]:
+        """元数据：按通路表里出现过的播放接口主机逐个试，返回 (data, 通路名)。"""
+        reasons: list[str] = []
+        seen: set[str] = set()
+        for name, meta_host, _source_host in _ROUTES:
+            if meta_host in seen:
+                continue
+            seen.add(meta_host)
+            try:
+                return self._player(ctx, video_id, referer, meta_host), name
+            except SiteUnavailable as exc:
+                reasons.append(f"{name}（{meta_host}）：{exc}")
+        raise SiteUnavailable(
+            f"芒果TV 所有元数据通路都失败（video_id={video_id}）：" + "；".join(reasons)
+        )
+
+    def _collect(self, ctx, video_id: str, referer: str) -> tuple[dict, dict, str]:
+        """取流：元数据 + 取流两条链路一起按通路表重试，返回 (data, source, 通路名)。"""
+        reasons: list[str] = []
+        for name, meta_host, source_host in _ROUTES:
+            try:
+                data = self._player(ctx, video_id, referer, meta_host)
+                atc = data.get("atc") or {}
+                pm2 = str(atc.get("pm2") or "").strip()
+                if not pm2:
+                    raise SiteUnavailable(
+                        "没有下发播放凭证 pm2（通常是该内容需要登录或会员）"
+                    )
+                tk2 = str(atc.get("tk2") or "").strip() or _tk2()
+                source = self._source(ctx, video_id, pm2, tk2, referer, source_host)
+            except SiteUnavailable as exc:
+                reasons.append(f"{name}：{exc}")
+                continue
+            return data, source, name
+        raise SiteUnavailable(
+            f"芒果TV 所有取流通路都失败（video_id={video_id}）：" + "；".join(reasons)
+        )
+
     # ---------- 元数据 ----------
     def fetch_info(self, ctx, ref: Ref) -> VideoInfo:
         video_id = ref.ident
         if not video_id:
             raise SiteUnavailable("这条芒果TV链接里没有视频 ID，请用 /b/合集号/集号.html 形式的地址")
         referer = self._referer(ref)
-        data = self._player(ctx, video_id, referer)
+        data, route = self._player_any(ctx, video_id, referer)
+        ref.extra["detail_route"] = route
         info = data.get("info") or {}
         collection = str(info.get("collection_id") or ref.extra.get("collection_id") or "").strip()
         if collection:
@@ -246,6 +325,7 @@ class MgtvSite(SiteAdapter):
         extra = {
             "video_id": video_id,
             "collection_id": collection,
+            "detail_route": route,
             "part": part,
             "series": info.get("series") or "",
             "clip_type": info.get("clip_type") or "",
@@ -288,16 +368,9 @@ class MgtvSite(SiteAdapter):
         referer = self._referer(ref)
         video_id = self._page_video(ctx, ref, page, referer)
 
-        data = self._player(ctx, video_id, referer)
+        data, source, route = self._collect(ctx, video_id, referer)
+        ref.extra["detail_route"] = route
         info = data.get("info") or {}
-        pm2 = str(((data.get("atc") or {}).get("pm2")) or "").strip()
-        if not pm2:
-            raise SiteUnavailable(
-                f"芒果TV 没有下发播放凭证（video_id={video_id}），"
-                "通常是该内容需要登录或会员，未登录取不到地址。"
-            )
-        tk2 = str(((data.get("atc") or {}).get("tk2")) or "").strip() or _tk2()
-        source = self._source(ctx, video_id, pm2, tk2, referer)
 
         domains = [d for d in (source.get("stream_domain") or []) if isinstance(d, str) and d]
         domain = domains[0] if domains else ""
@@ -357,8 +430,8 @@ class MgtvSite(SiteAdapter):
         play.accept_desc = [v.label for v in videos]
         play.declared_quality = sorted(set(declared), reverse=True)
         play.phantom_quality = [q for q in play.declared_quality if q not in play.accept_quality]
-        play.note = self._note(data, best, videos, locked, duration)
-        play.raw = {"video_id": video_id, "picked": best.label,
+        play.note = self._note(data, best, videos, locked, duration, route)
+        play.raw = {"video_id": video_id, "picked": best.label, "route": route,
                     "declared": play.declared_quality, "locked": locked}
         return play
 
@@ -414,13 +487,15 @@ class MgtvSite(SiteAdapter):
         return max(videos, key=lambda s: (s.height, s.bandwidth))
 
     @staticmethod
-    def _note(data: dict, best: Stream, videos: list, locked: list[str], duration: int) -> str:
+    def _note(data: dict, best: Stream, videos: list, locked: list[str], duration: int,
+              route: str = "") -> str:
         user = data.get("user") or {}
         who = "已登录" + ("（会员）" if str(user.get("isvip")) == "1" else "（非会员）") \
             if user.get("login") else "未登录"
         got = "、".join(f"{v.label}" for v in videos)
         parts = [
-            f"画质来自芒果TV官方 pcweb 取流接口，当前身份：{who}",
+            f"取流通路：{route}" if route else "取流通路：pcweb 官方接口",
+            f"画质来自芒果TV官方取流接口，当前身份：{who}",
             f"下发的档位：{got}",
             f"建议取 {best.label}（{best.width}x{best.height}，{best.codecs or '未知编码'}，"
             f"约 {_human(best.size or best.size_hint)}"

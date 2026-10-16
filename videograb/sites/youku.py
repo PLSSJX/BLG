@@ -1,25 +1,33 @@
 """优酷适配器。
 
-实测可用路径（2026-10 逐一验证）：
-  1. 元数据 —— 优酷官方开放接口
-     https://openapi.youku.com/v2/videos/show.json?client_id=...&video_id={vid}&ext=show
-     公开 client_id 即可，返回标题 / 封面 / 时长 / 分类 / 发布时间 / UP 主 /
-     清晰度档位 streamtypes / 付费状态 download_status。
-  2. 播放地址 —— 移动页 https://m.youku.com/v_show/id_{vid}.html
-     页面 SSR 出 window.__INITIAL_DATA__，播放节点的 player.upsStream 里直接就是
-     真实 mp4 直链（单段给 cdnUrl，多段给 firstSegment + segUrls）。
-     实测直链支持 Range，返回 206 + Content-Range，可断点续传、可多线程分片。
+元数据按下面的顺序逐条尝试（实测 2026-10）：
+  1. openapi.youku.com/v2/videos/show.json?client_id=...&video_id={vid}&ext=show —— 主路径。
+     公开 client_id 即可，返回标题/封面/时长/分类/发布时间/UP主/清晰度档位/付费状态。
+  2. 同一套开放接口的精简版 show_basic.json —— 字段少一些（没有 bigThumbnail、show），
+     但标题/封面/时长/分类/发布时间/streamtypes 都在，作为第 1 条被限流时的备份。
+  3. m.youku.com/v_show/id_{vid}.html 的 window.__INITIAL_DATA__ —— 页面内嵌数据，
+     播放地址和它同源，等于顺带把元数据取回来。
+  4. v.youku.com/v_show/id_{vid}.html 的 window.__INITIAL_DATA__.videoMap ——
+     另一套页面模板（PC 页），只有标题/封面/分类/发布时间，没有时长。
 
-实测走不通的路径：
-  * PC 页 v.youku.com/v_show/id_{vid}.html —— 换任何请求头都直接回风控页
-    （_____tmd_____/punish），一个字节的内嵌数据都拿不到。
-  * ups.youku.com/ups/get.json —— 匿名（ck=null，以及按 _m_h5_tk 自算 md5 的 ck）
-    一律返回 -6005「用户账户异常、请重新登录」；它要的是真实登录 Cookie。
-  * acs.youku.com .../mtop.youku.play.ups.appinfo.get —— FAIL_SYS_API_NOT_FOUNDED。
+播放地址：
+  * 只有移动页 https://m.youku.com/v_show/id_{vid}.html 一条通路下发地址。
+    页面 SSR 出 window.__INITIAL_DATA__，播放数据有两处：componentList 里的播放节点
+    （player.upsStream，主路径）和页面顶层 data.upsStream（节点结构变了也能兜住）。
+    单段给 cdnUrl，多段给 firstSegment + segUrls；实测直链支持 Range（206），可多线程分片。
+  * 注意移动页必须用移动端 UA：桌面 UA 拿到的是 PC 那套模板，一个播放地址都没有。
+
+实测走不通的路径（不要再试）：
+  * v.youku.com PC 页（桌面 UA 与移动 UA 都试过）—— 页面有数据，但没有 upsStream，
+    一个媒体地址都不下发。
+  * m.youku.com/video/id_{vid}.html、alipay_video/id_{vid}.html —— 同上，没有播放地址。
+  * ups.youku.com/ups/get.json —— 匿名（ck=null）返回 -6005「用户账户异常、请重新登录」。
+  * acs.youku.com .../mtop.youku.play.ups.appinfo.get —— FAIL_SYS_API_NOT_FOUNDED，
+    连 _m_h5_tk 令牌都不下发。
+  * www.youku.com/v_show/id_{vid}.html —— 只回一个 3KB 的跳转壳。
 
 限制：移动页只对匿名可播放的内容下发播放源。会员 / 付费内容（noPlaySource）
 不会给任何地址，此时如实抛 SiteUnavailable，只保证元数据可用。
-注意移动页必须用移动端 UA：桌面 UA 访问 m.youku.com 会被判成爬虫直接风控（实测）。
 """
 from __future__ import annotations
 
@@ -46,6 +54,9 @@ MOBILE_UA = (
 )
 MOBILE_REFERER = "https://m.youku.com/"
 OPENAPI = "https://openapi.youku.com/v2/videos/show.json"
+# 同一套开放接口的精简版：字段少一些，但标题/封面/时长/分类/发布时间都在，作为元数据备用通路
+OPENAPI_BASIC = "https://openapi.youku.com/v2/videos/show_basic.json"
+PC_REFERER = "https://v.youku.com/"
 # 优酷官方开放平台的公开 client_id（网页播放器 partnerid），只用于读公开元数据
 CLIENT_ID = "53e6cc67237fc59a"
 
@@ -139,7 +150,9 @@ class YoukuSite(SiteAdapter):
         "https://m.youku.com/v_show/id_XNjU1Nzk5NjI0OA==.html",
         "vid：XNjU1Nzk5NjI0OA==",
     ]
-    note = "元数据走官方开放接口；播放地址靠移动页内嵌数据，会员/付费内容不下发播放源"
+    note = ("元数据四条通路依次重试（官方开放接口 show.json → show_basic.json → "
+            "移动页内嵌数据 → PC 页内嵌 videoMap）；播放地址只有移动页内嵌数据这一条"
+            "（PC 页/开放接口/ups/mtop 实测都不下发地址），会员/付费内容不下发播放源")
     needs_login = False
 
     def __init__(self) -> None:
@@ -190,10 +203,12 @@ class YoukuSite(SiteAdapter):
             raise SiteUnavailable("Ref 里没有优酷 vid，无法继续")
         return vid
 
-    def _openapi(self, ctx, vid: str) -> dict | None:
-        """官方开放接口，拿元数据。失败返回 None，交给移动页兜底。"""
-        url = (OPENAPI + "?client_id=" + CLIENT_ID +
-               "&video_id=" + urllib.parse.quote(vid, safe="") + "&ext=show")
+    def _openapi(self, ctx, vid: str, base: str = OPENAPI, ext: str = "show") -> dict | None:
+        """官方开放接口（show.json / show_basic.json 两套字段都吃）。失败返回 None。"""
+        params = [("client_id", CLIENT_ID), ("video_id", vid)]
+        if ext:
+            params.append(("ext", ext))
+        url = base + "?" + urllib.parse.urlencode(params)
         try:
             data = ctx.net.get_json(url, headers={
                 "User-Agent": DESKTOP_UA,
@@ -262,79 +277,220 @@ class YoukuSite(SiteAdapter):
             f"优酷移动页里没有 vid={vid} 的播放节点，可能是直播回看或已下架的内容"
         )
 
-    # ---------------- 元数据 ----------------
-    def fetch_info(self, ctx, ref: Ref) -> VideoInfo:
-        vid = self._vid(ref)
-        data = self._openapi(ctx, vid)
-
-        title = cover = desc = tname = ""
-        duration = 0
-        pubdate = 0
-        owner = Owner()
-        stat: dict = {}
-        extra: dict = {"vid": vid}
-
-        if data:
-            title = (data.get("title") or "").strip()
-            cover = data.get("bigThumbnail") or data.get("thumbnail") or ""
-            desc = data.get("description") or ""
-            tname = data.get("category") or ""
-            try:
-                duration = int(float(data.get("duration") or 0))
-            except (TypeError, ValueError):
-                duration = 0
-            pubdate = _timestamp(data.get("published") or data.get("created") or "")
-            user = data.get("user") or {}
-            owner = Owner(mid=int(user.get("id") or 0), name=user.get("name") or "")
-            # 公开接口把播放/点赞数一律返回 0，宁可留空也不要在界面上显示假的 0
-            for key, field in (("view", "view_count"), ("favorite", "favorite_count"),
-                               ("comment", "comment_count"), ("like", "up_count")):
-                value = int(data.get(field) or 0)
-                if value:
-                    stat[key] = value
-            extra.update({
+    # ---------------- 通路辅助 ----------------
+    @staticmethod
+    def _normalize_api(data: dict) -> dict:
+        """把 show.json / show_basic.json 两套字段合成同一份元数据。"""
+        user = data.get("user") if isinstance(data.get("user"), dict) else {}
+        source = data.get("source") if isinstance(data.get("source"), dict) else {}
+        try:
+            duration = int(float(data.get("duration") or 0))
+        except (TypeError, ValueError):
+            duration = 0
+        stat = {}
+        # 公开接口把播放/点赞数一律返回 0，宁可留空也不要在界面上显示假的 0
+        for key, field in (("view", "view_count"), ("favorite", "favorite_count"),
+                           ("comment", "comment_count"), ("like", "up_count")):
+            value = int(data.get(field) or 0)
+            if value:
+                stat[key] = value
+        return {
+            "title": (data.get("title") or "").strip(),
+            "cover": (data.get("bigThumbnail") or data.get("thumbnail_v2")
+                      or data.get("thumbnail") or ""),
+            "desc": data.get("description") or "",
+            "tname": data.get("category") or "",
+            "duration": duration,
+            "pubdate": _timestamp(data.get("published") or data.get("created") or ""),
+            "owner": Owner(mid=int(user.get("id") or data.get("userid") or 0),
+                           name=user.get("name") or ""),
+            "stat": stat,
+            "extra": {
                 "streamtypes": data.get("streamtypes") or [],
                 "download_status": data.get("download_status") or [],
                 "operation_limit": data.get("operation_limit") or [],
                 "public_type": data.get("public_type") or "",
                 "show": data.get("show") or {},
-                "source": (data.get("source") or {}).get("name") or "",
-            })
+                "source": source.get("name") or "",
+            },
+        }
 
-        # 开放接口挂了就退到移动页，至少要把标题/封面/时长凑齐
-        if not title:
-            initial = self._initial_data(ctx, vid)
-            node = self._main_node(initial, vid)
-            share = initial.get("data", {}).get("shareInfo") or {}
+    def _mobile_meta(self, ctx, vid: str) -> dict | None:
+        """移动页内嵌数据的元数据部分（播放地址和它同源，等于顺带取回）。"""
+        initial = self._initial_data(ctx, vid)
+        ups, route, node = self._stream_of(ctx, vid, initial)
+        share = (initial.get("data") or {}).get("shareInfo") or {}
+        title = cover = ""
+        owner = Owner()
+        stat: dict = {}
+        if node is not None:
             title = (node.get("title") or share.get("shareTitle") or "").strip()
-            cover = (initial.get("data", {}).get("coverUrl")
-                     or ((node.get("poster") or {}).get("img") or ""))
-            ups = ((node.get("player") or {}).get("upsStream") or {})
-            duration = duration or int((ups.get("milliSeconds") or 0) / 1000)
+            cover = ((node.get("poster") or {}).get("img") or "")
             uploader = node.get("uploader") or {}
-            owner = owner if owner.name else Owner(
-                mid=int(ups.get("ownerId") or 0),
-                name=uploader.get("name") or uploader.get("userName") or "",
-                face=uploader.get("icon") or "",
-            )
+            owner = Owner(mid=int(ups.get("ownerId") or 0),
+                          name=uploader.get("name") or uploader.get("userName") or "",
+                          face=uploader.get("icon") or "")
             views = (node.get("videoView") or {}).get("count")
             if views is not None:
                 stat["view"] = int(views)
-            extra["from"] = "mobile_page"
-
+        title = (title or share.get("shareTitle") or "").strip()
+        cover = cover or (initial.get("data") or {}).get("coverUrl") or ""
         if not title:
-            raise SiteUnavailable(f"优酷没有返回这个视频的信息（vid={vid}），可能已下架")
+            return None
+        return {
+            "title": title,
+            "cover": cover,
+            "desc": "",
+            "tname": "",
+            "duration": int((ups.get("milliSeconds") or 0) / 1000),
+            "pubdate": 0,
+            "owner": owner,
+            "stat": stat,
+            "extra": {"from": "mobile_page", "play_route": route},
+        }
 
+    def _pc_meta(self, ctx, vid: str) -> dict | None:
+        """PC 页内嵌 videoMap。
+
+        注意：桌面 UA 请求 v.youku.com 会拿到另一套页面结构（pageMap/moduleList，
+        没有 videoMap），所以这条通路固定用移动端 UA 去要 PC 页。
+        """
+        url = "https://v.youku.com/v_show/id_" + vid + ".html"
+        try:
+            res = ctx.net.request(url, headers={
+                "User-Agent": MOBILE_UA,
+                "Accept": "text/html,application/xhtml+xml,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9",
+            }, referer=PC_REFERER, retries=2, timeout=20)
+        except Exception:
+            return None
+        if res.status != 200:
+            return None
+        html = res.text()
+        if "_____tmd_____" in html:
+            raise SiteUnavailable("PC 页触发了风控验证（punish 页）")
+        found = _INITIAL_DATA.search(html)
+        data = _json_after(html, found) if found else None
+        if not isinstance(data, dict):
+            return None
+        video = data.get("videoMap") or {}
+        title = (video.get("videoTitle") or "").strip()
+        if not title:
+            return None
+        return {
+            "title": title,
+            "cover": video.get("videoImgV") or video.get("videoImg") or "",
+            "desc": "",
+            "tname": video.get("videoCategory") or "",
+            "duration": 0,
+            "pubdate": _timestamp(video.get("videoPublishTime") or ""),
+            "owner": Owner(),
+            "stat": {},
+            "extra": {"from": "pc_page",
+                      "video_long_id": video.get("videoLongId") or ""},
+        }
+
+    def _meta_routes(self, ctx, vid: str):
+        """元数据通路表：(名称, 取值函数)，按顺序尝试。"""
+
+        def from_openapi(base: str, ext: str):
+            data = self._openapi(ctx, vid, base, ext)
+            return self._normalize_api(data) if data else None
+
+        yield "openapi show.json（官方开放接口）", lambda: from_openapi(OPENAPI, "show")
+        yield "openapi show_basic.json（官方开放接口精简版）", \
+            lambda: from_openapi(OPENAPI_BASIC, "")
+        yield "m.youku.com 移动页内嵌数据", lambda: self._mobile_meta(ctx, vid)
+        yield "v.youku.com PC 页内嵌 videoMap", lambda: self._pc_meta(ctx, vid)
+
+    def _stream_of(self, ctx, vid: str, initial: dict | None = None):
+        """播放数据在页面里有两处，先按目标 vid 找播放节点，再退回页面顶层。
+
+        返回 (upsStream, 通路名, 节点或 None)。
+        """
+        if initial is None:
+            initial = self._initial_data(ctx, vid)
+        node = None
+        try:
+            node = self._main_node(initial, vid)
+        except SiteUnavailable:
+            node = None
+        if node is not None:
+            ups = (node.get("player") or {}).get("upsStream") or {}
+            if ups.get("cdnUrl") or ups.get("segUrls") or ups.get("firstSegment"):
+                return ups, "移动页 componentList 播放节点", node
+        top = (initial.get("data") or {}).get("upsStream") or {}
+        if (str(top.get("encodedId") or "") == vid
+                and (top.get("cdnUrl") or top.get("segUrls") or top.get("firstSegment"))):
+            return top, "移动页顶层 upsStream", node
+        if node is not None:
+            return ((node.get("player") or {}).get("upsStream") or {},
+                    "移动页 componentList 播放节点", node)
+        return {}, "移动页（没有播放节点）", None
+
+    @staticmethod
+    def _urls_of(ups: dict) -> list:
+        """单段给 cdnUrl，多段给 firstSegment + segUrls。"""
+        if ups.get("cdnUrl"):
+            return [ups["cdnUrl"]]
+        urls: list[str] = []
+        first = ups.get("firstSegment")
+        if first:
+            urls.append(first)
+        for seg in ups.get("segUrls") or []:
+            if isinstance(seg, dict):
+                one = seg.get("segCdnUrl") or seg.get("cdnUrl")
+                if one:
+                    urls.append(one)
+        return urls
+
+
+    # ---------------- 元数据 ----------------
+    def fetch_info(self, ctx, ref: Ref) -> VideoInfo:
+        vid = self._vid(ref)
+        reasons: list[str] = []
+        base: dict | None = None
+        route = ""
+        for name, load in self._meta_routes(ctx, vid):
+            # 标题、时长、封面凑齐就可以收工，剩下的通路不再打扰
+            if base and base.get("title") and base.get("duration") and base.get("cover"):
+                break
+            try:
+                got = load()
+            except SiteUnavailable as exc:
+                reasons.append(f"{name}：{exc}")
+                continue
+            if not got or not got.get("title"):
+                reasons.append(f"{name}：没有返回可用标题")
+                continue
+            if base is None:
+                base, route = got, name
+                continue
+            # 后面这条通路只用来补前一条缺的字段
+            for key in ("cover", "desc", "tname", "duration", "pubdate", "stat", "owner"):
+                if not base.get(key) and got.get(key):
+                    base[key] = got[key]
+                    reasons.append(f"{name}：补充了 {key}")
+
+        if not base or not base.get("title"):
+            raise SiteUnavailable(
+                f"优酷所有元数据通路都没取到这个视频的信息（vid={vid}）："
+                + "；".join(reasons or ["没有可用通路"])
+            )
+
+        duration = int(base.get("duration") or 0)
+        extra = dict(base.get("extra") or {})
+        extra.update({"vid": vid, "detail_route": route})
         info = VideoInfo(
-            title=title,
-            cover=cover,
-            desc=desc,
+            title=base["title"],
+            cover=base.get("cover") or "",
+            desc=base.get("desc") or "",
             duration=duration,
-            pubdate=pubdate,
-            tname=tname,
-            owner=owner,
-            pages=[Page(cid=_vid_to_cid(vid), page=1, part=title, duration=duration)],
-            stat=stat,
+            pubdate=int(base.get("pubdate") or 0),
+            tname=base.get("tname") or "",
+            owner=base.get("owner") or Owner(),
+            pages=[Page(cid=_vid_to_cid(vid), page=1, part=base["title"], duration=duration)],
+            stat=base.get("stat") or {},
             kind="video",
             extra=extra,
         )
@@ -344,28 +500,16 @@ class YoukuSite(SiteAdapter):
     # ---------------- 播放地址 ----------------
     def fetch_play(self, ctx, ref: Ref, page: int = 1, qn: int = 0) -> PlayInfo:
         vid = self._vid(ref)
-        initial = self._initial_data(ctx, vid)
-        node = self._main_node(initial, vid)
-        ups = (node.get("player") or {}).get("upsStream") or {}
-
-        urls: list[str] = []
-        if ups.get("cdnUrl"):
-            urls = [ups["cdnUrl"]]
-        else:
-            first = ups.get("firstSegment")
-            if first:
-                urls.append(first)
-            for seg in ups.get("segUrls") or []:
-                if isinstance(seg, dict):
-                    one = seg.get("segCdnUrl") or seg.get("cdnUrl")
-                    if one:
-                        urls.append(one)
+        ups, route, _node = self._stream_of(ctx, vid)
+        urls = self._urls_of(ups)
+        ref.extra["detail_route"] = route
 
         if not urls:
             raise SiteUnavailable(
                 "优酷没有给这个视频下发播放地址：移动页返回 noPlaySource / 空的 upsStream，"
                 "通常说明它是会员或付费内容（需要登录且开通会员），"
                 "也可能是地区限制或已下线。未登录状态下只能取到标题、封面这类元数据。"
+                f"（本次走的通路：{route}）"
             )
 
         width = int(ups.get("width") or 0)
@@ -382,7 +526,7 @@ class YoukuSite(SiteAdapter):
         if len(urls) == 1:
             play = single_file_play(
                 self, urls[0], size=size, duration=seconds, quality=label,
-                note=(f"优酷移动页内嵌直链（{stream_type or '未知档位'}），"
+                note=(f"优酷移动页内嵌直链（通路：{route}；{stream_type or '未知档位'}），"
                       f"音视频已封装，下完即播；清晰度由优酷按匿名身份下发，不可选"),
             )
             # 辅助函数默认 accept_quality=[0]，这里补上真实档位，跨平台比画质才准
@@ -400,12 +544,13 @@ class YoukuSite(SiteAdapter):
                 play.durl.append(Durl(order=index + 1, url=url, size=0, length=length))
             play.accept_quality = [rank_from_resolution(short_side, short_side)] if short_side else [0]
             play.accept_desc = [label]
-            play.note = (f"优酷移动页内嵌直链，共 {len(urls)} 段，按顺序拼接即可播放；"
+            play.note = (f"优酷移动页内嵌直链（通路：{route}），共 {len(urls)} 段，"
+                         f"按顺序拼接即可播放；"
                          f"接口只给总大小 {size} 字节，单段大小未下发")
 
         if width and height:
             play.raw = {"width": width, "height": height, "streamType": stream_type,
-                        "size": size, "vid": vid}
+                        "size": size, "vid": vid, "route": route}
         if page and page > 1:
             play.note += f"（优酷单集视频没有分 P，已忽略 page={page}）"
         return play

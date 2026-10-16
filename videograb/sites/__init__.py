@@ -10,13 +10,18 @@ _SITES: list[SiteAdapter] | None = None
 def _build() -> list[SiteAdapter]:
     from .bilibili import BilibiliSite
     from .douyin import DouyinSite
-    from .xiaohongshu import XiaohongshuSite
-    from .mgtv import MgtvSite
-    from .vqq import VqqSite
-    from .youku import YoukuSite
     from .iqiyi import IqiyiSite
+    from .kugou import KugouSite
+    from .kuwo import KuwoSite
+    from .mgtv import MgtvSite
+    from .qqmusic import QQMusicSite
+    from .vqq import VqqSite
+    from .wangyi import NeteaseSite
+    from .xiaohongshu import XiaohongshuSite
+    from .youku import YoukuSite
 
-    # 顺序即探测优先级。B 站放第一个，因为 BV 号这类纯 ID 最容易被别的规则误判。
+    # 顺序即探测优先级。B 站放第一个，因为 BV 号这类纯 ID 最容易被别的规则误判；
+    # 音乐平台放在最后，它们的输入多以域名区分，不会和视频平台抢。
     return [
         BilibiliSite(),
         DouyinSite(),
@@ -25,6 +30,10 @@ def _build() -> list[SiteAdapter]:
         VqqSite(),
         YoukuSite(),
         IqiyiSite(),
+        NeteaseSite(),
+        QQMusicSite(),
+        KugouSite(),
+        KuwoSite(),
     ]
 
 

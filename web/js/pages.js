@@ -41,8 +41,9 @@ export function renderHome(view) {
       store.config ? pill(store.config.logged_in ? '已登录 · 可解锁高画质' : '未登录 · 最高 720P',
         store.config.logged_in ? 'ok' : 'mute') : null),
     h('p', { class: 'page-sub' },
-      '粘贴视频链接或 App 分享文案即可。支持 B站 / 抖音 / 小红书 / 芒果TV / 腾讯视频 / 优酷 / 爱奇艺，' +
-      '程序会自动识别平台，并列出真实可下载的画质。'),
+      '粘贴链接或 App 分享文案即可。支持 B站 / 抖音 / 小红书 / 芒果TV / 腾讯视频 / 优酷 / 爱奇艺，' +
+      '以及网易云音乐 / QQ音乐 / 酷狗音乐 / 酷我音乐（音乐可选音质与格式）。' +
+      '程序会自动识别平台，并列出真实可下载的档位。'),
     buildSearchCard(),
   );
 
@@ -54,9 +55,103 @@ export function renderHome(view) {
     page.append(h('div', { style: { marginTop: '12px' } },
       emptyState('search', '还没有解析任何视频',
         '在上面的输入框里粘贴一个视频链接或分享文案，然后点「解析」。')));
+    page.append(buildLocalCard());
   }
 
   view.append(page);
+}
+
+/* ------------------------------------------------------------ 本地文件转换 */
+
+/** 把音乐平台的加密文件解密、再转成用户选的通用格式。
+    浏览器拿不到真实路径，所以走系统文件对话框，整条链路都留在本机。 */
+function buildLocalCard() {
+  store.localFiles = store.localFiles || [];
+  const list = h('div', { class: 'local-list' });
+  const targetSelect = h('select', { class: 'select' });
+  const status = h('div', { class: 'card-desc', style: { marginTop: '8px' } });
+  let formats = store.localFormats;
+
+  const renderList = () => {
+    clear(list);
+    if (!store.localFiles.length) {
+      list.append(h('div', { class: 'hint' }, '还没有选择文件。支持 .ncm / .qmc* / .mflac / .mgg / .kgm / .vpr / .kwm，也接受普通音频。'));
+      return;
+    }
+    for (const item of store.localFiles) {
+      const tag = item.encrypted
+        ? pill('加密 · ' + String(item.kind || '').toUpperCase(), 'warn')
+        : pill('通用格式', 'mute');
+      list.append(h('div', { class: 'local-row' },
+        h('div', { class: 'grow' },
+          h('div', { class: 'name' }, item.name),
+          h('div', { class: 'hint' }, fmtSize(item.size) + (item.error ? ' · ' + item.error : ''))),
+        tag));
+    }
+  };
+
+  const renderTargets = () => {
+    clear(targetSelect);
+    if (!formats) {
+      targetSelect.append(h('option', { value: 'copy' }, '保持原格式（正在检测…）'));
+      return;
+    }
+    for (const t of formats.targets || []) {
+      targetSelect.append(h('option', { value: t.id },
+        t.label + (t.needs_ffmpeg && !formats.ffmpeg ? '（需要 ffmpeg）' : '')));
+    }
+    targetSelect.value = store.localTarget || 'copy';
+  };
+
+  const pick = async () => {
+    try {
+      const result = await api.pickLocalFiles();
+      if (!result.count) { toast('没有选择文件'); return; }
+      const scanned = await api.scanLocalFiles(result.paths);
+      store.localFiles = scanned.items || [];
+      const enc = store.localFiles.filter((i) => i.encrypted).length;
+      toast('已选择 ' + store.localFiles.length + ' 个文件' + (enc ? '（其中 ' + enc + ' 个需要解密）' : ''));
+      renderList();
+    } catch (error) {
+      clear(status).append('选择文件失败：' + error.message);
+    }
+  };
+
+  const start = async () => {
+    const paths = store.localFiles.map((i) => i.path);
+    if (!paths.length) { toast('请先选择文件'); return; }
+    try {
+      const result = await api.convertLocalFiles(paths, targetSelect.value);
+      toast('已建立 ' + result.count + ' 个转换任务，进度见「历史记录」');
+      store.localFiles = [];
+      renderList();
+    } catch (error) {
+      clear(status).append('提交失败：' + error.message);
+    }
+  };
+
+  renderList();
+  renderTargets();
+  if (!formats) {
+    api.localFormats().then((data) => { formats = data; store.localFormats = data; renderTargets(); }).catch(() => {});
+  }
+
+  return card(
+    h('div', { class: 'card-title', html: icon('music_note', 'outlined', 20) + '<span>本地文件转换</span>' }),
+    h('div', { class: 'card-desc' },
+      '把各音乐平台下载到的加密文件（.ncm / .qmc* / .mflac / .mgg / .kgm / .vpr / .kwm）' +
+      '解密成通用音频，再按你选的格式输出。整个过程都在本机完成，文件不会上传到任何地方。'),
+    h('div', { class: 'search-field' },
+      h('div', { class: 'grow', id: 'localPathHint' },
+        h('div', { class: 'hint' }, '点击右侧按钮选择文件（可多选）')),
+      button('选择文件', { variant: 'tonal', iconName: 'folder_open', onClick: pick })),
+    list,
+    h('div', { class: 'section-label' }, '输出格式'),
+    h('div', { class: 'select-wrap' }, targetSelect),
+    status,
+    h('div', { class: 'btn-row', style: { marginTop: '14px' } },
+      button('开始转换', { iconName: 'download', onClick: start })),
+  );
 }
 
 function buildSearchCard() {
@@ -183,13 +278,16 @@ function buildVideoCard() {
     info.cover ? h('img', { src: api.coverUrl(info.cover, siteOf(info.site)), alt: '', loading: 'lazy' }) : null,
     info.duration ? h('span', { class: 'duration' }, fmtDuration(info.duration)) : null);
 
+  const isMusic = info.media === 'music';
   const metaBox = h('div', { class: 'video-meta' },
     h('h2', { class: 'video-title' }, info.title || '(无标题)'),
     h('div', { class: 'video-up' },
-      h('span', { html: icon('verified', 'outlined', 16) }),
-      meta.name || '未知 UP 主',
-      h('span', { style: { opacity: '.6' } }, '· ' + (info.tname || '未分类') + ' · ' + fmtDate(info.pubdate))),
-    h('div', { class: 'video-desc' }, info.desc || '（没有简介）'),
+      h('span', { html: icon(isMusic ? 'music_note' : 'verified', 'outlined', 16) }),
+      meta.name || (isMusic ? '未知歌手' : '未知 UP 主'),
+      h('span', { style: { opacity: '.6' } },
+        '· ' + (isMusic ? (info.album || '单曲') : (info.tname || '未分类'))
+        + ' · ' + fmtDate(info.pubdate))),
+    h('div', { class: 'video-desc' }, info.desc || (isMusic ? '（没有简介）' : '（没有简介）')),
     h('div', { class: 'stat-row' },
       ...stats.map(([label, value]) =>
         h('div', {}, label + ' ', h('b', {}, fmtCount(value))))),
@@ -200,7 +298,11 @@ function buildVideoCard() {
       })(),
       pill('通道：' + (store.parsed.engine_name || store.parsed.engine)),
       info.bvid ? pill(info.bvid, 'mute') : null,
-      store.play ? pill(store.play.is_dash ? 'DASH 音视频分离' : '单文件 MP4',
+      store.play ? pill(
+        store.play.is_dash ? 'DASH 音视频分离'
+          : (store.play.media === 'music'
+              ? (String(store.play.ext || 'mp3').toUpperCase() + ' 音频')
+              : '单文件 MP4'),
         store.play.is_dash ? 'warn' : 'ok') : null),
   );
 
@@ -397,12 +499,16 @@ function buildDownloadCard() {
 
   return card(
     h('div', { class: 'card-title', html: icon('tune', 'outlined', 20) + '<span>下载设置</span>' }),
-    h('div', { class: 'card-desc' }, '清晰度列表以「本次实际下发到的流」为准 —— 各平台接口都可能虚报档位，这里只显示真实拿得到的。'),
+    h('div', { class: 'card-desc' },
+      (store.parsed?.info?.media === 'music')
+        ? '音质列表以「本次实际下发到的流」为准 —— 拿不到的档位（需要登录或会员）会标成虚线并说明原因。'
+        : '清晰度列表以「本次实际下发到的流」为准 —— 各平台接口都可能虚报档位，这里只显示真实拿得到的。'),
 
     h('div', { class: 'section-label' }, '下载模式'),
     modeRow,
 
-    h('div', { class: 'section-label' }, '清晰度'),
+    h('div', { class: 'section-label' },
+      store.parsed?.info?.media === 'music' ? '音质与格式' : '清晰度'),
     qualityRow,
 
     h('div', { class: 'section-label' }, '抓取通道与编码'),

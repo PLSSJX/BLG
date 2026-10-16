@@ -19,6 +19,7 @@ class SiteUnavailable(Exception):
 class SiteAdapter:
     id = "base"
     name = "未知平台"
+    media = "video"          # video | music —— 音乐平台填 music，界面会换成"歌手/专辑"的说法
     home = ""
     color = "#888888"
     examples: list = []
@@ -62,6 +63,7 @@ class SiteAdapter:
         return {
             "id": self.id,
             "name": self.name,
+            "media": self.media,
             "home": self.home,
             "color": self.color,
             "examples": list(self.examples),
@@ -75,17 +77,29 @@ def make_info(ref: Ref, **fields) -> VideoInfo:
     """统一填好 site / engine 字段，避免每个适配器各写一遍。"""
     info = VideoInfo(**fields)
     info.site = ref.site
+    if not info.media or info.media == "video":
+        try:
+            from . import get_site
+            info.media = get_site(ref.site).media
+        except Exception:
+            pass
     return info
 
 
 def single_file_play(adapter: SiteAdapter, url: str, size: int = 0,
                      duration: int = 0, quality: str = "原始画质",
-                     note: str = "") -> PlayInfo:
-    """很多平台的成品就是一个直链 MP4，用它快速构造 PlayInfo。"""
+                     note: str = "", ext: str = "", referer: str = "") -> PlayInfo:
+    """很多平台的成品就是一个直链，用它快速构造 PlayInfo。
+
+    ext 决定落盘扩展名：视频平台留空（走 mp4），音乐平台必须给
+    mp3 / flac，否则下载下来会是一个扩展名骗人的文件。
+    """
     from ..models import Durl
 
-    play = PlayInfo(engine=adapter.id, engine_name=adapter.name, duration=duration)
-    play.durl = [Durl(order=1, url=url, size=size, length=duration)]
+    play = PlayInfo(engine=adapter.id, engine_name=adapter.name, duration=duration,
+                    media=adapter.media, ext=ext or ("mp3" if adapter.media == "music" else "mp4"))
+    play.durl = [Durl(order=1, url=url, size=size, length=duration,
+                      ext=ext or play.ext, referer=referer)]
     play.accept_quality = [0]
     play.accept_desc = [quality]
     play.note = note or "单文件直链，免合并"

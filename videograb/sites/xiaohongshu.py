@@ -31,6 +31,11 @@ _MOBILE_UA = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKi
 
 _XHS_REFERER = "https://www.xiaohongshu.com/"
 _REDNOTE_REFERER = "https://www.rednote.com/"
+# 社交爬虫 UA：RedNote 会给这类客户端直出 OG 元数据，og:video 就是完整成品 mp4
+_OG_UA = "facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)"
+_XHS_EXPLORE = "https://www.xiaohongshu.com/explore/{ident}"
+_REDNOTE_EXPLORE = "https://www.rednote.com/explore/{ident}"
+_REDNOTE_ITEM = "https://www.rednote.com/discovery/item/{ident}"
 
 _SHORT_RE = re.compile(r"(?:https?://)?(?:www\.)?(?:xhslink\.com|xiaohongshu\.com)/[A-Za-z0-9_\-./?=&%]+", re.I)
 _NOTE_ID_RE = re.compile(r"/(?:explore|discovery/item|note|board)/([0-9a-fA-F]{24})")
@@ -180,6 +185,64 @@ def _find_note(state):
     return fallback
 
 
+def _meta(html: str, prop: str) -> str:
+    """取 <meta property="..."> 的 content，属性前后顺序两种写法都认。"""
+    for pattern in (
+        r'<meta[^>]+(?:property|name)="%s"[^>]+content="([^"]*)"' % re.escape(prop),
+        r'<meta[^>]+content="([^"]*)"[^>]+(?:property|name)="%s"' % re.escape(prop),
+    ):
+        found = re.search(pattern, html, re.I)
+        if found:
+            return found.group(1).strip()
+    return ""
+
+
+def _absolute(url: str) -> str:
+    if url.startswith("//"):
+        return "https:" + url
+    return url
+
+
+def _og_note(html: str, ident: str):
+    """把 RedNote 给社交爬虫直出的 OG 元数据拼成和网页版同构的笔记对象。
+
+    实测 og:video 就是完整成品 mp4（Range 请求回 206，总字节数与网页版直链一致），
+    og:title / og:image 也齐全；但这条通路拿不到时长、作者和互动数，一律留空，
+    界面上会看到时长为 0，这是通路的真实能力，不编造。
+    """
+    video = _absolute(_meta(html, "og:video"))
+    title = _meta(html, "og:title")
+    if title.endswith("- rednote"):
+        title = title[:-len("- rednote")].strip()
+    if title.endswith("- 小红书"):
+        title = title[:-len("- 小红书")].strip()
+    desc = _meta(html, "og:description")
+    image = _absolute(_meta(html, "og:image"))
+    if not (video or title or image):
+        return None
+    note = {
+        "title": title,
+        "desc": desc or title,
+        "type": "video" if video else "normal",
+        "interactInfo": {},
+        "user": {},
+        "imageList": [{"urlDefault": image}] if image else [],
+        "noteId": ident,
+        "_og_only": True,
+        "_og_url": _meta(html, "og:url"),
+    }
+    if video:
+        note["video"] = {
+            "media": {"stream": {"h264": [{
+                "masterUrl": video,
+                "format": "mp4",
+                "videoCodec": "h264",
+                "audioCodec": "aac",
+            }]}}
+        }
+    return note
+
+
 def _cover_of(note) -> str:
     cover = _get(note, "cover")
     if isinstance(cover, str) and cover.startswith("http"):
@@ -206,8 +269,9 @@ class XiaohongshuSite(SiteAdapter):
         "https://www.xiaohongshu.com/explore/xxxxxxxxxxxxxxxxxxxxxxxx",
         "https://www.xiaohongshu.com/discovery/item/xxxxxxxxxxxxxxxxxxxxxxxx?xsec_token=...",
     ]
-    note = ("网页版笔记页需要登录 / 带 xsec_token；没有 token 时自动改走小红书国际版 "
-            "RedNote 的移动端页面取直链，仅支持视频笔记。")
+    note = ("五条通路依次重试：网页版带 xsec_token → 网页版裸链 → RedNote 国际版移动页 "
+            "→ RedNote 详情页直连 → RedNote 给社交爬虫直出的 OG 元数据；"
+            "网页版没有 token 时必失败，实际可用的都在 RedNote 那三条，仅支持视频笔记。")
 
     # ---------- 识别与解析 ----------
     def match(self, text: str) -> bool:
@@ -282,25 +346,61 @@ class XiaohongshuSite(SiteAdapter):
 
     # ---------- 取内容 ----------
     @staticmethod
-    def _from_xhs(ctx, url: str):
-        try:
-            res = ctx.net.request(url, headers=_headers(ctx), referer=_XHS_REFERER,
-                                  retries=2, timeout=20)
-        except Exception:
-            return None
-        state = _initial_state(res.text())
+    def _page(ctx, url: str, mobile: bool = False, referer: str = "", ua: str = ""):
+        """抓一个笔记页面，返回 HTML；请求失败抛出来让上层记成这条通路的原因。"""
+        headers = _headers(ctx, mobile=mobile)
+        if ua:
+            headers["User-Agent"] = ua
+        res = ctx.net.request(url, headers=headers,
+                              referer=referer or (headers.get("Referer") or _XHS_REFERER),
+                              retries=2, timeout=20)
+        return res.text()
+
+    @classmethod
+    def _from_xhs(cls, ctx, url: str):
+        state = _initial_state(cls._page(ctx, url, referer=_XHS_REFERER))
         return _find_note(state)
 
-    @staticmethod
-    def _from_rednote(ctx, ident: str):
-        url = f"https://www.rednote.com/explore/{ident}"
-        try:
-            res = ctx.net.request(url, headers=_headers(ctx, mobile=True),
-                                  referer=_REDNOTE_REFERER, retries=2, timeout=20)
-        except Exception:
-            return None
-        state = _initial_state(res.text())
+    @classmethod
+    def _from_rednote(cls, ctx, ident: str):
+        """国际版移动页 /explore：实测会 307 到 /discovery/item 后直出数据。"""
+        url = _REDNOTE_EXPLORE.format(ident=ident)
+        state = _initial_state(cls._page(ctx, url, mobile=True, referer=_REDNOTE_REFERER))
         return _find_note(state)
+
+    @classmethod
+    def _from_rednote_item(cls, ctx, ident: str):
+        """国际版详情页直连（不依赖 /explore 的跳转）。实测 iPhone UA 下直出数据。"""
+        url = _REDNOTE_ITEM.format(ident=ident)
+        state = _initial_state(cls._page(ctx, url, mobile=True, referer=_REDNOTE_REFERER))
+        return _find_note(state)
+
+    @classmethod
+    def _from_rednote_og(cls, ctx, ident: str):
+        """最后一条：让 RedNote 用 OG 元数据回答，解析 <meta> 而不是页面内嵌 JSON。"""
+        url = _REDNOTE_ITEM.format(ident=ident)
+        html = cls._page(ctx, url, referer=_REDNOTE_REFERER, ua=_OG_UA)
+        return _og_note(html, ident)
+
+    def _detail_routes(self, ctx, ref: Ref, ident: str):
+        """有序通路表：(名称, 取值函数)。调用方逐个试，失败原因拼起来报给用户。"""
+        routes = []
+        token = ref.extra.get("xsec_token")
+        if token:
+            source = ref.extra.get("xsec_source") or "pc_share"
+            url = (_XHS_EXPLORE.format(ident=ident)
+                   + f"?xsec_token={urllib.parse.quote(token)}&xsec_source={source}")
+            routes.append(("xiaohongshu.com/explore + xsec_token",
+                           lambda u=url: self._from_xhs(ctx, u)))
+        routes.append(("xiaohongshu.com/explore（无 token）",
+                       lambda: self._from_xhs(ctx, _XHS_EXPLORE.format(ident=ident))))
+        routes.append(("rednote.com/explore（国际版移动页）",
+                       lambda: self._from_rednote(ctx, ident)))
+        routes.append(("rednote.com/discovery/item（国际版详情页直连）",
+                       lambda: self._from_rednote_item(ctx, ident)))
+        routes.append(("rednote.com OG 元数据（og:video）",
+                       lambda: self._from_rednote_og(ctx, ident)))
+        return routes
 
     def _note(self, ctx, ref: Ref):
         ident = (ref.ident or "").strip()
@@ -310,29 +410,21 @@ class XiaohongshuSite(SiteAdapter):
         if not ident:
             raise SiteUnavailable("缺少小红书笔记 ID，请重新复制分享链接")
 
-        token = ref.extra.get("xsec_token")
-        if token:
-            source = ref.extra.get("xsec_source") or "pc_share"
-            url = (f"https://www.xiaohongshu.com/explore/{ident}"
-                   f"?xsec_token={urllib.parse.quote(token)}&xsec_source={source}")
-            note = self._from_xhs(ctx, url)
+        reasons = []
+        for name, load in self._detail_routes(ctx, ref, ident):
+            try:
+                note = load()
+            except Exception as exc:        # 网络、风控、页面改版都算这条通路失败
+                reasons.append(f"{name}：{str(exc)[:80]}")
+                continue
             if note:
-                ref.extra["detail_route"] = "xiaohongshu.com/explore + xsec_token"
+                ref.extra["detail_route"] = name
                 return note
-
-        note = self._from_xhs(ctx, f"https://www.xiaohongshu.com/explore/{ident}")
-        if note:
-            ref.extra["detail_route"] = "xiaohongshu.com/explore"
-            return note
-
-        note = self._from_rednote(ctx, ident)
-        if note:
-            ref.extra["detail_route"] = "rednote.com/discovery/item（国际版移动页）"
-            return note
-
+            reasons.append(f"{name}：没有拿到笔记数据")
         raise SiteUnavailable(
-            f"小红书笔记 {ident} 取不到数据：网页版要求登录或带 xsec_token，"
-            "国际版 RedNote 也没有这条笔记（可能已删除、仅国内可见或为图文笔记）。"
+            f"小红书笔记 {ident} 所有通路都没取到数据（" + "；".join(reasons) + "）。"
+            "网页版要求登录或带 xsec_token；国际版 RedNote 也没有这条笔记时，"
+            "多半是已删除、仅国内可见或为图文笔记。"
             "可以试试在 App 里重新分享、把带 xsec_token 的完整链接粘进来。"
         )
 
@@ -391,6 +483,7 @@ class XiaohongshuSite(SiteAdapter):
                 "user_id": str(_get(user, "userId", "user_id", "userIdStr") or ""),
                 "images": [i for i in images[:20] if isinstance(i, dict)],
                 "detail_route": ref.extra.get("detail_route", ""),
+                "og_only": bool(note.get("_og_only")),
                 "referer": _REDNOTE_REFERER,
             },
         )

@@ -424,6 +424,21 @@ body.mode-oled {
 }
 .cred-block .help { margin-top: 8px; padding-top: 8px; }
 
+/* 本地文件列表 */
+.local-list { margin-top: 10px; }
+.local-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: var(--radius-card);
+  background: var(--md-surface-container-high);
+}
+.local-row + .local-row { margin-top: 6px; }
+.local-row .grow { flex: 1; min-width: 0; }
+.local-row .name {
+  font-size: 13.5px; font-weight: 500;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.local-row .hint { font-size: 12px; color: var(--md-on-surface-variant); margin-top: 2px; }
+
 /* 分 P 勾选列表 */
 .page-list {
   max-height: 268px;

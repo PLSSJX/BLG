@@ -44,7 +44,13 @@ class VideoInfo:
     engine: str = ""
     site: str = "bilibili"       # 来自哪个平台
     kind: str = "video"
+    media: str = "video"         # video | music —— 决定界面用"UP主"还是"歌手"
+    album: str = ""              # 音乐平台的专辑名
     extra: dict = field(default_factory=dict)
+
+    @property
+    def is_music(self) -> bool:
+        return self.media == "music"
 
     def page_by_index(self, index: int) -> Page | None:
         for page in self.pages:
@@ -85,6 +91,7 @@ class Stream:
     kind: str = "video"          # video | audio
     note: str = ""
     referer: str = ""            # 该 CDN 要求的 Referer，留空则用平台的默认值
+    fmt: str = ""                # 音频容器：mp3 / flac / m4a / aac …
 
     def to_dict(self) -> dict:
         return {
@@ -111,6 +118,7 @@ class Durl:
     length: int = 0
     backups: list = field(default_factory=list)
     referer: str = ""            # 各平台 CDN 防盗链要求不一样，跟随直链一起带
+    ext: str = ""                # 落盘扩展名。音乐平台要给 mp3 / flac，不能一律写 .mp4
 
     def to_dict(self) -> dict:
         return {
@@ -135,6 +143,8 @@ class PlayInfo:
     support_formats: list = field(default_factory=list)
     duration: int = 0
     note: str = ""
+    media: str = "video"         # video | music
+    ext: str = "mp4"             # 落盘默认扩展名，音乐平台会给 mp3 / flac
     raw: dict = field(default_factory=dict)
 
     def best_height(self) -> int:
@@ -178,6 +188,8 @@ class PlayInfo:
             "phantom_quality": self.phantom_quality,
             "support_formats": self.support_formats,
             "duration": self.duration,
+            "media": self.media,
+            "ext": self.ext,
             "note": self.note,
         }
 

@@ -23,7 +23,12 @@ from ..quality import rank_from_resolution
 from ..refs import Ref
 from .base import SiteAdapter, SiteUnavailable, make_info
 
-_GETINFO = "https://vv.video.qq.com/getinfo"
+# 取流通路表：(名称, getinfo 网关)。两条网关的协议完全一样，但域名/机房不同，
+# 实测两条都能出 fvkey + ul（第 1 条是主路径，第 2 条是 H5 网关，被限流时顶上）。
+_GETINFO_HOSTS = (
+    ("vv.video.qq.com/getinfo（PC 网关）", "https://vv.video.qq.com/getinfo"),
+    ("h5vv.video.qq.com/getinfo（H5 网关）", "https://h5vv.video.qq.com/getinfo"),
+)
 _COVER_API = "https://node.video.qq.com/x/api/float_vinfo2"
 _REFERER = "https://v.qq.com/"
 
@@ -71,8 +76,14 @@ class VqqSite(SiteAdapter):
         "https://v.qq.com/x/page/q326831cny0.html",
     ]
     needs_login = False
-    note = ("官方 getinfo 接口取流：免登录可拿 480P/720P 的 MP4 直链；"
+    note = ("取流走两条 getinfo 网关依次重试（vv.video.qq.com → h5vv.video.qq.com）："
+            "免登录可拿 480P/720P 的 MP4 直链；"
             "会员内容只下发 180 秒左右试看，1080P 及以上要登录并开通会员")
+
+    def __init__(self) -> None:
+        # 上次成功的取流网关（优先复用）与本条数据实际走的通路名（写进报告）
+        self._preferred = ""
+        self._route = ""
 
     # ---------- 识别与解析 ----------
     def match(self, text: str) -> bool:
@@ -140,35 +151,62 @@ class VqqSite(SiteAdapter):
             return f"https://v.qq.com/x/page/{ref.ident}.html"
         return _REFERER
 
+    def _ordered_hosts(self) -> list:
+        """上次成功的网关优先，减少故障切换时的等待。"""
+        if self._preferred:
+            return ([h for h in _GETINFO_HOSTS if h[1] == self._preferred]
+                    + [h for h in _GETINFO_HOSTS if h[1] != self._preferred])
+        return list(_GETINFO_HOSTS)
+
+    @staticmethod
+    def _parse_getinfo(raw: str, vid: str) -> dict:
+        m = re.search(r"QZOutputJson=(\{.*\})\s*;?\s*$", raw.strip(), re.S)
+        if not m:
+            raise SiteUnavailable("返回的不是预期格式，接口可能改了")
+        try:
+            data = json.loads(m.group(1))
+        except ValueError:
+            raise SiteUnavailable("返回的 JSON 解析失败") from None
+        if str(data.get("s") or "") != "o":
+            message = str(data.get("msg") or "").strip()
+            if "区域" in message or "area" in message.lower():
+                raise SiteUnavailable(f"提示地区限制：{message}")
+            raise SiteUnavailable(
+                f"取不到这一集（vid={vid}）：{message or '接口没有返回内容'}"
+                "（常见原因：需要会员、内容已下线，或链接里的 vid 不对）"
+            )
+        return data
+
     def _getinfo(self, ctx, vid: str, referer: str, defn: str = "") -> dict:
-        """取一路播放信息，defn 为空表示"当前身份能看到的最好那一档"。"""
+        """取一路播放信息，defn 为空表示“当前身份能看到的最好那一档”。
+
+        两条网关按顺序试，全部失败时把每条的原因一起抛出去。
+        """
         query = {"vids": vid, "platform": "101001", "charge": "0",
                  "defaultfmt": "auto", "otype": "json", "sphttps": "1"}
         if defn:
             query["defn"] = defn
         headers = {"Accept": "*/*"}
-        try:
-            raw = ctx.net.get_text(f"{_GETINFO}?{urllib.parse.urlencode(query)}",
-                                   headers=headers, referer=referer,
-                                   retries=3, timeout=20)
-        except Exception as exc:
-            raise SiteUnavailable(f"腾讯视频取流接口请求失败：{exc}") from None
-        m = re.search(r"QZOutputJson=(\{.*\})\s*;?\s*$", raw.strip(), re.S)
-        if not m:
-            raise SiteUnavailable("腾讯视频取流接口返回的不是预期格式，接口可能改了")
-        try:
-            data = json.loads(m.group(1))
-        except ValueError:
-            raise SiteUnavailable("腾讯视频取流接口返回的 JSON 解析失败") from None
-        if str(data.get("s") or "") != "o":
-            message = str(data.get("msg") or "").strip()
-            if "区域" in message or "area" in message.lower():
-                raise SiteUnavailable(f"腾讯视频提示地区限制：{message}")
-            raise SiteUnavailable(
-                f"腾讯视频取不到这一集（vid={vid}）：{message or '接口没有返回内容'}。"
-                "常见原因是需要会员、内容已下线，或链接里的 vid 不对。"
-            )
-        return data
+        encoded = urllib.parse.urlencode(query)
+        reasons: list[str] = []
+        for name, base in self._ordered_hosts():
+            try:
+                raw = ctx.net.get_text(f"{base}?{encoded}", headers=headers,
+                                       referer=referer, retries=2, timeout=20)
+            except Exception as exc:
+                reasons.append(f"{name}：请求失败（{str(exc)[:70]}）")
+                continue
+            try:
+                data = self._parse_getinfo(raw, vid)
+            except SiteUnavailable as exc:
+                reasons.append(f"{name}：{exc}")
+                continue
+            self._preferred = base
+            self._route = name
+            return data
+        raise SiteUnavailable(
+            f"腾讯视频所有取流通路都失败（vid={vid}）：" + "；".join(reasons)
+        )
 
     def _play(self, ctx, vid: str, referer: str, defn: str = "") -> tuple[dict, dict]:
         data = self._getinfo(ctx, vid, referer, defn)
@@ -235,6 +273,7 @@ class VqqSite(SiteAdapter):
             extra={
                 "vid": vid,
                 "cid": cid,
+                "detail_route": self._route,
                 "vids": vids,
                 "year": cover.get("year") or "",
                 "cast": self._cast(cover.get("nam")),
@@ -314,8 +353,10 @@ class VqqSite(SiteAdapter):
         play.accept_desc = [label]
         play.declared_quality = declared
         play.phantom_quality = [q for q in declared if q not in play.accept_quality]
-        play.note = self._note(vi, label, size, trial, preview, duration, len(urls))
-        play.raw = {"vid": vid, "quality": label, "trial": trial, "preview": preview}
+        play.note = self._note(vi, label, size, trial, preview, duration, len(urls),
+                               self._route)
+        play.raw = {"vid": vid, "quality": label, "trial": trial, "preview": preview,
+                    "route": self._route}
         return play
 
     def _page_vid(self, ctx, ref: Ref, page: int) -> str:
@@ -384,9 +425,9 @@ class VqqSite(SiteAdapter):
 
     @staticmethod
     def _note(vi: dict, label: str, size: int, trial: bool, preview: int,
-              duration: int, cdn: int) -> str:
+              duration: int, cdn: int, route: str = "") -> str:
         parts = [
-            f"画质来自腾讯视频官方 getinfo 接口（匿名身份）：{label}，"
+            f"画质来自腾讯视频官方 getinfo 接口（匿名身份，通路：{route or '未知'}）：{label}，"
             f"{vi.get('vw')}x{vi.get('vh')}，{_human(size)}",
             f"MP4 直链，另有 {cdn - 1} 个 CDN 备用地址" if cdn > 1 else "MP4 直链",
         ]

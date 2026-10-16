@@ -45,6 +45,13 @@ export const api = {
   saveSettings: (settings) => post('/api/settings', { settings }),
   engineOrder: (order, enabled) => post('/api/engines/order', { order, enabled }),
 
+  // 本地音乐文件：选择 / 预检 / 转换
+  pickLocalFiles: () => post('/api/local/pick', {}),
+  scanLocalFiles: (paths) => post('/api/local/decryptable', { paths }),
+  convertLocalFiles: (paths, target, bitrate = '') =>
+    post('/api/tasks/convert', { paths, target, bitrate }),
+  localFormats: (source = '') => get('/api/local/formats?source=' + encodeURIComponent(source)),
+
   open: (path) => post('/api/open', { path }),
   quit: () => post('/api/quit', {}),
   updateCheck: () => post('/api/update/check', {}),

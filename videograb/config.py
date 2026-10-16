@@ -88,6 +88,11 @@ class Settings:
     # 登录态：填了才能解锁 1080P 及以上
     sessdata: str = ""
     bili_jct: str = ""
+    # 音乐平台的登录凭据。填了就解锁更高音质，不填也能下标准档。
+    ncm_cookie: str = ""       # 网易云音乐
+    qqmusic_cookie: str = ""   # QQ音乐
+    kugou_cookie: str = ""     # 酷狗音乐
+    kuwo_cookie: str = ""      # 酷我音乐
     dede_user_id: str = ""
     buvid3: str = ""
     proxy: str = ""
@@ -175,7 +180,9 @@ class Context:
             if key in valid:
                 setattr(self.settings, key, value)
         _normalize(self.settings)
-        if "sessdata" in (patch or {}) or "proxy" in (patch or {}) or "user_agent" in (patch or {}):
+        if any(k in (patch or {}) for k in
+               ("sessdata", "bili_jct", "proxy", "user_agent",
+                "ncm_cookie", "qqmusic_cookie", "kugou_cookie", "kuwo_cookie")):
             self.reset_net()
         self.save()
         return self.settings

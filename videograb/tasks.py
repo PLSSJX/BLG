@@ -52,6 +52,10 @@ class Task:
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     raw_input: str = ""
     site: str = ""           # 命中的平台 id
+    kind: str = "download"   # download | convert —— convert 是本地文件解密/转格式
+    local_path: str = ""     # convert 任务的源文件
+    target: str = "copy"     # convert 任务的目标格式
+    bitrate: str = ""        # convert 任务的码率（可选）
     page: int = 1            # 分 P 序号；多 P 批量下载时每个任务各占一 P
     engine: str = "auto"
     engine_used: str = ""
@@ -90,6 +94,9 @@ class Task:
             "id": self.id,
             "raw_input": self.raw_input,
             "site": self.site,
+            "kind": self.kind,
+            "local_path": self.local_path,
+            "target": self.target,
             "page": self.page,
             "engine": self.engine,
             "engine_used": self.engine_used,
@@ -180,6 +187,35 @@ class TaskManager:
                 pass
 
     # ---------------- 对外接口 ----------------
+    def submit_convert(self, paths: list, *, target: str = "copy",
+                       bitrate: str = "") -> list:
+        """为一批本地文件各建一个转换任务。"""
+        from pathlib import Path as _Path
+
+        created = []
+        for raw in (paths or [])[:200]:
+            path = _Path(str(raw))
+            task = Task(
+                raw_input=path.name,
+                kind="convert",
+                local_path=str(path),
+                target=target or "copy",
+                bitrate=bitrate or "",
+                title=path.stem,
+                mode="convert",
+            )
+            with self._lock:
+                self._tasks[task.id] = task
+                self._order.insert(0, task.id)
+            created.append(task)
+        if created:
+            self._dirty = True
+            self._save_history()
+            self._ensure_dispatcher()
+            with self._wake:
+                self._wake.notify_all()
+        return created
+
     def submit(self, raw_input: str, *, engine: str = "auto", qn: int = 0,
                mode: str = "auto", page: int = 1) -> Task:
         task = Task(raw_input=raw_input.strip(), engine=engine or "auto",
@@ -339,6 +375,9 @@ class TaskManager:
     def _execute(self, task: Task) -> None:
         ctx = self.ctx
         settings = ctx.settings
+        if task.kind == "convert":
+            self._execute_convert(task)
+            return
         task.note(f"开始解析：{task.raw_input}")
 
         # 先判断这是哪个平台的链接，再交给对应适配器
@@ -445,10 +484,11 @@ class TaskManager:
         # 2) 输出目录
         base = safe_filename(render_template(settings.filename_template, {
             "title": info.title, "up": info.owner.name,
+            "artist": info.owner.name, "album": info.album,
             "bvid": info.bvid or ref.display(), "id": ref.display(),
             "site": ref.site, "platform": site.name,
             "quality": qn_short(task.qn), "engine": task.engine_used,
-        }) or "video")
+        }) or ("music" if info.media == "music" else "video"))
         directory = ctx.download_dir() / base
         directory.mkdir(parents=True, exist_ok=True)
         task.directory = str(directory)
@@ -592,8 +632,10 @@ class TaskManager:
                                height=0, label="HLS 单链路")
             return
 
-        task.note(f"单文件模式：共 {len(durls)} 段，下载后直接拼成一个 MP4")
-        final = directory / f"{stem}{quality_tag}.mp4"
+        # 扩展名跟着直链走：音乐平台给的是 mp3 / flac，套上 .mp4 会打不开
+        ext = (getattr(durls[0], "ext", "") or play.ext or "mp4").lstrip(".")
+        task.note(f"单文件模式：共 {len(durls)} 段，下载后直接拼成一个 {ext.upper()}")
+        final = directory / f"{stem}{quality_tag}.{ext}"
         part_dir = directory / "_parts"
         part_dir.mkdir(parents=True, exist_ok=True)
 
@@ -614,6 +656,58 @@ class TaskManager:
         task.files.append({"kind": "video", "path": str(final),
                            "name": final.name, "size": final.stat().st_size})
         task.note(f"写入完成：{final.name}（{final.stat().st_size / 1048576:.1f} MB）")
+
+    # ---------------- 本地文件：解密 + 转格式 ----------------
+    def _execute_convert(self, task: Task) -> None:
+        """把音乐平台的加密文件解密，再按用户选的格式输出。"""
+        from pathlib import Path as _Path
+
+        from .music import decrypt as _decrypt
+        from .music import transcode as _transcode
+
+        source = _Path(task.local_path)
+        if not source.exists():
+            raise RuntimeError("文件不存在：" + str(source))
+        if source.is_dir():
+            raise RuntimeError("这是一个目录，请选择具体文件")
+
+        task.title = source.stem
+        task.up = ""
+        task.site = "local"
+        task.note(f"本地文件：{source.name}（{source.stat().st_size / 1048576:.1f} MB）")
+
+        work_dir = self.ctx.download_dir() / "音乐转换"
+        work_dir.mkdir(parents=True, exist_ok=True)
+
+        # 1) 加密文件先解密；本来就是通用格式就跳过这一步
+        if _decrypt.is_encrypted(source):
+            kind = _decrypt.sniff(source)
+            task.note(f"识别为 {kind} 加密格式，开始解密")
+            result = _decrypt.decrypt(source, work_dir)
+            current = _Path(result["output"])
+            task.note(f"解密完成：{current.name}（{result.get('format') or '?'}）")
+            meta = result.get("meta") or {}
+        else:
+            current = source
+            meta = {}
+            task.note("不是已知的加密格式，直接按普通音频处理")
+
+        if task.cancel_event.is_set():
+            raise DownloadCancelled("用户已取消")
+
+        # 2) 按用户选的格式输出
+        target = task.target or "copy"
+        converted = _transcode.convert(current, target, work_dir, bitrate=task.bitrate or "")
+        final = _Path(converted["output"])
+        task.note(converted.get("note") or f"输出 {final.name}")
+
+        # 3) 尽量把标签带上（解密时解析到的元数据）
+        if meta and _transcode.write_tags(final, meta):
+            task.note("已写入标题 / 歌手 / 专辑 / 封面")
+
+        task.directory = str(work_dir)
+        task.files.append({"kind": "audio", "path": str(final),
+                           "name": final.name, "size": final.stat().st_size})
 
     # ---------------- HLS（芒果TV 等） ----------------
     def _download_hls(self, task: Task, source, directory: Path, stem: str,
@@ -749,6 +843,7 @@ class TaskManager:
         # 弹幕与 CC 字幕目前只有 B 站能拿到；别的平台拿它的 cid 去问 B 站接口
         # 只会得到 404，徒增一条看不懂的失败日志。
         is_bilibili = (task.site or "bilibili") == "bilibili"
+        is_music = (getattr(info, "media", "video") == "music")
 
         if settings.write_cover and info.cover:
             try:
@@ -760,7 +855,7 @@ class TaskManager:
             except Exception as exc:
                 task.note(f"封面保存失败：{exc}")
 
-        if settings.write_danmaku and page.cid and is_bilibili:
+        if settings.write_danmaku and page.cid and is_bilibili and not is_music:
             try:
                 path = directory / f"{stem}.xml"
                 count = extras.save_danmaku(ctx, page.cid, path)
@@ -778,7 +873,7 @@ class TaskManager:
             except Exception as exc:
                 task.note(f"弹幕保存失败：{exc}")
 
-        if settings.write_subtitle and info.bvid and page.cid and is_bilibili:
+        if settings.write_subtitle and info.bvid and page.cid and is_bilibili and not is_music:
             try:
                 written = extras.save_subtitles(ctx, info.bvid, page.cid, directory, stem)
                 for item in written:
@@ -792,7 +887,7 @@ class TaskManager:
             except Exception as exc:
                 task.note(f"字幕保存失败：{exc}")
 
-        if settings.write_nfo:
+        if settings.write_nfo and not is_music:
             try:
                 path = directory / f"{stem}.nfo"
                 extras.save_nfo(info, page, path, quality=qn_label(task.qn),

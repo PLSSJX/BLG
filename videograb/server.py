@@ -310,6 +310,16 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/ping":
             # 单实例检测用：另一个进程靠它判断"这个端口上是不是已经有一个 Video-Grabing"
             return self._json({"ok": True, "app": "Video-Grabing", "version": __version__})
+        if route == "/api/local/formats":
+            from .music import transcode
+            ffmpeg = transcode.find_ffmpeg()
+            source = (self._query().get("source") or "").strip()
+            return self._json({
+                "ok": True,
+                "ffmpeg": ffmpeg,
+                "targets": transcode.available_targets(source),
+            })
+
         if route == "/api/versions":
             return self._json({
                 "ok": True, "ffmpeg": find_ffmpeg() or "",
@@ -444,6 +454,31 @@ class Handler(BaseHTTPRequestHandler):
                 page=int(payload.get("page") or 1),
             )
             return self._json({"ok": True, "task": task.to_dict()})
+
+        if route == "/api/local/pick":
+            from .localfile import pick_files
+            paths = pick_files(self.ctx)
+            return self._json({"ok": True, "paths": paths, "count": len(paths)})
+
+        if route == "/api/local/decryptable":
+            from .localfile import scan_paths
+            payload = self._body()
+            return self._json({"ok": True, "items": scan_paths(payload.get("paths") or [])})
+
+        if route == "/api/tasks/convert":
+            payload = self._body()
+            paths = payload.get("paths") or []
+            if not paths:
+                raise ApiError("请先选择要转换的文件")
+            created = ctx.tasks.submit_convert(
+                paths,
+                target=str(payload.get("target") or "copy"),
+                bitrate=str(payload.get("bitrate") or ""),
+            )
+            if not created:
+                raise ApiError("没有有效的文件")
+            return self._json({"ok": True, "tasks": [t.to_dict() for t in created],
+                               "count": len(created)})
 
         if route == "/api/tasks/cancel":
             ok = ctx.tasks.cancel(payload.get("id") or "")

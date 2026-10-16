@@ -1,16 +1,32 @@
 """抖音适配器。
 
-实测（2026-10）可用的抓取路径：
-  1. 短链 v.douyin.com 会 302 到 www.douyin.com/video/{id} 或
-     www.iesdouyin.com/share/video/{id}，从落地地址里取出 19 位作品 ID。
-  2. 作品详情走 SEO 落地页：/shipin/{话题ID}?modal_id={作品ID} 是服务端直出
-     （React Server Components / pace），__pace_f.push 的字符串参数里带着
-     这个作品的完整 JSON（desc / createTime / authorInfo / video.bitRateList…）。
-     而 www.douyin.com/video/{id} 对普通请求只回 JS 反爬壳（jsvmprt），
-     /aweme/v1/web/aweme/detail/ 需要 a_bogus 签名（403 ArgusSecurityPlugin Uifid Not Found），
-     移动端分享页 www.iesdouyin.com/share/video/{id} 只回空壳 _ROUTER_DATA。
-  3. 播放地址取 video.bitRateList 里 format=mp4 的成品档（H.264/H.265 + AAC 单文件，免合并）。
-     注意：douyinvod CDN 校验 Referer，必须是 https://www.douyin.com/，否则一律 403。
+短链 v.douyin.com 会 302 到 www.douyin.com/video/{id} 或
+www.iesdouyin.com/share/video/{id}，从落地地址里取出 19 位作品 ID。
+
+详情按下面的顺序逐条尝试，全部失败才报错（实测 2026-10）：
+  1. douyin.com/shipin/{话题号}?modal_id={作品ID} —— 主路径。
+     SEO 落地页服务端直出（React Server Components / pace），__pace_f.push 的
+     字符串参数里带着这个作品的完整 JSON（desc / createTime / authorInfo /
+     video.bitRateList…）。
+  2. iesdouyin.com/shipin/{话题号}?modal_id={作品ID} —— 同一套落地页换到
+     iesdouyin 这个域名（另一套网关），其中一套被限流时另一套往往还能出数据。
+  3. douyin.com/hashtag/{话题号}?modal_id={作品ID} —— 话题页模板，同样是 RSC 直出。
+     实测话题号只是占位，作品由 modal_id 决定（随便给个号也能出数据）。
+  三条通路的落地页不同、域名不同，提取逻辑共用同一套 RSC 解析。
+
+播放地址取 video.bitRateList 里 format=mp4 的成品档（H.264/H.265 + AAC 单文件，免合并）。
+注意：douyinvod CDN 校验 Referer，必须是 https://www.douyin.com/，否则一律 403。
+
+实测走不通、不要再花时间的路径：
+  * www.douyin.com/video/{id}、/discover、/note、/search —— 一律回 JS 反爬壳（jsvmprt）。
+  * /aweme/v1/web/aweme/detail/（douyin 与 iesdouyin 两个域名）—— 补上 ttwid/msToken
+    Cookie 后依然 403，它要 a_bogus 签名。
+  * 分享页 www.iesdouyin.com/share/video/{id}、m.douyin.com/share/video/{id}
+    —— _ROUTER_DATA 里 video_layout / videoInfoRes 都是空壳。
+  * App 接口 aweme.snssdk.com / api.amemv.com / api5-normal-c-lf.amemv.com 的
+    /aweme/v1/aweme/detail/ —— HTTP 200 但响应体是空的。
+  * 老接口 www.iesdouyin.com/web/api/v2/aweme/iteminfo/ —— HTTP 200 空响应体。
+  * 蜘蛛 UA（Baiduspider 等）请求落地页 —— HTTP 503。
 
 取不到时（作品已删/私密、地区限制、落地页没有缓存这条作品）如实抛 SiteUnavailable。
 """
@@ -31,6 +47,22 @@ _DESKTOP_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 _REFERER = "https://www.douyin.com/"
 # SEO 落地页的“话题”占位，实测随便给个值都行，作品由 modal_id 决定
 _SEED_TOPICS = ("0", "1")
+# 话题页(hashtag)的占位号，同样只是占位：实测连 hashtag/1 这种不存在的号也能直出 modal_id 的作品
+_SEED_HASHTAGS = ("1577802263618561", "1")
+
+# 详情通路表：(名称, URL 模板, 占位种子, Referer)
+#   {ident} = 19 位作品 ID，{seed} = 该模板自己的占位参数，逐个种子重试。
+# 三条落地页互不相同（douyin 视频聚合页 / iesdouyin 网关 / douyin 话题页），
+# 解析共用同一套 RSC(__pace_f) 提取逻辑；第 1 条是实测主路径。
+_DETAIL_ROUTES = (
+    ("douyin.com/shipin?modal_id",
+     "https://www.douyin.com/shipin/{seed}?modal_id={ident}", _SEED_TOPICS, _REFERER),
+    ("iesdouyin.com/shipin?modal_id",
+     "https://www.iesdouyin.com/shipin/{seed}?modal_id={ident}", _SEED_TOPICS,
+     "https://www.iesdouyin.com/"),
+    ("douyin.com/hashtag?modal_id",
+     "https://www.douyin.com/hashtag/{seed}?modal_id={ident}", _SEED_HASHTAGS, _REFERER),
+)
 
 _SHORT_RE = re.compile(r"(?:https?://)?(?:v|v\.ies)\.douyin\.com/[A-Za-z0-9_\-]+", re.I)
 _ID_PATTERNS = (
@@ -161,8 +193,9 @@ class DouyinSite(SiteAdapter):
         "7xxxxxxxxxxxxxxxxxx（19 位作品 ID）",
         "复制打开抖音的整段分享文本",
     ]
-    note = ("详情取抖音 SEO 落地页内嵌数据；下载必须带 Referer: https://www.douyin.com/，"
-            "否则 CDN 回 403。私密/已删除作品取不到。")
+    note = ("详情有三条通路依次重试：douyin 视频聚合页 → iesdouyin 同款落地页 → "
+            "douyin 话题页，都是 SEO 页内嵌数据；下载必须带 Referer: "
+            "https://www.douyin.com/，否则 CDN 回 403。私密/已删除作品取不到。")
 
     # ---------- 识别与解析 ----------
     def match(self, text: str) -> bool:
@@ -223,25 +256,28 @@ class DouyinSite(SiteAdapter):
             ident = ref.ident
         if not ident:
             raise SiteUnavailable("缺少抖音作品 ID，请重新复制分享链接")
-        last = ""
-        for topic in _SEED_TOPICS:
-            url = f"https://www.douyin.com/shipin/{topic}?modal_id={ident}"
-            try:
-                res = ctx.net.request(url, headers=_headers(ctx), referer=_REFERER,
-                                      retries=2, timeout=20)
-            except Exception as exc:
-                last = f"HTTP 请求失败：{exc}"
-                continue
-            if res.status != 200:
-                last = f"HTTP {res.status}"
-                continue
-            aweme = extract_aweme(res.text(), ident)
-            if aweme:
-                ref.extra["detail_route"] = f"shipin/{topic}?modal_id="
-                return aweme
-            last = "落地页里没有这条作品的内嵌数据"
+        reasons = []
+        for name, template, seeds, referer in _DETAIL_ROUTES:
+            last = ""
+            for seed in seeds:
+                url = template.format(seed=seed, ident=ident)
+                try:
+                    res = ctx.net.request(url, headers=_headers(ctx), referer=referer,
+                                          retries=2, timeout=20)
+                except Exception as exc:
+                    last = f"HTTP 请求失败（{str(exc)[:80]}）"
+                    continue
+                if res.status != 200:
+                    last = f"HTTP {res.status}"
+                    continue
+                aweme = extract_aweme(res.text(), ident)
+                if aweme:
+                    ref.extra["detail_route"] = name
+                    return aweme
+                last = "落地页里没有这条作品的内嵌数据"
+            reasons.append(f"{name}：{last or '未知原因'}")
         raise SiteUnavailable(
-            f"抖音取不到作品 {ident} 的数据（{last or '未知原因'}）。"
+            f"抖音取不到作品 {ident} 的数据（" + "；".join(reasons) + "）。"
             "常见原因：作品已删除/设为私密、地区限制、或该作品暂未被 SEO 落地页收录。"
         )
 
@@ -285,6 +321,7 @@ class DouyinSite(SiteAdapter):
             kind="image" if images else "video",
             extra={
                 "aweme_id": ref.ident,
+                "detail_route": ref.extra.get("detail_route") or "",
                 "sec_uid": author.get("secUid") or "",
                 "video_uri": video.get("uri") or "",
                 "width": video.get("width") or 0,
@@ -367,7 +404,8 @@ class DouyinSite(SiteAdapter):
         play = single_file_play(
             self, pick["url"], size=pick["size"], duration=duration,
             quality=label,
-            note=(f"来自抖音 SEO 落地页内嵌数据（{pick['gear'] or '默认档'}，{codec_tag}，"
+            note=(f"来自抖音 SEO 落地页内嵌数据（通路：{ref.extra.get('detail_route') or '未知'}；"
+                  f"{pick['gear'] or '默认档'}，{codec_tag}，"
                   f"{pick['width']}x{pick['height']}）。成品单文件含音轨，免合并；"
                   f"下载时必须带 Referer: {_REFERER}，否则 douyinvod CDN 回 403。"),
         )
