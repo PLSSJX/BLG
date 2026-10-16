@@ -84,7 +84,32 @@ def activate_fixed_runtime() -> str:
     return str(found)
 
 
+def resource_dir() -> Path:
+    """打包后的只读资源目录。
+
+    单文件版是解包出来的临时目录（_MEIPASS）；
+    目录版在 PyInstaller 6.x 下是 exe 同级的 _internal/；
+    源码运行就是项目根。--add-data 放进去的东西都在这里。
+    """
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return Path(meipass)
+    internal = app_dir() / "_internal"
+    if internal.is_dir():
+        return internal
+    return Path(__file__).resolve().parent.parent
+
+
 def bootstrapper_path() -> Path:
+    """WebView2 安装器的位置。
+
+    先看程序目录（用户自己丢进去的），再看打包进去的资源目录 ——
+    以前只查前者，结果 --with-webview2 打进去的安装器永远找不到。
+    """
+    for base in (app_dir(), resource_dir()):
+        candidate = base / BOOTSTRAPPER_NAME
+        if candidate.is_file():
+            return candidate
     return app_dir() / BOOTSTRAPPER_NAME
 
 
