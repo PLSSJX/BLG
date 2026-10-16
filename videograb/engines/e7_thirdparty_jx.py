@@ -76,7 +76,11 @@ def _find_media_url(node, depth: int = 0) -> str:
 class ThirdPartyJxEngine(Engine):
     id = "thirdparty_jx"
     name = "第三方解析服务聚合"
-    desc = "轮询多个公开的 B 站解析接口挖取直链。实测这些取流服务当前已全部失效，通道会如实报告每个服务的存活情况，一旦有服务恢复即可直接命中。"
+    desc = ("轮询 7 个公开解析接口挖直链。实测取流接口已全部失效。"
+            "【隐私提醒】启用后会把你在解析的 B 站地址发送给这 7 个第三方服务"
+            "（api.injahow.cn / api.xingzhige.com / api.52vmy.cn / api.pearktrue.cn / "
+            "jx.xmflv.com / tenapi.cn / api.cenguigui.cn）。因为它们已经全部失效，"
+            "默认是关闭的；确实想试可以在这里打开。")
     kind = "thirdparty"
     badge = "已失效"
 

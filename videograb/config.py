@@ -76,10 +76,20 @@ ALL_ENGINES = [
     "html5_durl",       # 5  HTML5 移动端参数组合
     "web_legacy",       # 6  Web 经典免签名兜底
     "pgc_bangumi",      # 7  番剧 / 影视 PGC 接口
-    "thirdparty_jx",    # 8  第三方解析聚合（实测已失效）
+    "thirdparty_jx",    # 8  第三方解析聚合（实测已失效，且会把视频地址发给第三方，默认关闭）
     "tv_api",           # 9  云视听 TV 端（实测已失效）
     "external_tool",    # 10 外部下载器（需另行安装）
 ]
+
+# 默认不启用的通道。
+#
+# thirdparty_jx 会把用户正在解析的 B 站地址发给 7 个互不相干的第三方解析服务
+# （api.injahow.cn / api.xingzhige.com / api.52vmy.cn / api.pearktrue.cn /
+#   jx.xmflv.com / tenapi.cn / api.cenguigui.cn）。而这些服务实测**已经全部失效** ——
+# 也就是说它一分收益都没有，却会把"你在看什么"泄露出去。默认关掉，
+# 想要的人可以在设置里自己打开（那里也写明了这一点）。
+DEFAULT_DISABLED = {"thirdparty_jx"}
+DEFAULT_ENABLED = [e for e in ALL_ENGINES if e not in DEFAULT_DISABLED]
 
 
 @dataclass
@@ -110,7 +120,9 @@ class Settings:
     write_subtitle: bool = False
     write_nfo: bool = False
     # 通道
-    enabled_engines: list = field(default_factory=lambda: list(ALL_ENGINES))
+    enabled_engines: list = field(default_factory=lambda: list(DEFAULT_ENABLED))
+    # 一次性隐私迁移标记：见 _migrate_privacy()
+    privacy_migrated: bool = False
     engine_order: list = field(default_factory=lambda: list(ALL_ENGINES))
     # 界面（默认值与 Kazumi 一致：动态取色 + 跟随系统 + 绿色种子）
     theme_seed: str = "#4CAF50"
@@ -211,6 +223,22 @@ _NUMERIC_FIELDS = {
 }
 
 
+def _migrate_privacy(settings: Settings) -> Settings:
+    """一次性隐私迁移。
+
+    早期版本的 enabled_engines 默认是"全部通道"，其中包含会向第三方外发地址的
+    thirdparty_jx。这里把它从已有配置里摘掉一次；用户之后仍可在设置里重新打开
+    （设置页对该通道有明确的风险说明）。
+    """
+    if getattr(settings, "privacy_migrated", False):
+        return settings
+    enabled = list(getattr(settings, "enabled_engines", None) or [])
+    if enabled:
+        settings.enabled_engines = [e for e in enabled if e not in DEFAULT_DISABLED]
+    settings.privacy_migrated = True
+    return settings
+
+
 def _normalize(settings: Settings) -> Settings:
     """把数值字段夹到合法区间；转不动的就回落到默认值。"""
     for name, (low, high, default) in _NUMERIC_FIELDS.items():
@@ -222,7 +250,7 @@ def _normalize(settings: Settings) -> Settings:
         except (TypeError, ValueError):
             value = default
         setattr(settings, name, max(low, min(high, value)))
-    return settings
+    return _migrate_privacy(settings)
 
 
 def load_settings() -> Settings:
