@@ -231,12 +231,13 @@ def _migrate_privacy(settings: Settings) -> Settings:
     （设置页对该通道有明确的风险说明）。
     """
     if getattr(settings, "privacy_migrated", False):
-        return settings
+        return settings, False
     enabled = list(getattr(settings, "enabled_engines", None) or [])
-    if enabled:
+    changed = any(e in DEFAULT_DISABLED for e in enabled)
+    if changed:
         settings.enabled_engines = [e for e in enabled if e not in DEFAULT_DISABLED]
     settings.privacy_migrated = True
-    return settings
+    return settings, True
 
 
 def _normalize(settings: Settings) -> Settings:
@@ -250,7 +251,8 @@ def _normalize(settings: Settings) -> Settings:
         except (TypeError, ValueError):
             value = default
         setattr(settings, name, max(low, min(high, value)))
-    return _migrate_privacy(settings)
+    settings, _ = _migrate_privacy(settings)
+    return settings
 
 
 def load_settings() -> Settings:
@@ -263,6 +265,20 @@ def load_settings() -> Settings:
     valid = set(Settings().__dict__.keys())
     clean = {k: v for k, v in raw.items() if k in valid}
     try:
-        return _normalize(Settings(**clean))
+        settings = Settings(**clean)
     except TypeError:
         return Settings()
+    # 迁移只在内存里生效是不够的：配置文件会一直留着过期值，
+    # 一旦以后删掉迁移代码就会"复活"。这里顺手写回一次。
+    settings, migrated = _migrate_privacy(settings)
+    settings = _normalize(settings)
+    if migrated:
+        try:
+            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            temporary = CONFIG_PATH.with_suffix(CONFIG_PATH.suffix + ".tmp")
+            temporary.write_text(json.dumps(asdict(settings), ensure_ascii=False, indent=2),
+                                 encoding="utf-8")
+            os.replace(temporary, CONFIG_PATH)
+        except OSError:
+            pass
+    return settings
