@@ -402,16 +402,16 @@ def main() -> int:
         ensure_ffmpeg()
     if args.with_ytdlp:
         ensure_ytdlp(python)
+    # 必须排在 build() 之前：build() 靠 WEBVIEW2_BOOTSTRAP 决定要不要 --add-data，
+    # 放到后面会导致安装包里有、但 onedir / 单文件版里没有。
+    if args.with_webview2 or args.with_webview2_full:
+        ensure_webview2(full=args.with_webview2_full)
 
     for mode in modes:
         # 目录版做成桌面应用（无控制台），单文件版保留控制台便于命令行使用
         windowed = args.windowed
         target = build(python, mode, icon, args.with_ytdlp, windowed=windowed)
         report(target, mode)
-
-    # WebView2 安装器放在 dist 里，安装包会把它一起带上
-    if args.with_webview2 or args.with_webview2_full:
-        ensure_webview2(full=args.with_webview2_full)
 
     if args.installer:
         # 安装程序内部自己会打一份目录版，这里就不重复打了
