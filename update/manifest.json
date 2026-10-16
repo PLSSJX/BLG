@@ -1,6 +1,6 @@
 {
  "version": "2.4.1",
- "generated": "2026-10-16 12:14:09 UTC",
+ "generated": "2026-10-16 12:18:12 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -108,8 +108,8 @@
   },
   {
    "path": "videograb/config.py",
-   "sha256": "8f0add46cad4cbe6efec0a9b58930735f219929f1e1de7e7a794a4e2671c442a",
-   "size": 10696
+   "sha256": "1ffa434b96704b00fb079d2bc9d06aeb33720a90eea5994171fd99e4e9640b40",
+   "size": 11468
   },
   {
    "path": "videograb/desktop.py",
