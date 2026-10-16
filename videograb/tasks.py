@@ -554,8 +554,7 @@ class TaskManager:
             "site": ref.site, "platform": site.name,
             "quality": qn_short(task.qn), "engine": task.engine_used,
         }) or ("music" if info.media == "music" else "video"))
-        directory = ctx.download_dir() / base
-        directory.mkdir(parents=True, exist_ok=True)
+        directory = _own_directory(ctx.download_dir() / base)
         task.directory = str(directory)
 
         multi = len(info.pages) > 1
@@ -970,6 +969,45 @@ class TaskManager:
                                    "name": path.name, "size": path.stat().st_size})
             except Exception as exc:
                 task.note(f"NFO 写入失败：{exc}")
+
+
+# 程序自己创建的下载目录里会放一个这样的标记文件。
+# 有了它才能区分"这是我上次下载留下的目录"和"用户自己的同名文件夹" ——
+# 后者绝不能被写入、更不能被删除。
+DIR_MARKER = ".videograb"
+
+
+def _is_our_directory(path) -> bool:
+    return (path / DIR_MARKER).is_file()
+
+
+def _own_directory(path):
+    """返回一个可以安全写入的目录。
+
+    - 目录不存在 → 建出来并打标记
+    - 目录存在且有标记 → 是我们上次建的，直接复用（断点续传要靠它）
+    - 目录存在但没标记 → **是用户自己的文件夹**，换一个带序号的名字，
+      绝不往里写。否则下载会覆盖/截断里面的同名文件。
+    """
+    from pathlib import Path as _Path
+
+    path = _Path(path)
+    if path.is_dir() and _is_our_directory(path):
+        return path
+    if path.is_dir():
+        # 空目录也当成用户的：宁可多建一个，也不要动别人的东西
+        for index in range(2, 100):
+            candidate = path.with_name(f"{path.name} ({index})")
+            if not candidate.exists():
+                candidate.mkdir(parents=True, exist_ok=True)
+                (candidate / DIR_MARKER).touch()
+                return candidate
+    path.mkdir(parents=True, exist_ok=True)
+    try:
+        (path / DIR_MARKER).touch()
+    except OSError:
+        pass
+    return path
 
 
 def _platform_referer(task: Task, ctx) -> str:

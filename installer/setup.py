@@ -79,6 +79,13 @@ def install(target: Path, progress=None, make_shortcuts: bool = True,
 
     with zipfile.ZipFile(payload) as archive:
         members = [m for m in archive.infolist() if not m.is_dir()]
+        # 解包前先检查会不会盖掉用户自己的文件
+        clash = conflicting_files(target, members)
+        if clash:
+            preview = "、".join(clash[:5]) + ("…" if len(clash) > 5 else "")
+            raise RuntimeError(
+                "安装目录里有 " + str(len(clash)) + " 个同名文件会被覆盖，已中止安装：\n"
+                + preview + "\n\n请换一个空文件夹，或用默认安装位置。")
         total = len(members)
         for index, member in enumerate(members, start=1):
             archive.extract(member, target)
@@ -151,6 +158,29 @@ def _installed_names(target: Path) -> set | None:
         return set(names) if isinstance(names, list) else None
     except (OSError, ValueError):
         return None
+
+
+def conflicting_files(target: Path, members) -> list:
+    r"""找出解包时会被**覆盖**的、不属于本程序的文件。
+
+    装到一个已有内容的文件夹里时（比如把路径选成 D:\Tools），
+    payload 里的文件会直接盖掉同名的用户文件。这里先把冲突列出来，
+    让安装中止而不是悄悄覆盖。
+    """
+    names = _installed_names(target) or set()
+    bad: list = []
+    for member in members:
+        rel = str(member.filename).replace("\\", "/")
+        if rel.endswith("/"):
+            continue
+        dest = target / rel
+        if not dest.is_file():
+            continue
+        top = rel.split("/")[0]
+        if rel in names or top in APP_OWNED_NAMES:
+            continue          # 是我们自己的文件（覆盖安装 / 升级），正常
+        bad.append(rel)
+    return bad
 
 
 def uninstall_existing(target: Path) -> list:

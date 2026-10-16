@@ -1,6 +1,6 @@
 {
- "version": "2.4.5",
- "generated": "2026-10-16 17:32:55 UTC",
+ "version": "2.4.6",
+ "generated": "2026-10-16 17:42:07 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -93,7 +93,7 @@
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "4102d9322e67ba26a3c76a62f1ba647ed7c66216c35b5cce2ecda69e341dc011",
+   "sha256": "6b10a86e97db9bbc668647fb25c01d81101b43667a9e46eff0ef47054409fce5",
    "size": 308
   },
   {
@@ -313,8 +313,8 @@
   },
   {
    "path": "videograb/tasks.py",
-   "sha256": "784113fc2b228d4aecb8b3df2c229a8b2d0fdbb6b01656f659124f554d52a18b",
-   "size": 45084
+   "sha256": "e7081327ffce36dda60862ce310c0101b24ad30ee0064f67963386c964a047f3",
+   "size": 46460
   },
   {
    "path": "videograb/updater.py",
@@ -343,9 +343,9 @@
   }
  ],
  "installer": {
-  "name": "Video-Grabing-Setup-2.4.5.exe",
-  "size": 44215301,
-  "sha256": "d7ecbcb8159c18cd68f1ab90a23093cd9a0c808956abcc5fb4aedb9ae88cc25a",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.4.5/Video-Grabing-Setup-2.4.5.exe"
+  "name": "Video-Grabing-Setup-2.4.6.exe",
+  "size": 44219218,
+  "sha256": "5e41430f496f5c20dbc3a659871726e19269db379f7a4d1529c04edb517eba01",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.4.6/Video-Grabing-Setup-2.4.6.exe"
  }
 }
