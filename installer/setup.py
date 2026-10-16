@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
@@ -78,6 +79,18 @@ def install(target: Path, progress=None, make_shortcuts: bool = True,
 
     if uninstaller and uninstaller.exists():
         shutil.copy2(uninstaller, target / W.UNINSTALL_NAME)
+
+    # 记下"这次到底装了哪些文件"。卸载程序只删清单里的东西 ——
+    # 用户如果把这个程序装进了自己的目录（比如 D:\Tools），
+    # 卸载时绝不能把目录里原有的文件一起带走。
+    try:
+        listed = sorted({m.filename.replace("\\", "/") for m in members})
+        listed.append(W.UNINSTALL_NAME)
+        (target / W.MANIFEST_NAME).write_text(
+            json.dumps({"files": listed, "version": APP_VERSION}, ensure_ascii=False, indent=1),
+            encoding="utf-8")
+    except OSError:
+        pass
 
     exe = target / W.EXE_NAME
     created = []

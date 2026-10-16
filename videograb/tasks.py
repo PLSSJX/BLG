@@ -262,8 +262,52 @@ class TaskManager:
                 self._order.remove(task_id)
         self._save_history()
         if delete_files and task.directory:
-            shutil.rmtree(task.directory, ignore_errors=True)
+            self._delete_task_files(task)
         return True
+
+    def _delete_task_files(self, task: Task) -> None:
+        """只删这个任务自己产出的文件。
+
+        以前这里是无条件 shutil.rmtree(task.directory) —— 而那个目录是
+        「下载目录 / 清洗后的标题」。如果这个文件夹本来就存在（用户自己建的，
+        或者之前下过同名视频），里面的东西会被一起删掉。
+        现在只删记录在 task.files 里的产物 + 本程序自己的中间文件，
+        最后用 rmdir 收尾 —— 它只在目录**空了**的时候才成功。
+        """
+        from pathlib import Path as _Path
+
+        directory = _Path(task.directory)
+        if not directory.is_dir():
+            return
+        for entry in (task.files or []):
+            target = entry.get("path") if isinstance(entry, dict) else None
+            if not target:
+                continue
+            path = _Path(target)
+            # 再确认一次：要删的必须真的在这个任务的目录里
+            try:
+                path.resolve().relative_to(directory.resolve())
+            except (ValueError, OSError):
+                continue
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        # 本程序自己的中间产物
+        for pattern in ("_parts", "*.bgpart", "*.part"):
+            for leftover in directory.glob(pattern):
+                try:
+                    if leftover.is_dir():
+                        shutil.rmtree(leftover, ignore_errors=True)
+                    else:
+                        leftover.unlink(missing_ok=True)
+                except OSError:
+                    pass
+        # 只有空了才删得掉；里面还有别的东西就原样留着
+        try:
+            directory.rmdir()
+        except OSError:
+            pass
 
     def retry(self, task_id: str) -> Task | None:
         old = self.get(task_id)

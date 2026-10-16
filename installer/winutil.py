@@ -14,6 +14,8 @@ PUBLISHER = "PLSSJX"
 EXE_NAME = "Video-Grabing.exe"
 UNINSTALL_NAME = "uninstall.exe"
 UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Video-Grabing"
+# 安装时写下的文件清单，卸载程序只删清单里的东西
+MANIFEST_NAME = "installed-files.json"
 
 
 # CSIDL_LOCAL_APPDATA —— 环境变量缺失时用它兜底
