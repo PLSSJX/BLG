@@ -1,6 +1,6 @@
 {
  "version": "2.1.0",
- "generated": "2026-10-16 09:24:50 UTC",
+ "generated": "2026-10-16 09:28:34 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -328,14 +328,14 @@
   },
   {
    "path": "videograb/webview_runtime.py",
-   "sha256": "48508a14c506ea06c30a6f923861323064faa5e05aa0ccd8a2a14f13546af044",
-   "size": 3955
+   "sha256": "098ae73c6b25cb32074598b9f9da87d2ae65ef44f950446776bff81461160d71",
+   "size": 4857
   }
  ],
  "installer": {
   "name": "Video-Grabing-Setup-2.1.0.exe",
-  "size": 46769535,
-  "sha256": "12ba4703c1d3d1fe27f244b22073dba7bd0f27b0f703de4c385a3a1b2f282951",
+  "size": 46767786,
+  "sha256": "faafaf573edd4ccebddba29332387e3ec0612bb71b420dc6aa8fd8297424ec59",
   "url": "https://github.com/PLSSJX/BLG/releases/download/v2.1.0/Video-Grabing-Setup-2.1.0.exe"
  }
 }
