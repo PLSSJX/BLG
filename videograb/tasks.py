@@ -436,8 +436,16 @@ class TaskManager:
                 return bool(candidate.audios)
             return bool(candidate.videos or candidate.durl)
 
-        # auto 模式比较两条通道的实际画质再决定（未登录时 durl 的 720P 反而高于 DASH 的 480P）
-        wanted = 2 if task.mode == "auto" else 1
+        # auto 模式要把**所有能连上的通道**都比一遍，再挑画质最高的那条。
+        #
+        # 以前这里写的是 wanted = 2 —— 比较两条就停。问题是通道顺序里前两条通常是
+        # web_wbi(DASH 480P) 和 web_durl(单文件 720P)，于是自动模式的结果永远是
+        # 这两条里较高的那个；而排在第 10 位的 yt-dlp（实测能拿 1080P）**根本轮不到
+        # 参与比较**。用户看到的"自动 = 720P"就是这么来的。
+        #
+        # 上限设 8 是为了兜住极端情况：通道本身不可用时 available() 会快速返回，
+        # 真正发请求的只有能用的那几条。
+        wanted = min(len(engine_ids), 8) if task.mode == "auto" else 1
 
         for engine_id in engine_ids:
             engine = get_engine(engine_id)
@@ -472,10 +480,15 @@ class TaskManager:
 
         if len(candidates) > 1:
             best = max(candidates, key=lambda item: item[1].best_height())
+            # 把参选的每一条和它的画质都列出来。以前只写一句"对比 N 条通道"，
+            # 用户没法判断它到底比了什么、为什么选这条。
+            board = "、".join(f"{c[3]} {c[1].best_height() or '?'}P" for c in candidates)
+            task.note(f"画质对比（{len(candidates)} 条）：{board}")
             if best[2] != task.engine_used:
-                task.note(f"对比 {len(candidates)} 条通道后改用「{best[3]}」"
-                          f"（{best[1].best_height()}P > {play.best_height()}P）")
+                task.note(f"改用「{best[3]}」（{best[1].best_height()}P > {play.best_height()}P）")
                 info, play, task.engine_used = best[0], best[1], best[2]
+            else:
+                task.note(f"「{best[3]}」画质最高，保持不变")
 
         page = info.page_by_index(ref.p) or (info.pages[0] if info.pages else None)
         if page is None:
