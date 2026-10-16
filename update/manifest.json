@@ -1,6 +1,6 @@
 {
  "version": "2.0.0",
- "generated": "2026-10-16 05:14:53 UTC",
+ "generated": "2026-10-16 05:17:41 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -328,9 +328,9 @@
   }
  ],
  "installer": {
-  "name": "Video-Grabing-Setup-1.1.3.exe",
-  "size": 44868728,
-  "sha256": "2ca4689cb650f3f31d90380f6262fdc3fc3b7f4ce2ba0d3a0588fcb7e3b3bf16",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.0.0/Video-Grabing-Setup-1.1.3.exe"
+  "name": "Video-Grabing-Setup-2.0.0.exe",
+  "size": 44996173,
+  "sha256": "9fe7e240278e79d3d844c6bd04bcbaec95af014d2f82b3040bf4487f9757345f",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.0.0/Video-Grabing-Setup-2.0.0.exe"
  }
 }
