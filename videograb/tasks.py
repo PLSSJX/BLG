@@ -269,6 +269,14 @@ class TaskManager:
         old = self.get(task_id)
         if not old:
             return None
+        # 转换任务不能走 submit()：它的 raw_input 只是文件名，
+        # 而且 mode="convert" 不是合法的下载模式。以前重试会变成一个
+        # 去解析"歌名.ncm"的下载任务，用户的转换意图直接丢了。
+        if old.kind == "convert":
+            created = self.submit_convert([old.local_path],
+                                          target=old.target or "copy",
+                                          bitrate=old.bitrate or "")
+            return created[0] if created else None
         return self.submit(old.raw_input, engine=old.engine, qn=old.qn,
                            mode=old.mode, page=old.page)
 
@@ -623,6 +631,7 @@ class TaskManager:
                 directory = Path(task.directory)
                 self._download_hls(task, hls_stream, directory, stem, quality_tag, play,
                                    height=hls_stream.height, label="HLS 单链路")
+                return      # 必须返回：下面还会取 durls[0]，HLS 路径没有 durl
             else:
                 raise RuntimeError("该通道没有返回单文件地址（durl）")
 
@@ -639,9 +648,12 @@ class TaskManager:
         part_dir = directory / "_parts"
         part_dir.mkdir(parents=True, exist_ok=True)
 
+        # 先写临时名，成功了再改名。以前直接写成正式文件名，
+        # 中途失败/取消就会在下载目录里留下一个 0 字节或半截的"成品"。
+        staging = final.with_suffix(final.suffix + ".part")
         total_bytes = sum(d.size for d in durls) or 0
         try:
-            with open(final, "wb") as out:
+            with open(staging, "wb") as out:
                 for idx, item in enumerate(durls, start=1):
                     if task.cancel_event.is_set():
                         raise DownloadCancelled("用户已取消")
@@ -650,9 +662,13 @@ class TaskManager:
                     with open(part, "rb") as fh:
                         shutil.copyfileobj(fh, out, 1 << 20)
                     part.unlink(missing_ok=True)
+        except BaseException:
+            staging.unlink(missing_ok=True)      # 半截文件没有保留价值
+            raise
         finally:
             shutil.rmtree(part_dir, ignore_errors=True)
 
+        os.replace(staging, final)
         task.files.append({"kind": "video", "path": str(final),
                            "name": final.name, "size": final.stat().st_size})
         task.note(f"写入完成：{final.name}（{final.stat().st_size / 1048576:.1f} MB）")
@@ -913,7 +929,9 @@ def _platform_referer(task: Task, ctx) -> str:
             return ""
     # raw_input 通常已是完整地址，直接往模板里塞会拼出
     # "https://www.bilibili.com/video/https://www.bilibili.com/video/BV..."
-    ident = (task.bvid or task.ident or "").strip()
+    # Task 上没有 bvid/ident 字段（以前这里直接点属性，导致 B 站任务
+    # 一走到这条分支就 AttributeError，整条下载链路全挂）—— 用 getattr 兜底。
+    ident = (getattr(task, "bvid", "") or getattr(task, "ident", "") or "").strip()
     if not ident:
         raw = (task.raw_input or "").strip()
         if raw.startswith("http"):

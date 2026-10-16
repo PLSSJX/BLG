@@ -57,7 +57,14 @@ def needs_vip(qn: int) -> bool:
 def best(qns) -> int:
     """从一组 qn 中挑出最高画质。"""
     qns = [int(q) for q in qns if q]
-    return max(qns, key=weight) if qns else 0
+    if not qns:
+        return 0
+    weights = [weight(q) for q in qns]
+    if not any(weights):
+        # 音乐平台的档位是 1..4（1=标准 … 4=Hi-Res），weight() 只认 B 站的 qn 码，
+        # 全为 0 时 max() 会退化成"取第一个"，也就是永远选最低档。
+        return max(qns)
+    return max(qns, key=weight)
 
 
 def rank_from_resolution(width: int, height: int, fps: float = 0.0) -> int:

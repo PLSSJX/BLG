@@ -421,7 +421,7 @@ class KugouSite(SiteAdapter):
         play.media = "music"
         play.ext = item["ext"]
         play.duration = duration
-        play.accept_quality = sorted(got)
+        play.accept_quality = sorted(got, reverse=True)
         play.accept_desc = [_TIERS[q][0] for q in sorted(got)]
 
         # 这首歌"有这一版、但当前身份没拿到"的档位才算虚标；本来就没有的版本不列

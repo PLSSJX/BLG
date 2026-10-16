@@ -683,11 +683,24 @@ class Handler(BaseHTTPRequestHandler):
         status = 200
         if range_header:
             match = re.match(r"bytes=(\d*)-(\d*)", range_header)
-            if match:
-                if match.group(1):
-                    start = int(match.group(1))
-                if match.group(2):
-                    end = min(int(match.group(2)), size - 1)
+            if match and (match.group(1) or match.group(2)):
+                first, second = match.group(1), match.group(2)
+                if not first:
+                    # 后缀形式 bytes=-N：要的是**最后** N 字节。
+                    # 以前当成"从 0 开始"，会返回文件开头的内容，完全不是请求方要的。
+                    count = int(second)
+                    start = max(0, size - count) if count else 0
+                    end = size - 1
+                else:
+                    start = int(first)
+                    end = min(int(second), size - 1) if second else size - 1
+                if start > size - 1:
+                    # 起点越界：按规范回 416，而不是发出 start > end 的非法 Content-Range
+                    self.send_response(416)
+                    self.send_header("Content-Range", f"bytes */{size}")
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
                 status = 206
         length = max(0, end - start + 1)
         self.send_response(status)

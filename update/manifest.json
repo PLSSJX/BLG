@@ -1,6 +1,6 @@
 {
- "version": "2.0.0",
- "generated": "2026-10-16 05:17:41 UTC",
+ "version": "2.0.1",
+ "generated": "2026-10-16 05:28:27 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -31,8 +31,8 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "4342fc71642574c9c8a3055e9253de982f59d686a02fa531efe0518ce25494d5",
-   "size": 59215
+   "sha256": "b50de62e8fe37c3a75d63fa391baf0d1ddbec5980a949490784ecc17f516681a",
+   "size": 59520
   },
   {
    "path": "web/js/theme.js",
@@ -93,7 +93,7 @@
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "ff52f71b0339b1aafce4f81ec0922f5600b96a3f14d23d5ad124a5c431ffae57",
+   "sha256": "d23ed889ccb53f0bfd04ba2fd5f30f1bb184ea87f9515809a006ac78cba1806f",
    "size": 308
   },
   {
@@ -193,8 +193,8 @@
   },
   {
    "path": "videograb/localfile.py",
-   "sha256": "02d518198ad4c6e4b94f3ac36662f4b02400c02a7257a3e51cf930d2b15b7d93",
-   "size": 3092
+   "sha256": "b26bbb4b46fc9114c19c5d388674ce006be004d94ff87796bb86f8a81d61eddb",
+   "size": 3462
   },
   {
    "path": "videograb/models.py",
@@ -208,8 +208,8 @@
   },
   {
    "path": "videograb/music/decrypt.py",
-   "sha256": "57aa0fe4a82c7ea7bb34f7a70cf8cdec7f00521c2d4d25dc7a84a561ee60d6d4",
-   "size": 38031
+   "sha256": "648c06346c4626a9d181b9e595840fdf99a63b5e4fddcb42971ba2e977ea3d46",
+   "size": 38536
   },
   {
    "path": "videograb/music/transcode.py",
@@ -228,8 +228,8 @@
   },
   {
    "path": "videograb/quality.py",
-   "sha256": "41dc09316217b9621b740d0b8213a0fa8d33d6bddcc4a079ba0a96c417ad08b7",
-   "size": 4301
+   "sha256": "939f8a715af77154fc019dd1597fd210e03cce3cf995075a74951e3e3d979da3",
+   "size": 4601
   },
   {
    "path": "videograb/refs.py",
@@ -238,8 +238,8 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "536fcd0f858a99999157979046c02a1aa357be0a22e41a15052fe7259c89cc95",
-   "size": 33778
+   "sha256": "3f1acc47b1822d05bf95daae12d72ca0d45d0109f5c18a30915992e4165ed358",
+   "size": 34590
   },
   {
    "path": "videograb/sites/__init__.py",
@@ -268,13 +268,13 @@
   },
   {
    "path": "videograb/sites/kugou.py",
-   "sha256": "76bd2924399ef4bf6998453a7039743bd1c8ddb6eeb8de6370561946fcadee7c",
-   "size": 19767
+   "sha256": "fb9f679a8920990fc4f087ce653e84280ae66784a13505e69209146120fe2d23",
+   "size": 19781
   },
   {
    "path": "videograb/sites/kuwo.py",
-   "sha256": "8275756ecf21c1b020ea973d1a650220f1bec9c2878257466679eec174145d6f",
-   "size": 23931
+   "sha256": "7bc9fdc825be075426d635b9266e1e8f1438501181e2c3f5b69a312ebc9c80a3",
+   "size": 24255
   },
   {
    "path": "videograb/sites/mgtv.py",
@@ -283,8 +283,8 @@
   },
   {
    "path": "videograb/sites/qqmusic.py",
-   "sha256": "017c9d0bba4663171ab912b9b87da0ffb781036759b0a89650be621c2da136ed",
-   "size": 16578
+   "sha256": "19f0fba3adf871ff4874be79ea824a8a17a74c0c53fa5dd4b28cc751eea1c117",
+   "size": 16592
   },
   {
    "path": "videograb/sites/vqq.py",
@@ -293,8 +293,8 @@
   },
   {
    "path": "videograb/sites/wangyi.py",
-   "sha256": "211606de50a8c83daa0e79f1b53e06299acb514343d7a1de5dbcadf0467148a0",
-   "size": 15076
+   "sha256": "5ac0efe67f904d134fa59c0d07a1a78b9ff27b3f376caaaf151cc44f887b8d25",
+   "size": 15090
   },
   {
    "path": "videograb/sites/xiaohongshu.py",
@@ -308,8 +308,8 @@
   },
   {
    "path": "videograb/tasks.py",
-   "sha256": "e12ed4c116ca6cfaab402f5bd275463116f052f371f5db8df444ac026e969d2e",
-   "size": 41030
+   "sha256": "295c11be95f5a543dab8f6b00d4218f4fbb9ee7ece274b27eb02c9cb52e2e83a",
+   "size": 42301
   },
   {
    "path": "videograb/updater.py",
@@ -331,6 +331,6 @@
   "name": "Video-Grabing-Setup-2.0.0.exe",
   "size": 44996173,
   "sha256": "9fe7e240278e79d3d844c6bd04bcbaec95af014d2f82b3040bf4487f9757345f",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.0.0/Video-Grabing-Setup-2.0.0.exe"
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.0.1/Video-Grabing-Setup-2.0.0.exe"
  }
 }

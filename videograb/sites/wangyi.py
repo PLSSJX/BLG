@@ -305,7 +305,7 @@ class NeteaseSite(SiteAdapter):
                                 quality=_TIERS[chosen][1], ext=ext, referer=_REFERER)
         play.media = "music"
         play.ext = ext
-        play.accept_quality = sorted(got)
+        play.accept_quality = sorted(got, reverse=True)
         play.accept_desc = [_TIERS[q][1] for q in sorted(got)]
 
         # 这首歌"有、但当前身份没拿到"的档位才算虚标；本来就没有的版本不列进去

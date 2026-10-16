@@ -68,7 +68,12 @@ export function renderHome(view) {
 function buildLocalCard() {
   store.localFiles = store.localFiles || [];
   const list = h('div', { class: 'local-list' });
-  const targetSelect = h('select', { class: 'select' });
+  // 记住用户选的输出格式：卡片会因为「文件列表变化 / 格式列表异步返回」重建，
+  // 不记的话每次重建都会被重置回"保持原格式"。
+  const targetSelect = h('select', {
+    class: 'select',
+    onchange: (event) => { store.localTarget = event.target.value; },
+  });
   const status = h('div', { class: 'card-desc', style: { marginTop: '8px' } });
   let formats = store.localFormats;
 
@@ -121,6 +126,7 @@ function buildLocalCard() {
     const paths = store.localFiles.map((i) => i.path);
     if (!paths.length) { toast('请先选择文件'); return; }
     try {
+      store.localTarget = targetSelect.value;
       const result = await api.convertLocalFiles(paths, targetSelect.value);
       toast('已建立 ' + result.count + ' 个转换任务，进度见「历史记录」');
       store.localFiles = [];

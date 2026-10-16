@@ -1026,6 +1026,15 @@ def decrypt(path, dest_dir=None, progress=None) -> dict:
         except OSError:
             pass
         raise
+    if not fmt or fmt not in _FORMAT_EXT:
+        # 没有任何音频数据时 _decode_stream 会返回空串。以前这里直接
+        # _FORMAT_EXT[fmt] 抛 KeyError —— 既不符合"失败抛 ValueError"的约定，
+        # 又因为异常在清理逻辑之外，会永久留下一个 0 字节的 .vgpart。
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise ValueError("文件损坏：里面没有可用的音频数据")
     if hint not in _FORMAT_EXT or hint != fmt:
         hint = ""
     final = _unique_path(out_dir / f"{src.stem}{_FORMAT_EXT.get(hint) or _FORMAT_EXT[fmt]}")

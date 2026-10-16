@@ -333,7 +333,7 @@ class QQMusicSite(SiteAdapter):
                                 quality=_TIERS[chosen][2], ext=ext, referer=_REFERER)
         play.media = "music"
         play.ext = ext
-        play.accept_quality = sorted(got)
+        play.accept_quality = sorted(got, reverse=True)
         play.accept_desc = [_TIERS[t][2] for t in sorted(got)]
 
         missing = [t for t in sorted(_TIERS) if t not in got]

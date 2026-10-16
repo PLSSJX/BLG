@@ -235,7 +235,13 @@ def _nuxt_songinfo(html: str) -> dict:
     start = obj_text.find("{")
     if start < 0:
         return {}
-    obj, _ = _js_parse(obj_text, start, env)
+    try:
+        obj, _ = _js_parse(obj_text, start, env)
+    except ValueError:
+        # __NUXT__ 里出现了迷你解析器不认识的字面量时，以前会让异常冒到调用方，
+        # 于是 "or _regex_songinfo(html)" 这个兜底永远不会被执行。
+        # 这里返回空字典，把机会让给正则兜底。
+        return {}
     data = (obj or {}).get("data") or []
     for block in data:
         if isinstance(block, dict) and isinstance(block.get("songinfo"), dict):
@@ -547,7 +553,7 @@ class KuwoSite(SiteAdapter):
         play.media = "music"
         play.ext = item["ext"]
         play.duration = duration
-        play.accept_quality = sorted(got)
+        play.accept_quality = sorted(got, reverse=True)
         play.accept_desc = [got[q].get("label") or _TIERS[q][0] for q in sorted(got)]
         play.phantom_quality = sorted(q for q in advertised if q not in got)
 

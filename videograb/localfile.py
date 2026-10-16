@@ -22,6 +22,12 @@ FILTER = (
 
 
 def _run_powershell(script: str, timeout: int = 300) -> tuple[bool, str]:
+    """跑一段 PowerShell。返回 (是否成功执行, 输出)。
+
+    注意区分两种"没输出"：**进程起不来**才该换下一个 shell；
+    进程正常退出但没有输出（用户点了取消）说明对话框已经弹过了，
+    再换 pwsh 跑一遍就会第二次弹窗 —— 装了 PowerShell 7 的机器上点取消必现。
+    """
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     for shell in ("powershell", "pwsh"):
         try:
@@ -31,10 +37,8 @@ def _run_powershell(script: str, timeout: int = 300) -> tuple[bool, str]:
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         except (OSError, subprocess.SubprocessError):
-            continue
-        out = (proc.stdout or b"").decode("utf-8", "replace").strip()
-        if out:
-            return True, out
+            continue        # 这个 shell 不可用，换下一个
+        return True, (proc.stdout or b"").decode("utf-8", "replace").strip()
     return False, ""
 
 
