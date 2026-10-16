@@ -48,6 +48,11 @@ def _existing_instance(host: str, port: int) -> str:
 
 
 def cmd_serve(args) -> int:
+    # 必须在创建任何窗口之前声明 DPI 感知，否则 Windows 会把整个窗口位图拉伸，
+    # 在非 100% 缩放的机器上界面就是糊的。
+    from .dpi import enable as _enable_dpi
+    dpi_mode = _enable_dpi()
+
     ctx = Context()
     if args.port:
         ctx.settings.__dict__["_port"] = args.port

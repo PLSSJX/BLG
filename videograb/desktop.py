@@ -23,6 +23,25 @@ WINDOW_SIZE = (1480, 960)
 MIN_SIZE = (1040, 720)
 
 
+def fit_to_screen(width: int, height: int, margin: int = 80) -> tuple[int, int]:
+    """把窗口尺寸收敛到屏幕可用区域内。
+
+    高缩放的笔记本上（比如 1366x768 @125%）一个 960 高的窗口会超出屏幕，
+    标题栏和底部按钮都会被挤到看不见的地方。这里按实际工作区收一下，
+    但不会小于 MIN_SIZE —— 屏幕实在太小就让它超出去，总比缩到没法用强。
+    """
+    try:
+        from .dpi import work_area
+        screen_w, screen_h = work_area()
+    except Exception:
+        return (int(width), int(height))
+    if not screen_w or not screen_h:
+        return (int(width), int(height))
+    width = max(MIN_SIZE[0], min(width, screen_w - margin))
+    height = max(MIN_SIZE[1], min(height, screen_h - margin))
+    return (int(width), int(height))
+
+
 def wait_until_ready(url: str, timeout: float = 25.0) -> bool:
     """等服务真的开始监听再开窗口，避免用户看到一片"无法连接"。"""
     deadline = time.time() + timeout
@@ -60,9 +79,10 @@ def _run_webview(url: str, on_closed=None, ctx=None) -> bool:
         print("  没有内置窗口组件（pywebview 不可用）：" + str(exc)[:120])
         return False
     try:
+        win_w, win_h = fit_to_screen(*WINDOW_SIZE)
         window = webview.create_window(
             WINDOW_TITLE, url,
-            width=WINDOW_SIZE[0], height=WINDOW_SIZE[1],
+            width=win_w, height=win_h,
             min_size=MIN_SIZE,
             text_select=True,
             confirm_close=False,
@@ -107,7 +127,7 @@ def _run_edge_app(url: str) -> bool:
     try:
         proc = subprocess.Popen([
             edge, "--app=" + url,
-            "--window-size=%d,%d" % WINDOW_SIZE,
+            "--window-size=%d,%d" % fit_to_screen(*WINDOW_SIZE),
             "--user-data-dir=" + str(_storage_dir() / "edge-app"),
             "--no-first-run", "--no-default-browser-check",
         ])
