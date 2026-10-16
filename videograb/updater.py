@@ -464,3 +464,107 @@ def launch_installer(path: str) -> dict:
     except OSError as exc:
         raise UpdaterError("启动安装包失败：" + str(exc)[:120]) from None
     return {"ok": True, "detail": "已启动安装程序，按提示完成后重新打开即可"}
+
+
+HELPER_NAME = "auto-update.ps1"
+
+
+def _helper_script(installer: Path, target_dir: Path, exe: Path, pid: int) -> str:
+    """等主程序退出 → 静默安装 → 重新启动。
+
+    这个脚本必须在主程序**之外**跑：安装程序要替换正在运行的文件，
+    主程序不退出去就会替换失败。所以流程是：
+      1. 主程序启动本脚本后立刻退出
+      2. 脚本等主程序的进程真正消失
+      3. 静默安装到原目录（就地升级）
+      4. 重新拉起主程序
+    """
+    def q(value) -> str:
+        return "'" + str(value).replace("'", "''") + "'"
+
+    return "\n".join([
+        "$ErrorActionPreference = 'Continue'",
+        "$pidToWait = " + str(int(pid)),
+        "$installer = " + q(installer),
+        "$target    = " + q(target_dir),
+        "$exe       = " + q(exe),
+        "$log       = " + q(installer.parent / "auto-update.log"),
+        "",
+        "function Write-Log($m) { Add-Content -LiteralPath $log -Value ((Get-Date).ToString('HH:mm:ss') + ' ' + $m) }",
+        "Write-Log 'helper started'",
+        "# 等主程序退出（最多 120 秒）",
+        "$deadline = (Get-Date).AddSeconds(120)",
+        "while ((Get-Date) -lt $deadline) {",
+        "    if (-not (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue)) { break }",
+        "    Start-Sleep -Milliseconds 400",
+        "}",
+        "Start-Sleep -Milliseconds 800",
+        "Write-Log 'main process gone, installing'",
+        "# 静默安装到原目录：/D 必须是最后一个参数",
+        "$args = @('/S', ('/D=' + $target))",
+        "try {",
+        "    $p = Start-Process -FilePath $installer -ArgumentList $args -Wait -PassThru",
+        "    Write-Log ('installer exit ' + $p.ExitCode)",
+        "} catch { Write-Log ('installer failed: ' + $_.Exception.Message) }",
+        "Start-Sleep -Milliseconds 1200",
+        "if (Test-Path -LiteralPath $exe) {",
+        "    try { Start-Process -FilePath $exe | Out-Null; Write-Log 'relaunched' }",
+        "    catch { Write-Log ('relaunch failed: ' + $_.Exception.Message) }",
+        "} else { Write-Log ('exe missing after install: ' + $exe) }",
+        "Start-Sleep -Seconds 2",
+        "Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue",
+    ])
+
+
+def apply_auto_update(info: dict | None = None, progress=None) -> dict:
+    """下载（如需要）→ 起一个后台脚本 → 由脚本完成安装与重启。
+
+    调用方在拿到返回值后应当立刻退出程序，否则安装程序替换不了文件。
+    """
+    from .config import BASE_DIR, is_frozen
+
+    if not is_frozen():
+        raise UpdaterError("源码方式运行时不支持自动更新，请手动拉取最新代码。")
+
+    payload = info or check_update()
+    if not payload.get("has_update"):
+        raise UpdaterError("当前已经是最新版本（" + str(payload.get("current") or "") + "）")
+
+    installer = Path((payload.get("installer") or {}).get("path") or "")
+    if not installer.is_file():
+        result = download_installer(payload, progress)
+        installer = Path(result["path"])
+    if not installer.is_file():
+        raise UpdaterError("安装包不存在，请重新下载。")
+
+    # 安全：只允许执行我们自己在临时目录里下载的那个安装包
+    allowed = update_dir().resolve()
+    try:
+        installer.resolve().relative_to(allowed)
+    except ValueError:
+        raise UpdaterError("安装包不在更新目录里，已拒绝执行。") from None
+    if installer.suffix.lower() != ".exe":
+        raise UpdaterError("安装包不是可执行文件，已拒绝执行。")
+
+    target = BASE_DIR.resolve()
+    exe = Path(sys.executable).resolve() if getattr(sys, "frozen", False) else None
+    if exe is None or not exe.is_file():
+        raise UpdaterError("找不到当前程序的可执行文件，无法自动重启。")
+
+    script = update_dir() / HELPER_NAME
+    script.write_text(_helper_script(installer, target, exe, os.getpid()), encoding="utf-8-sig")
+
+    flags = 0x00000008 | 0x08000000   # DETACHED_PROCESS | CREATE_NO_WINDOW
+    if progress:
+        progress("正在启动更新程序…")
+    try:
+        subprocess.Popen(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
+             "-WindowStyle", "Hidden", "-File", str(script)],
+            creationflags=flags, close_fds=True,
+        )
+    except OSError as exc:
+        raise UpdaterError("无法启动更新程序：" + str(exc)[:120]) from None
+
+    return {"ok": True, "installer": str(installer), "target": str(target),
+            "exe": str(exe), "helper": str(script), "latest": payload.get("latest") or ""}

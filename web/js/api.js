@@ -63,6 +63,7 @@ export const api = {
   updateRepair: () => post('/api/update/repair', {}),
   updateDownload: () => post('/api/update/download', {}),
   updateLaunch: (path) => post('/api/update/launch', { path }),
+  updateApply: () => post('/api/update/apply', {}),
   ping: () => get('/api/ping'),
   loginCheck: () => post('/api/login/check', {}),
   installYtdlp: () => post('/api/tools/install', {}),

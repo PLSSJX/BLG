@@ -1191,7 +1191,34 @@ function buildUpdateCard() {
       }
       if (r.has_update) {
         blocks.push(h('div', { class: 'btn-row', style: { marginTop: '12px' } },
-          button('下载安装包', { iconName: 'cloud_download', onClick: async (e2) => {
+          // 一键：下载 → 退出 → 静默装回原目录 → 自动重新打开
+          button('下载并自动安装', { iconName: 'restart_alt', onClick: async (e2) => {
+            const b = e2.currentTarget;
+            const yes = await dialog({
+              title: '下载并自动安装？',
+              body: '安装过程中程序会自动退出，装好后自动重新打开。正在进行的下载会中断。',
+              confirm: '开始更新',
+            });
+            if (!yes) return;
+            b.disabled = true;
+            const holder = h('div', { class: 'card-desc', style: { marginTop: '10px' } },
+              busy('正在下载并准备安装…'));
+            result.append(holder);
+            try {
+              const got = await api.updateApply();
+              clear(holder).append(pill('安装程序已就绪，正在重启…', 'ok'));
+              document.body.innerHTML =
+                '<div style="display:grid;place-items:center;height:100vh;font:16px/1.8 system-ui;color:#888">' +
+                '<div style="text-align:center">正在更新到 ' + (got.latest || '新版本') +
+                '<br><span style="font-size:13px">程序会自动重新打开，请稍候</span></div></div>';
+            } catch (error) {
+              b.disabled = false;
+              clear(holder).append(h('div', { class: 'hint-box' },
+                h('span', { html: icon('error_outline', 'outlined', 20) }),
+                h('div', {}, '自动更新失败：' + error.message)));
+            }
+          } }),
+          button('仅下载安装包', { iconName: 'cloud_download', onClick: async (e2) => {
             const b = e2.currentTarget; b.disabled = true;
             const holder = h('div', { class: 'card-desc', style: { marginTop: '10px' } }, busy('正在下载…'));
             result.append(holder);

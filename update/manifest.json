@@ -1,6 +1,6 @@
 {
- "version": "2.3.0",
- "generated": "2026-10-16 11:33:07 UTC",
+ "version": "2.4.0",
+ "generated": "2026-10-16 12:06:48 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -16,8 +16,8 @@
   },
   {
    "path": "web/js/api.js",
-   "sha256": "bcbfba461d1b2481a60ecfa2898e0b41939ca8f82f3c15df89eb53cb881540c3",
-   "size": 3197
+   "sha256": "0ce9d6c0784b5235ec93d1589f8241c32fe8fc57feb72362787ba156f9d68b08",
+   "size": 3249
   },
   {
    "path": "web/js/app.js",
@@ -31,8 +31,8 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "789b362c9f8e6de57589a9ab154ea90e3bc1e4faeffd819dbd97dce53877b312",
-   "size": 62700
+   "sha256": "6108ff441d71234a5f942b720728648ce8aa51cdd678710dc3e2d84e460e9a0c",
+   "size": 64269
   },
   {
    "path": "web/js/theme.js",
@@ -93,7 +93,7 @@
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "2916dcaeb5565216116afb4ea7af31c025c5197c1d72a0a7dc8898245ae37854",
+   "sha256": "2e56ddd623cb1ffef01f7d0069589516eed5e34bfa9491c1c83dbba3a0d49dd3",
    "size": 308
   },
   {
@@ -238,8 +238,8 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "35220fef87f577461a42b332ebdac7849d1251c366361ce434c33c55174468df",
-   "size": 36720
+   "sha256": "5048d2b0bcbf43220d5cbba7656a46ccb51235b6504ce6895de9b8ab864593e2",
+   "size": 37806
   },
   {
    "path": "videograb/sites/__init__.py",
@@ -313,8 +313,8 @@
   },
   {
    "path": "videograb/updater.py",
-   "sha256": "7e8d73096876ef2daf50df02d7959506c8d60ad4ccd62c8a60efa10c2a2cb86b",
-   "size": 18742
+   "sha256": "18698cc925100ca69655abe068868c309edd7d208dabd0564f048dc27a1bacd0",
+   "size": 23442
   },
   {
    "path": "videograb/util.py",
@@ -338,9 +338,9 @@
   }
  ],
  "installer": {
-  "name": "Video-Grabing-Setup-2.3.0.exe",
-  "size": 44159686,
-  "sha256": "d569407fd75d20a05a510fd2a7f770bd171f44ab19121ac20cd8a2fd22da42d2",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.3.0/Video-Grabing-Setup-2.3.0.exe"
+  "name": "Video-Grabing-Setup-2.4.0.exe",
+  "size": 44165484,
+  "sha256": "96c20cc69b13f8b1fd7590712592e2a0bc37e0302f902075a72aec6cb52fc2f0",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.4.0/Video-Grabing-Setup-2.4.0.exe"
  }
 }

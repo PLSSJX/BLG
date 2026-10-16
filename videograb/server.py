@@ -575,6 +575,32 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/update/notes":
             return self._json({"ok": True, "notes": _CHANGELOG})
 
+        if route == "/api/update/apply":
+            # 下载（如需要）→ 起后台脚本 → 脚本等我们退出后静默安装并重启。
+            # 必须先把响应发出去再退出，否则界面收不到结果。
+            from .updater import UpdaterError, apply_auto_update
+            try:
+                result = apply_auto_update()
+            except UpdaterError as exc:
+                raise ApiError(str(exc)) from None
+            self._json({"ok": True, **result, "restarting": True})
+
+            import threading as _threading
+
+            def _restart_later():
+                import time as _time
+                _time.sleep(1.2)          # 给响应一点时间发出去
+                self.server.shutdown()
+                callback = getattr(ctx, "on_quit", None)
+                if callable(callback):
+                    try:
+                        callback()
+                    except Exception:
+                        pass
+
+            _threading.Thread(target=_restart_later, daemon=True, name="auto-update").start()
+            return
+
         if route == "/api/quit":
             # 桌面版没有控制台窗口，只能从界面里退出。
             # 另起一个线程调用 shutdown()，否则会和当前请求的处理线程互相等待。
