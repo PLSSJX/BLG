@@ -70,10 +70,11 @@ def install(target: Path, progress=None, make_shortcuts: bool = True,
     # 盘符根目录直接拒绝。装到 D:\ 意味着程序文件会和整个盘的内容混在一起，
     # 卸载/覆盖安装时的任何一次误判都可能造成大面积数据丢失 ——
     # 这种路径没有任何正当理由，不如直接拦住。
+    # 经过 resolve_target() 之后这里基本不会命中；留着是最后一道保险。
     if is_drive_root(target):
         raise RuntimeError(
             "不能把程序安装到盘符根目录（" + str(target) + "）。\n"
-            "请选一个单独的文件夹，例如 " + str(target) + "Video-Grabing")
+            "请选一个单独的文件夹，程序会在里面自动建一个 " + NEST_NAME + " 子目录。")
 
     target.mkdir(parents=True, exist_ok=True)
 
@@ -128,6 +129,30 @@ APP_OWNED_NAMES = {W.EXE_NAME, W.UNINSTALL_NAME, W.MANIFEST_NAME,
                    "_internal", "web", "update", "bin", ".deps"}
 # 这两个是用户数据，覆盖安装时保留
 USER_KEEP_NAMES = {"data", "downloads"}
+
+
+NEST_NAME = "VGPlatform"          # 程序永远装在这个子文件夹里
+APP_FOLDER_NAMES = {"videograb", "video-grabing", "vgplatform"}
+
+
+def resolve_target(selected: Path) -> Path:
+    """把用户选的目录收敛成真正的安装目录。
+
+    防呆设计：**永远装到 <选中目录>/VGPlatform 里面**。这样程序始终有一块
+    属于自己的文件夹，不可能和用户的文件混在一起 —— 删除、覆盖、卸载
+    这些操作的波及范围从结构上就被限死了。
+
+    三种例外（原样使用，不再套一层）：
+      1. 选中的目录本身就叫 VGPlatform / Video-Grabing（用户已经选到这一层）
+      2. 那里已经是一份现有安装（升级、自动更新传 /D=<当前目录>）
+    """
+    selected = Path(selected).expanduser()
+    name = selected.name.strip().lower()
+    if name in APP_FOLDER_NAMES or name == NEST_NAME.lower():
+        return selected
+    if looks_like_install(selected):
+        return selected
+    return selected / NEST_NAME
 
 
 def is_drive_root(path: Path) -> bool:
@@ -277,6 +302,23 @@ def run_gui() -> int:
 
     ttk.Button(row, text="浏览…", command=browse).pack(side="left", padx=(8, 0))
 
+    # 防呆：选中的目录下面会自动建一个 VGPlatform 子目录，程序装在里面。
+    # 这里实时把它显示出来，避免用户以为程序会散落到自己选的目录里。
+    actual_var = tk.StringVar()
+    ttk.Label(frame, textvariable=actual_var, foreground="#0a7", wraplength=500).pack(anchor="w")
+
+    def refresh_actual(*_args) -> None:
+        try:
+            resolved = resolve_target(Path(target_var.get() or "."))
+            actual_var.set("将安装到：" + str(resolved) +
+                           ("" if resolved.name.lower() == NEST_NAME.lower()
+                            else "（已选到程序目录，不再套一层）"))
+        except Exception as exc:
+            actual_var.set("路径无效：" + str(exc)[:60])
+
+    target_var.trace_add("write", refresh_actual)
+    refresh_actual()
+
     ttk.Checkbutton(frame, text="创建桌面和开始菜单快捷方式",
                     variable=shortcut_var).pack(anchor="w")
     ttk.Checkbutton(frame, text="安装完成后立即启动",
@@ -295,7 +337,7 @@ def run_gui() -> int:
                command=root.destroy).pack(side="right", padx=(0, 8))
 
     def worker() -> None:
-        target = Path(target_var.get()).expanduser()
+        target = resolve_target(Path(target_var.get()).expanduser())
         try:
             if W.app_is_running():
                 root.after(0, lambda: status_var.set("检测到程序正在运行，正在关闭…"))
@@ -350,6 +392,7 @@ def main() -> int:
         try:
             if W.app_is_running():
                 W.kill_running_app()
+            target = resolve_target(target)
             uninstall_existing(target)
             result = install(target, None, True, resource_dir() / "uninstall.exe")
             print("installed to " + result["install_dir"])
