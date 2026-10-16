@@ -58,8 +58,21 @@ def cmd_serve(args) -> int:
         running = _existing_instance(args.host, args.port)
         if running:
             print(f"  程序已经在运行：{running}")
-            if not args.no_browser:
+            if args.no_browser:
+                return 0
+            # 第二次双击时要开**我们自己的窗口**，而不是把用户丢进系统浏览器。
+            # 之前这里直接 webbrowser.open()，用户看到的就是一个浏览器标签页，
+            # 会以为"这程序是个网页"——实际只是复用了已经在跑的那个服务。
+            if args.browser:
+                print("  使用系统浏览器打开\n")
                 webbrowser.open(running)
+                ctx.window_mode = "browser"
+                return 0
+            from .desktop import open_window
+            print("  正在打开独立窗口…\n")
+            mode = open_window(running, ctx)
+            if not getattr(ctx, "window_mode", ""):
+                ctx.window_mode = mode
             return 0
 
     httpd = serve(ctx, host=args.host, port=args.port, quiet=not args.verbose)
