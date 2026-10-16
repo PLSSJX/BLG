@@ -67,6 +67,14 @@ def install(target: Path, progress=None, make_shortcuts: bool = True,
     if not payload.exists():
         raise RuntimeError("安装包内部缺少 payload.zip，请重新下载安装程序")
 
+    # 盘符根目录直接拒绝。装到 D:\ 意味着程序文件会和整个盘的内容混在一起，
+    # 卸载/覆盖安装时的任何一次误判都可能造成大面积数据丢失 ——
+    # 这种路径没有任何正当理由，不如直接拦住。
+    if is_drive_root(target):
+        raise RuntimeError(
+            "不能把程序安装到盘符根目录（" + str(target) + "）。\n"
+            "请选一个单独的文件夹，例如 " + str(target) + "Video-Grabing")
+
     target.mkdir(parents=True, exist_ok=True)
 
     with zipfile.ZipFile(payload) as archive:
@@ -106,13 +114,81 @@ def install(target: Path, progress=None, make_shortcuts: bool = True,
     return {"install_dir": str(target), "shortcuts": created, "exe": str(exe)}
 
 
-def uninstall_existing(target: Path) -> None:
-    """覆盖安装前先清掉旧版本的程序文件，但保留 data/ 与 downloads/。"""
-    if not target.exists():
-        return
-    keep = {"data", "downloads", "bin", ".deps", "web"}   # web/ 是自检修复的覆盖层
+# 安装目录里"可能属于本程序"的名字。uninstall_existing 只允许动这些，
+# 其余一律不碰 —— 用户如果把安装路径选成了 D:\ 这种目录，
+# 以前会把里面的东西全部递归删掉。
+APP_OWNED_NAMES = {W.EXE_NAME, W.UNINSTALL_NAME, W.MANIFEST_NAME,
+                   "_internal", "web", "update", "bin", ".deps"}
+# 这两个是用户数据，覆盖安装时保留
+USER_KEEP_NAMES = {"data", "downloads"}
+
+
+def is_drive_root(path: Path) -> bool:
+    r"""是不是盘符根目录（D: 这种）。装到盘根既不合理又极其危险。"""
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return False
+    return resolved.parent == resolved
+
+
+def looks_like_install(target: Path) -> bool:
+    """目录里有没有本程序的痕迹。没有就说明这块地方不是我们的。"""
+    for name in (W.EXE_NAME, W.UNINSTALL_NAME, W.MANIFEST_NAME):
+        if (target / name).exists():
+            return True
+    return (target / "_internal").is_dir()
+
+
+def _installed_names(target: Path) -> set | None:
+    """读安装时写下的文件清单。拿不到返回 None（老版本装的）。"""
+    path = target / W.MANIFEST_NAME
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        names = data.get("files")
+        return set(names) if isinstance(names, list) else None
+    except (OSError, ValueError):
+        return None
+
+
+def uninstall_existing(target: Path) -> list:
+    """覆盖安装前清掉**旧版本的程序文件**，返回被保留的名字。
+
+    安全约束（这是本文件里最容易出事的地方）：
+      1. 有 installed-files.json 就只删清单里列过的文件；
+      2. 没有清单时只认 APP_OWNED_NAMES 里的固定名字；
+      3. 除此之外的任何东西 —— 不管看起来像不像我们的 —— 一律保留。
+    删之前还会再确认一次目录"像是本程序的安装位置"。
+    """
+    kept: list = []
+    if not target.exists() or not target.is_dir():
+        return kept
+    # 盘根一律不碰。install() 里也会拒绝，但本函数在它之前就被调用了，
+    # 所以这道拦截必须放在这里 —— 否则"拒绝安装"之前东西已经被删掉了。
+    if is_drive_root(target):
+        return [p.name for p in target.iterdir()]
+    if not looks_like_install(target):
+        # 这儿不是我们的地盘，什么都别动
+        return [p.name for p in target.iterdir()]
+
+    names = _installed_names(target)
     for item in target.iterdir():
-        if item.name in keep:
+        if item.name in USER_KEEP_NAMES:
+            continue
+        # 目录要按前缀匹配：清单里记的是 "_internal/x.dll" 这样的具体文件，
+        # 而这里遍历到的是 "_internal" 这个目录名本身。
+        if names is not None:
+            if item.is_dir():
+                prefix = item.name + "/"
+                allowed = any(n.startswith(prefix) for n in names)
+            else:
+                allowed = item.name in names
+        else:
+            allowed = item.name in APP_OWNED_NAMES
+        if not allowed:
+            kept.append(item.name)
             continue
         try:
             if item.is_dir():
@@ -121,6 +197,7 @@ def uninstall_existing(target: Path) -> None:
                 item.unlink()
         except OSError:
             continue
+    return kept
 
 
 # ---------------------------------------------------------------- 图形界面

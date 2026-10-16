@@ -4,6 +4,6 @@
 以及一个复刻 Kazumi 视觉语言的 Material 3 界面。
 """
 
-__version__ = "2.4.4"
+__version__ = "2.4.5"
 APP_NAME = "Video-Grabing"
 APP_NAME_CN = "多平台视频采集器"
