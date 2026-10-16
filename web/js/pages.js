@@ -990,7 +990,24 @@ async function checkLogin(host) {
 }
 
 function buildDownloadCard2(settings) {
-  const dir = h('input', { class: 'input', value: settings.download_dir || '' });
+  const dir = h('input', {
+    class: 'input', value: settings.download_dir || '',
+    placeholder: '留空则用程序目录下的 downloads',
+  });
+  const dirHint = h('div', { class: 'card-desc', style: { margin: '6px 0 0' } });
+  const refreshHint = (info) => {
+    clear(dirHint);
+    const actual = info?.settings?.download_dir || '';
+    if (info?.settings?.download_dir_ok === false) {
+      // 配置了但没生效 —— 必须说出来，否则用户以为改成功了
+      dirHint.append(pill('这个路径用不了，已回落到默认目录', 'warn'),
+        h('div', { class: 'hint', style: { marginTop: '4px' } },
+          '实际下载到：' + actual + '。请检查盘符是否存在、路径是否合法。'));
+    } else {
+      dirHint.append(h('div', { class: 'hint' }, '当前下载到：' + actual));
+    }
+  };
+  refreshHint(store.config);
   const template = h('input', { class: 'input', value: settings.filename_template || '{title}' });
   const threads = h('input', {
     class: 'input', type: 'number', min: '1', max: '32', value: settings.threads_per_task || 8,
@@ -1011,7 +1028,21 @@ function buildDownloadCard2(settings) {
     h('div', { class: 'card-title', html: icon('download', 'outlined', 20) + '<span>下载</span>' }),
     h('div', { class: 'card-desc' }, '多线程分块下载，支持断点续传；中断后重新下载会自动跳过已完成的块。'),
     field('下载目录', h('div', { class: 'search-field' }, dir,
+      button('选择…', { variant: 'tonal', iconName: 'folder', onClick: async () => {
+        // 用系统文件夹选择框，避免手打路径出错
+        try {
+          const picked = await api.pickDownloadDir();
+          if (picked.cancelled) return;
+          dir.value = picked.download_dir || dir.value;
+          store.config.settings.download_dir = dir.value;
+          refreshHint(store.config);
+          toast('下载目录已改为：' + dir.value);
+        } catch (error) {
+          toast('选择目录失败：' + error.message);
+        }
+      } }),
       button('打开', { variant: 'tonal', iconName: 'folder_open', onClick: () => api.open(dir.value) }))),
+    dirHint,
     h('div', { style: { height: '12px' } }),
     field('文件名模板（可用 {title} {up} {bvid} {quality} {engine}）', template),
     h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' } },

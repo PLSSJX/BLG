@@ -69,6 +69,38 @@ def pick_files(ctx=None) -> list:
     return paths
 
 
+FOLDER_SCRIPT = """
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Windows.Forms
+$dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+$dlg.Description = '选择下载目录'
+$dlg.ShowNewFolderButton = $true
+if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+    [Console]::Out.Write($dlg.SelectedPath)
+}
+"""
+
+
+def pick_folder(ctx=None, initial: str = "") -> str:
+    """弹出系统文件夹选择框，返回选中的目录；取消则返回空串。
+
+    下载目录以前只能手动输入路径 —— 打错一个字符就会被静默忽略、
+    下载还是落到默认位置，用户完全看不出来。
+    """
+    script = FOLDER_SCRIPT
+    start = (initial or "").strip()
+    if start and os.path.isdir(start):
+        escaped = start.replace("'", "''")
+        script = script.replace(
+            "$dlg.ShowNewFolderButton = $true",
+            "$dlg.ShowNewFolderButton = $true\n$dlg.SelectedPath = '" + escaped + "'")
+    ok, output = _run_powershell(script)
+    if not ok or not output:
+        return ""
+    candidate = output.strip().splitlines()[-1].strip()
+    return candidate if os.path.isdir(candidate) else ""
+
+
 def scan_paths(paths: list) -> list:
     """逐个判断文件是不是受支持的加密格式，给界面预检用。"""
     try:

@@ -50,6 +50,7 @@ export const api = {
 
   // 本地音乐文件：选择 / 预检 / 转换
   pickLocalFiles: () => post('/api/local/pick', {}),
+  pickDownloadDir: () => post('/api/local/pickdir', {}),
   scanLocalFiles: (paths) => post('/api/local/decryptable', { paths }),
   convertLocalFiles: (paths, target, bitrate = '') =>
     post('/api/tasks/convert', { paths, target, bitrate }),

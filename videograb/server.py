@@ -72,8 +72,15 @@ def build_state(ctx: Context) -> dict:
 def _public_settings(ctx: Context) -> dict:
     from dataclasses import asdict
     data = asdict(ctx.settings)
+    configured = (ctx.settings.download_dir or "").strip()
+    actual = str(ctx.download_dir())
     # 配置里留空表示"用默认位置"，界面要显示解析后的真实路径
-    data["download_dir"] = str(ctx.download_dir())
+    data["download_dir"] = actual
+    # 配置了却没用上（盘符不存在、路径非法等）时必须让界面知道 ——
+    # 以前是静默回落到默认目录，用户看到"保存成功"但文件跑去了别处。
+    import os as _os
+    data["download_dir_ok"] = (not configured) or (
+        _os.path.normcase(_os.path.abspath(actual)) == _os.path.normcase(_os.path.abspath(configured)))
     # 凭据一律不回显原文，只告诉前端"配没配"。哪些字段算凭据由各平台适配器声明，
     # 新增平台时只要在适配器里声明 credentials，这里自动生效。
     for site in describe_sites():
@@ -477,6 +484,17 @@ class Handler(BaseHTTPRequestHandler):
 
         # 注意：请求体在 _api_post 开头已经读过一次了（rfile 是一次性的），
         # 这里绝不能再调 self._body()，否则会阻塞在一个已经读空的流上。
+        if route == "/api/local/pickdir":
+            from .localfile import pick_folder
+            from .config import BASE_DIR
+            current = str(ctx.download_dir())
+            chosen = pick_folder(ctx, current)
+            if chosen:
+                ctx.update({"download_dir": chosen})
+            return self._json({"ok": True, "path": chosen or "",
+                               "cancelled": not chosen,
+                               "download_dir": str(ctx.download_dir())})
+
         if route == "/api/local/decryptable":
             from .localfile import scan_paths
             return self._json({"ok": True, "items": scan_paths(payload.get("paths") or [])})
