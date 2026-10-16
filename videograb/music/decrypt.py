@@ -317,14 +317,24 @@ def _parse_ncm(path: Path):
             raise ValueError("文件损坏：音频密钥不足 16 字节")
         box = _ncm_build_keybox(stream_key)
 
-        if fp.read(2) != b"\x00\x00":
-            raise ValueError("文件损坏：密钥段后的分隔符不正确")
+        # 元数据长度是 u32：真实文件紧跟密钥段，少数工具会在中间多插 2 字节
+        import os as _os
+        here = fp.tell()
         raw = fp.read(4)
         if len(raw) < 4:
             raise ValueError("文件损坏：元数据长度读取失败")
         meta_len = _u32le(raw, 0)
+        if meta_len > (1 << 24):
+            fp.seek(here)
+            fp.read(2)
+            raw = fp.read(4)
+            if len(raw) < 4:
+                raise ValueError("文件损坏：元数据长度读取失败")
+            meta_len = _u32le(raw, 0)
+        if meta_len > (1 << 24):
+            raise ValueError(f"文件损坏：元数据长度不合理（{meta_len}）")
         meta: dict = {}
-        if 0 < meta_len <= (1 << 24):
+        if meta_len > 0:
             meta_raw = fp.read(meta_len)
             if len(meta_raw) != meta_len:
                 raise ValueError("文件损坏：元数据段不完整")
@@ -535,7 +545,7 @@ class _QmcMapCipher:
 
 
 class _QmcRc4Cipher:
-    """QMCv2 加固 RC4：首 128 字节查表 + 之后按 5120 字节分段 RC4。"""
+    """QMCv2 加固 RC4：前 128 字节按 key 查表，之后每 5120 字节一段做变体 RC4。"""
 
     def __init__(self, key: bytes):
         if not key:
@@ -543,10 +553,11 @@ class _QmcRc4Cipher:
         self._key = key
         self._n = len(key)
         self.name = f"QQ 音乐 QMCv2（加固 RC4，{self._n} 字节密钥）"
-        box = bytearray(i % self._n for i in range(self._n))
+        n = self._n
+        box = bytearray((i % n) & 0xFF for i in range(n))
         j = 0
-        for i in range(self._n):
-            j = (j + box[i] + key[i]) % self._n
+        for i in range(n):
+            j = (j + box[i] + key[i]) % n
             box[i], box[j] = box[j], box[i]
         self._box = box
         base = 1
@@ -558,49 +569,54 @@ class _QmcRc4Cipher:
                 break
             base = nxt
         self._hash = base
-        self._cache: dict = {}
+        self._skip_cache: dict = {}
 
     def _skip(self, seg_id: int) -> int:
-        cached = self._cache.get(seg_id)
+        """第 seg_id 段要预先丢弃多少个密钥流字节。"""
+        cached = self._skip_cache.get(seg_id)
         if cached is not None:
             return cached
         seed = self._key[seg_id % self._n]
         divisor = (seg_id + 1) * seed
         value = 0 if divisor == 0 else int(self._hash / divisor * 100)
         result = value % self._n
-        if len(self._cache) < 4096:
-            self._cache[seg_id] = result
+        if len(self._skip_cache) < 4096:
+            self._skip_cache[seg_id] = result
         return result
+
+    def _segment(self, buf, start, take, pos):
+        """解一段（不超过 0x1400 字节）的其它段。"""
+        n = self._n
+        seg = pos // _QMC_OTHER_SEGMENT
+        box = self._box[:]
+        j = 0
+        k = 0
+        for _ in range(self._skip(seg) + pos % _QMC_OTHER_SEGMENT):
+            j = (j + 1) % n
+            k = (box[j] + k) % n
+            box[j], box[k] = box[k], box[j]
+        for i in range(take):
+            j = (j + 1) % n
+            k = (box[j] + k) % n
+            box[j], box[k] = box[k], box[j]
+            buf[start + i] ^= box[(box[j] + box[k]) % n]
 
     def decrypt(self, buf: bytearray, offset: int) -> None:
         n = len(buf)
         if n == 0:
             return
-        key = self._key
         start = 0
         pos = offset
         if pos < _QMC_FIRST_SEGMENT:
             take = min(n, _QMC_FIRST_SEGMENT - pos)
+            key = self._key
             for i in range(take):
                 buf[i] ^= key[self._skip(pos + i)]
             start = take
             pos += take
         while start < n:
-            seg = pos // _QMC_OTHER_SEGMENT
-            skip = (pos % _QMC_OTHER_SEGMENT + self._skip(seg)) % self._n
-            box = self._box[:]
-            j = 0
-            k = 0
-            take = min(n - start, _QMC_OTHER_SEGMENT - (pos % _QMC_OTHER_SEGMENT))
-            for _ in range(skip):
-                j = (j + 1) % self._n
-                k = (box[j] + k) % self._n
-                box[j], box[k] = box[k], box[j]
-            for i in range(take):
-                j = (j + 1) % self._n
-                k = (box[j] + k) % self._n
-                box[j], box[k] = box[k], box[j]
-                buf[start + i] ^= box[(box[j] + box[k]) % self._n]
+            take = min(n - start, _QMC_OTHER_SEGMENT - pos % _QMC_OTHER_SEGMENT)
+            self._segment(buf, start, take, pos)
             start += take
             pos += take
 
@@ -836,7 +852,7 @@ def _magic_of(head: bytes) -> str:
         return "ncm"
     if len(head) >= 16 and head[:16] in (_KGM_MAGIC, _VPR_MAGIC):
         return "kgm"
-    if head[:8] == b"yeelion":
+    if head.startswith(b"yeelion"):
         return "kwm"
     return ""
 
