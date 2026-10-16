@@ -1312,32 +1312,48 @@ function buildToolsCard() {
   const list = h('div', {});
   const info = h('div', { class: 'card-desc' });
 
+  const tools = (store.config?.engines || []).find((e) => e.id === 'external_tool');
+  // 这一行要能被单独更新 —— 以前装完是整页重建，结果把提示一起冲掉了
+  const channelState = h('span', {}, tools?.available ? '可用' : '未安装');
+
   const installBtn = button('一键安装 yt-dlp', { variant: 'tonal', iconName: 'cloud_download', onClick: async (event) => {
     const btn = event.currentTarget;
     btn.disabled = true;
-    clear(btn).append(busy('安装中'));
-    clear(info).append('正在把 yt-dlp 装进项目自带的 .deps 目录（不会改动系统环境）…');
+    clear(btn).append(busy('检查中'));
+    clear(info).append('正在检查 yt-dlp（安装位置是项目自带的 .deps 目录，不会改动系统环境）…');
     try {
       const result = await api.installYtdlp();
-      clear(info).append(result.ok ? pill('安装成功', 'ok') + ' ' + result.deps_dir
-        : pill('安装失败', 'err') + ' 返回码 ' + result.returncode);
+      // 三种结果要分清楚，别都写成"安装成功"：
+      // 打包版本来就内置了 yt-dlp，这时点按钮什么都不会装，得让用户看明白。
+      const builtIn = String(result.tail || '').includes('已内置');
+      clear(info).append(
+        h('div', { style: { marginBottom: '6px' } },
+          pill(result.ok ? (builtIn ? '已经内置，无需安装' : '安装成功') : '安装失败',
+               result.ok ? 'ok' : 'err'),
+          result.ok ? null : ' 返回码 ' + result.returncode),
+        result.tail ? h('div', { class: 'hint', style: { whiteSpace: 'pre-wrap' } }, result.tail) : null,
+        h('div', { class: 'hint', style: { opacity: '.7', marginTop: '4px' } },
+          '位置：' + (result.deps_dir || '—')),
+      );
+      clear(btn).append(result.ok && builtIn ? '已内置' : '重新安装');
+      btn.disabled = false;
+      // 只刷新这一行的状态，不整页重建
       const state = await api.state();
       store.config = state;
-      renderSettings(document.getElementById('view'));
+      const now = (state.engines || []).find((e) => e.id === 'external_tool');
+      channelState.textContent = now?.available ? '可用' : '未安装';
     } catch (error) {
       clear(info).append('安装失败：' + error.message);
       btn.disabled = false;
-      clear(btn);
+      clear(btn).append('一键安装 yt-dlp');
     }
   } });
 
-  const tools = (store.config?.engines || []).find((e) => e.id === 'external_tool');
   list.append(
     h('div', { class: 'kv' }, h('span', {}, 'Python'), h('span', {}, store.config?.python || '内置运行时')),
     h('div', { class: 'kv' }, h('span', {}, 'ffmpeg'),
       h('span', {}, store.config?.ffmpeg || '未检测到（将使用内置纯 Python fMP4 合并器）')),
-    h('div', { class: 'kv' }, h('span', {}, '外部下载器通道'),
-      h('span', {}, tools?.available ? '可用' : '未安装')),
+    h('div', { class: 'kv' }, h('span', {}, '外部下载器通道'), channelState),
   );
 
   return card(
