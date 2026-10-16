@@ -55,7 +55,10 @@ def find_edge() -> str | None:
 def _run_webview(url: str, on_closed=None, ctx=None) -> bool:
     try:
         import webview
-    except Exception:
+    except Exception as exc:
+        # 以前这里是静默 return False，出问题时完全看不出为什么降级了 ——
+        # 源码模式没装 pywebview 时会走到这条，用户只会看到"打开了浏览器"。
+        print("  没有内置窗口组件（pywebview 不可用）：" + str(exc)[:120])
         return False
     try:
         window = webview.create_window(
@@ -92,6 +95,7 @@ def _storage_dir() -> Path:
 def _run_edge_app(url: str) -> bool:
     edge = find_edge()
     if not edge:
+        print("  没有找到 Edge，无法使用应用模式窗口。")
         return False
     try:
         proc = subprocess.Popen([

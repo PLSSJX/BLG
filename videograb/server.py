@@ -460,13 +460,13 @@ class Handler(BaseHTTPRequestHandler):
             paths = pick_files(self.ctx)
             return self._json({"ok": True, "paths": paths, "count": len(paths)})
 
+        # 注意：请求体在 _api_post 开头已经读过一次了（rfile 是一次性的），
+        # 这里绝不能再调 self._body()，否则会阻塞在一个已经读空的流上。
         if route == "/api/local/decryptable":
             from .localfile import scan_paths
-            payload = self._body()
             return self._json({"ok": True, "items": scan_paths(payload.get("paths") or [])})
 
         if route == "/api/tasks/convert":
-            payload = self._body()
             paths = payload.get("paths") or []
             if not paths:
                 raise ApiError("请先选择要转换的文件")
