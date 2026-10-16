@@ -1265,6 +1265,16 @@ function buildUpdateCard() {
     h('div', { class: 'kv' }, h('span', {}, '运行方式'), h('span', {}, modeText)),
     h('div', { class: 'kv' }, h('span', {}, '程序目录'),
       h('span', {}, info.base_dir || '—')),
+    (() => {
+      const runtime = store.config?.webview;
+      if (!runtime) return null;
+      const label = { fixed: '自带运行时', system: '系统运行时', missing: '未安装', unknown: '未知' }[runtime.mode] || runtime.mode;
+      return h('div', { class: 'kv' },
+        h('span', {}, 'WebView2'),
+        h('span', { title: runtime.detail || '' },
+          label + (runtime.system_version && runtime.mode === 'system' ? ' ' + runtime.system_version : ''),
+          runtime.ok ? '' : ' —— 缺少它只能退化到浏览器'));
+    })(),
     h('div', { class: 'btn-row', style: { marginTop: '14px' } },
       button('检查更新', { variant: 'tonal', iconName: 'cloud_download', onClick: check }),
       button('自检并修复', { iconName: 'shield', onClick: selfCheck })),

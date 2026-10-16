@@ -183,6 +183,9 @@ def build(python: Path, mode: str, icon: Path | None, with_ytdlp: bool,
         "--hidden-import", "videograb.engines",
         "--collect-submodules", "videograb",
     ]
+    if WEBVIEW2_BOOTSTRAP is not None and WEBVIEW2_BOOTSTRAP.exists():
+        # 内置了 WebView2 安装器：放在 exe 同级，缺运行库时能一键安装
+        args += ["--add-data", str(WEBVIEW2_BOOTSTRAP) + ";."]
     if mode == "onefile":
         args.append("--onefile")
     if windowed:
@@ -221,6 +224,57 @@ def build(python: Path, mode: str, icon: Path | None, with_ytdlp: bool,
     if mode == "onedir" and BIN.exists():
         shutil.copytree(BIN, target.parent / "bin", dirs_exist_ok=True)
     return target
+
+
+# 内置了 WebView2 安装器时记在这里，build() 会用它加 --add-data
+WEBVIEW2_BOOTSTRAP: Path | None = None
+
+
+def _bootstrap_target(path: Path) -> None:
+    global WEBVIEW2_BOOTSTRAP
+    WEBVIEW2_BOOTSTRAP = path
+
+
+def ensure_webview2(full: bool = False) -> Path | None:
+    """下载 WebView2 运行时的安装器，放到 dist 里随程序一起分发。
+
+    引导程序（约 1.9MB）会在安装时联网拉取运行时；
+    完整离线包（约 204MB）不需要网络。两者都来自微软官方 fwlink。
+    """
+    import urllib.request
+
+    url = ("https://go.microsoft.com/fwlink/p/?LinkId=2124701" if full
+           else "https://go.microsoft.com/fwlink/p/?LinkId=2124703")
+    name = "MicrosoftEdgeWebview2Setup.exe"
+    target = DIST / name
+    if target.exists() and target.stat().st_size > 1_000_000:
+        log("WebView2 安装器已存在：" + str(target))
+        _bootstrap_target(target)
+        return target
+    step("下载 WebView2 安装器（%s）" % ("完整离线包" if full else "引导程序"))
+    DIST.mkdir(parents=True, exist_ok=True)
+    DEPS.mkdir(parents=True, exist_ok=True)
+    target = DEPS / name          # 放 .deps 里，打包时用 --add-data 塞进程序目录
+    try:
+        request = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(request, timeout=120) as response, open(target, "wb") as out:
+            total = int(response.headers.get("Content-Length") or 0)
+            done = 0
+            while True:
+                block = response.read(1 << 20)
+                if not block:
+                    break
+                out.write(block)
+                done += len(block)
+                if total:
+                    print("\r  %.1f / %.1f MB" % (done / 1048576, total / 1048576), end="")
+        print()
+        log("已下载：%s（%.1f MB）" % (target, target.stat().st_size / 1048576))
+        _bootstrap_target(target)
+        return target
+    except Exception as exc:
+        log("下载失败（不影响构建）：" + str(exc)[:120])
+        return None
 
 
 def build_installer(python: Path, icon: Path | None, with_ytdlp: bool = True) -> Path:
@@ -312,6 +366,10 @@ def main() -> int:
     parser.add_argument("--all", action="store_true", help="两种都打")
     parser.add_argument("--with-ffmpeg", action="store_true", help="内置静态 ffmpeg")
     parser.add_argument("--with-ytdlp", action="store_true", help="内置 yt-dlp")
+    parser.add_argument("--with-webview2", action="store_true",
+                        help="内置 WebView2 引导程序（约 +1.9MB，缺运行库时可一键安装）")
+    parser.add_argument("--with-webview2-full", action="store_true",
+                        help="内置 WebView2 完整离线包（约 +204MB，无需联网）")
     parser.add_argument("--windowed", action="store_true",
                         help="目录版做成无控制台的桌面应用（双击不弹黑框）")
     parser.add_argument("--installer", action="store_true",
@@ -350,6 +408,10 @@ def main() -> int:
         windowed = args.windowed
         target = build(python, mode, icon, args.with_ytdlp, windowed=windowed)
         report(target, mode)
+
+    # WebView2 安装器放在 dist 里，安装包会把它一起带上
+    if args.with_webview2 or args.with_webview2_full:
+        ensure_webview2(full=args.with_webview2_full)
 
     if args.installer:
         # 安装程序内部自己会打一份目录版，这里就不重复打了

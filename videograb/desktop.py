@@ -16,7 +16,6 @@ import sys
 import time
 import urllib.error
 import urllib.request
-import webbrowser
 from pathlib import Path
 
 WINDOW_TITLE = "Video-Grabing"
@@ -140,9 +139,35 @@ def open_window(url: str, ctx=None) -> str:
         ctx.window_mode = "edge-app"      # Edge 是阻塞式等待，同样要提前写
     if _run_edge_app(url):
         return announce("edge-app")
-    webbrowser.open(url)
-    print("  已用系统默认浏览器打开：" + url)
-    return announce("browser")
+    # 到这里说明内置窗口和 Edge 应用模式都起不来。
+    # **绝不再自动打开系统浏览器** —— 用户点的是桌面程序，给他一个浏览器
+    # 标签页只会让人以为"这软件是个网页"，而且看不出到底哪里出了问题。
+    # 改成弹一个原生对话框，把原因和补救办法讲清楚，网址也给他，
+    # 但要由他自己决定要不要用浏览器打开。
+    _explain_failure(url)
+    return announce("failed")
+
+
+def _explain_failure(url: str) -> None:
+    """所有窗口方案都失败时的兜底：原生对话框，不碰浏览器。"""
+    reason = (
+        "内置窗口没能启动，可能是系统里缺少 WebView2 运行时。\n\n"
+        "服务已经在后台正常运行：\n"
+        + url + "\n\n"
+        "可以用下面任一方式补救：\n"
+        "  1. 安装 WebView2 运行时（微软官网免费下载，装完重开本程序）\n"
+        "  2. 如果程序目录里有 MicrosoftEdgeWebview2Setup.exe，直接运行它\n"
+        "  3. 把固定版本的 WebView2 运行时放进程序目录的 webview2\\ 子目录\n\n"
+        "在此之前，你也可以自己用浏览器打开上面的地址继续使用。"
+    )
+    print("  内置窗口未能启动。服务仍在运行：" + url)
+    try:
+        import ctypes
+        # 0x10 = 错误图标，0x40000 = 置顶，避免被别的窗口挡住看不见
+        ctypes.windll.user32.MessageBoxW(None, reason, "Video-Grabing", 0x10 | 0x40000)
+    except Exception as exc:
+        print("  （无法弹出提示框：" + str(exc)[:80] + "）")
+        print(reason)
 
 
 def _safe_destroy(window) -> None:

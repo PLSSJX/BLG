@@ -50,6 +50,7 @@ def build_state(ctx: Context) -> dict:
         "app_cn": "Video-Grabing",
         "engines": describe(ctx),
         "sites": describe_sites(),
+        "webview": _webview_status(),
         "settings": _public_settings(ctx),
         "theme_presets": THEME_PRESETS,
         "qualities": qualities,
@@ -721,6 +722,17 @@ class Handler(BaseHTTPRequestHandler):
                     break
                 self.wfile.write(chunk)
                 remaining -= len(chunk)
+
+
+def _webview_status() -> dict:
+    """WebView2 运行时的状态，给设置页显示用。任何异常都不该影响主接口。"""
+    try:
+        from .webview_runtime import status as _status
+        return _status()
+    except Exception as exc:
+        return {"mode": "unknown", "ok": False, "detail": str(exc)[:120],
+                "system_version": "", "fixed_dir": "", "fixed_expected": "",
+                "bootstrapper": "", "has_bootstrapper": False}
 
 
 def _prepare_ref(ctx: Context, raw: str):
