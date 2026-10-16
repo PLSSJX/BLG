@@ -456,6 +456,20 @@ class Handler(BaseHTTPRequestHandler):
             )
             return self._json({"ok": True, "task": task.to_dict()})
 
+        if route == "/api/window/frame":
+            # 界面算好 Material 3 的颜色后下发过来，我们应用到 Windows 的窗口边框上。
+            # 前端拿不到 HWND，所以这件事必须由后端做。
+            from .window_frame import apply_current
+            payload = payload or {}
+            ok = apply_current(
+                title="Video-Grabing",
+                caption=str(payload.get("caption") or ""),
+                text=str(payload.get("text") or ""),
+                border=str(payload.get("border") or ""),
+                dark=bool(payload.get("dark")),
+            )
+            return self._json({"ok": True, "applied": ok})
+
         if route == "/api/local/pick":
             from .localfile import pick_files
             paths = pick_files(self.ctx)

@@ -111,7 +111,28 @@ export function applyTheme({ seed = '#4CAF50', mode = 'dark', dynamic = true } =
   document.body.classList.toggle('mode-light', !dark);
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
 
+  // 把颜色同步给 Windows 的窗口边框。前端拿不到窗口句柄，只能让后端去刷。
+  // 这样标题栏和边框就跟界面是同一套 Material 3 主题色，而不是系统默认的灰白。
+  pushWindowFrame(dark);
+
   return { dark, scheme };
+}
+
+/** 只下发影响边框的几个角色，别把整张色板都发过去。 */
+function pushWindowFrame(dark) {
+  const read = (name) => cssVar('--md-' + name) || '';
+  const payload = {
+    dark: !!dark,
+    // OLED 纯黑模式下边框也跟着纯黑，否则会有一圈突兀的灰边
+    caption: document.body.classList.contains('mode-oled') ? '#000000' : read('surface-container'),
+    text: read('on-surface'),
+    border: read('outline-variant'),
+  };
+  if (!payload.caption) return;
+  import('./api.js').then(({ api }) => {
+    // 失败无所谓：非 Windows 或者老系统上本来就没有这套接口
+    api.setWindowFrame(payload).catch(() => {});
+  }).catch(() => {});
 }
 
 /** 取当前主色，供图表 / 内联样式使用。 */

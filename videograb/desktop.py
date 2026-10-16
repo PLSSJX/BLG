@@ -73,6 +73,14 @@ def _run_webview(url: str, on_closed=None, ctx=None) -> bool:
         # 否则窗口活着的整段时间里 /api/state 都只能报默认值。
         if ctx is not None:
             ctx.window_mode = "webview"
+        # 窗口一出现就把 Material 3 的主题色刷到边框上。
+        # 颜色是界面加载后通过 /api/window/frame 下发的，所以这里只需要
+        # 起一个后台线程等着窗口出现，然后套用"最近一次"下发的颜色。
+        try:
+            from .window_frame import apply_when_ready
+            apply_when_ready(WINDOW_TITLE)
+        except Exception as exc:
+            print("  窗口边框上色失败（不影响使用）：" + str(exc)[:100])
         # 显式指定 EdgeChromium：Windows 上其它后端要么是 IE，要么要额外运行库
         webview.start(gui="edgechromium", private_mode=False, storage_path=str(_storage_dir()))
         return True

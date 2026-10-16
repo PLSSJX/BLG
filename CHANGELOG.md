@@ -1,5 +1,21 @@
 # 更新记录
 
+## v2.2.0 — 窗口边框跟随 Material 3 主题
+
+界面早就复刻了 Kazumi，但窗口边框还是 Windows 默认的灰白，一眼能看出"这是套壳"。
+这一版把边框也接进了主题。
+
+- **标题栏 / 边框 / 圆角全部跟着主题色走**：标题栏用 Material 3 的 `surfaceContainer`，
+  文字用 `onSurface`，边框用 `outlineVariant`；切换主题色、明暗模式、OLED 纯黑时会**实时更新**
+- 通过 Windows 的 DWM 接口修改（`DWMWA_CAPTION_COLOR` / `BORDER_COLOR` / `TEXT_COLOR` /
+  `WINDOW_CORNER_PREFERENCE` / `USE_IMMERSIVE_DARK_MODE`），四个角色由界面算好后下发给后端
+- **保留系统原生边框**，没有改成自绘无边框窗口 —— 最小化/最大化/关闭、贴边分屏、
+  双击标题栏、高 DPI 缩放、无障碍这些都还能正常工作
+- OLED 纯黑模式下边框也一并纯黑，不会留一圈突兀的灰边
+- Win10 等没有彩色标题栏接口的系统上会静默跳过，不影响使用
+
+---
+
 ## v2.1.0 — 启动不再弹出浏览器
 
 ### 行为变更（重要）

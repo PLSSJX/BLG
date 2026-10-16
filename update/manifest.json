@@ -1,6 +1,6 @@
 {
- "version": "2.1.0",
- "generated": "2026-10-16 09:46:03 UTC",
+ "version": "2.2.0",
+ "generated": "2026-10-16 10:49:53 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -16,8 +16,8 @@
   },
   {
    "path": "web/js/api.js",
-   "sha256": "a5d89a693715b9e7376c1ec24d011da173969910b0a7615c626f1bfa5a96707c",
-   "size": 3028
+   "sha256": "d947e0164e03afc9faf82136474afd92ef9d780b065b17a91239af3010df29fb",
+   "size": 3140
   },
   {
    "path": "web/js/app.js",
@@ -36,8 +36,8 @@
   },
   {
    "path": "web/js/theme.js",
-   "sha256": "bd124d8a351780055c178678d72fc6097f7ddab7524d7e087ad95b2b3120f4f3",
-   "size": 4898
+   "sha256": "058f62fdd7bba13af34b76aeadf9e77fc8a0ef9cc288679cb2673d5b0a227528",
+   "size": 5833
   },
   {
    "path": "web/js/ui.js",
@@ -93,7 +93,7 @@
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "05bf69b364d2b4675063148dc094715e8fb612d1e16cf4d771ce5b6a2971a317",
+   "sha256": "66cba64562be2fe53ea1d1726aca034e36c1135d4dcddc5e1f75d96b50ef67c1",
    "size": 308
   },
   {
@@ -113,8 +113,8 @@
   },
   {
    "path": "videograb/desktop.py",
-   "sha256": "aa49d1c2ca9d11221ac560b1dffb8eeb9a18e084c4ca509180bdd384c963f60e",
-   "size": 7175
+   "sha256": "d093b2fb10f787f3fef10345d5c24e902f44833e3f4708158b56f19e18100a92",
+   "size": 7672
   },
   {
    "path": "videograb/downloader.py",
@@ -238,8 +238,8 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "2c25b52a9c672c94b5a01d9ff39a1f3a3223e5344ac63da64069edc4e0c42566",
-   "size": 35097
+   "sha256": "76f338c53bfd991fcf5c0f3ea030d2326d45c1f50fd532d54c3246c9f39a523a",
+   "size": 35773
   },
   {
    "path": "videograb/sites/__init__.py",
@@ -330,12 +330,17 @@
    "path": "videograb/webview_runtime.py",
    "sha256": "098ae73c6b25cb32074598b9f9da87d2ae65ef44f950446776bff81461160d71",
    "size": 4857
+  },
+  {
+   "path": "videograb/window_frame.py",
+   "sha256": "ae7bdcff06f2ffade10f1890d77eb853c2879e1a7b716319cbb6565636caf384",
+   "size": 4632
   }
  ],
  "installer": {
   "name": "Video-Grabing-Setup-2.1.0.exe",
   "size": 46767786,
   "sha256": "faafaf573edd4ccebddba29332387e3ec0612bb71b420dc6aa8fd8297424ec59",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.1.0/Video-Grabing-Setup-2.1.0.exe"
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.2.0/Video-Grabing-Setup-2.1.0.exe"
  }
 }

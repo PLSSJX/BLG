@@ -45,6 +45,9 @@ export const api = {
   saveSettings: (settings) => post('/api/settings', { settings }),
   engineOrder: (order, enabled) => post('/api/engines/order', { order, enabled }),
 
+  // 把主题色同步到 Windows 窗口边框
+  setWindowFrame: (frame) => post('/api/window/frame', frame),
+
   // 本地音乐文件：选择 / 预检 / 转换
   pickLocalFiles: () => post('/api/local/pick', {}),
   scanLocalFiles: (paths) => post('/api/local/decryptable', { paths }),
