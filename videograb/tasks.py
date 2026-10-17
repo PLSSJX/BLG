@@ -265,6 +265,41 @@ class TaskManager:
             self._delete_task_files(task)
         return True
 
+    def files_to_delete(self, task: Task) -> list:
+        """列出"删除文件"时究竟会删掉哪些东西。
+
+        界面在真正动手之前要把它显示给用户确认 —— 删除是不可撤销的，
+        不能只给一句"确定要删除吗"。
+        """
+        from pathlib import Path as _Path
+
+        if not task.directory:
+            return []
+        directory = _Path(task.directory)
+        if not directory.is_dir():
+            return []
+        items: list = []
+        for entry in (task.files or []):
+            target = entry.get("path") if isinstance(entry, dict) else None
+            if not target:
+                continue
+            path = _Path(target)
+            try:
+                path.resolve().relative_to(directory.resolve())
+            except (ValueError, OSError):
+                continue
+            if path.exists():
+                items.append({"kind": "file", "path": str(path), "size": path.stat().st_size})
+        for pattern in ("_parts", "*.bgpart", "*.part"):
+            for leftover in directory.glob(pattern):
+                if leftover.is_dir():
+                    total = sum(f.stat().st_size for f in leftover.rglob("*") if f.is_file())
+                    items.append({"kind": "dir", "path": str(leftover), "size": total})
+                elif leftover.is_file():
+                    items.append({"kind": "file", "path": str(leftover),
+                                  "size": leftover.stat().st_size})
+        return items
+
     def _delete_task_files(self, task: Task) -> None:
         """只删这个任务自己产出的文件。
 
@@ -279,28 +314,14 @@ class TaskManager:
         directory = _Path(task.directory)
         if not directory.is_dir():
             return
-        for entry in (task.files or []):
-            target = entry.get("path") if isinstance(entry, dict) else None
-            if not target:
-                continue
-            path = _Path(target)
-            # 再确认一次：要删的必须真的在这个任务的目录里
-            try:
-                path.resolve().relative_to(directory.resolve())
-            except (ValueError, OSError):
-                continue
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
-        # 本程序自己的中间产物
-        for pattern in ("_parts", "*.bgpart", "*.part"):
-            for leftover in directory.glob(pattern):
+        # 与 files_to_delete() 用同一份清单，保证"看到的"和"删掉的"完全一致
+        for item in self.files_to_delete(task):
+            path = _Path(item["path"])
+            if item["kind"] == "dir":
+                shutil.rmtree(path, ignore_errors=True)
+            else:
                 try:
-                    if leftover.is_dir():
-                        shutil.rmtree(leftover, ignore_errors=True)
-                    else:
-                        leftover.unlink(missing_ok=True)
+                    path.unlink(missing_ok=True)
                 except OSError:
                     pass
         # 只有空了才删得掉；里面还有别的东西就原样留着

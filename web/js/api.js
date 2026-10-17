@@ -38,6 +38,7 @@ export const api = {
   submit: (payload) => post('/api/tasks', payload),
   cancelTask: (id) => post('/api/tasks/cancel', { id }),
   retryTask: (id) => post('/api/tasks/retry', { id }),
+  previewRemove: (id) => post('/api/tasks/preview-remove', { id }),
   removeTask: (id, deleteFiles = false) =>
     post('/api/tasks/remove', { id, delete_files: deleteFiles }),
   clearTasks: () => post('/api/tasks/clear'),

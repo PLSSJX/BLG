@@ -1,6 +1,6 @@
 {
- "version": "2.4.8",
- "generated": "2026-10-17 02:21:05 UTC",
+ "version": "2.4.9",
+ "generated": "2026-10-17 02:31:06 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -16,8 +16,8 @@
   },
   {
    "path": "web/js/api.js",
-   "sha256": "0ce9d6c0784b5235ec93d1589f8241c32fe8fc57feb72362787ba156f9d68b08",
-   "size": 3249
+   "sha256": "08291937338602222d10a5c85733554f56bde1ce671389d46b79c268a9c03e37",
+   "size": 3317
   },
   {
    "path": "web/js/app.js",
@@ -31,8 +31,8 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "6108ff441d71234a5f942b720728648ce8aa51cdd678710dc3e2d84e460e9a0c",
-   "size": 64269
+   "sha256": "e3d896099878b60ab44559c1a674e931a61908ae9ed641a7b05cfbfb7855298b",
+   "size": 65789
   },
   {
    "path": "web/js/theme.js",
@@ -93,7 +93,7 @@
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "a09799687eb1bf1227a2fb5585a73a0d5180d36fc3faf168376859ae659e63b2",
+   "sha256": "342dd843ad9edf645eb30e8cb6c99da98b45c7c493511af96d6671421fe582ee",
    "size": 308
   },
   {
@@ -243,8 +243,8 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "5048d2b0bcbf43220d5cbba7656a46ccb51235b6504ce6895de9b8ab864593e2",
-   "size": 37806
+   "sha256": "811f1d5452ebb0c48e616b5ea2844612bc572813d7ef7a50ef559d3d955a26c0",
+   "size": 38336
   },
   {
    "path": "videograb/sites/__init__.py",
@@ -313,8 +313,8 @@
   },
   {
    "path": "videograb/tasks.py",
-   "sha256": "e7081327ffce36dda60862ce310c0101b24ad30ee0064f67963386c964a047f3",
-   "size": 46460
+   "sha256": "fa9fa9f3df7cf8108f72b414e7940374118414fd74d9341288665198ddf8542b",
+   "size": 47428
   },
   {
    "path": "videograb/updater.py",
@@ -343,9 +343,9 @@
   }
  ],
  "installer": {
-  "name": "Video-Grabing-Setup-2.4.8.exe",
-  "size": 44217180,
-  "sha256": "908e47659ead1bacf06e0fcb56902c40dfe8771bfc26546b24beaa272cf351ed",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.4.8/Video-Grabing-Setup-2.4.8.exe"
+  "name": "Video-Grabing-Setup-2.4.9.exe",
+  "size": 44221650,
+  "sha256": "43d2371a72a66d63f400f64b9f1fc0093d0c27343196688cbde5bf75f592ea30",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.4.9/Video-Grabing-Setup-2.4.9.exe"
  }
 }

@@ -755,13 +755,38 @@ function buildTaskCard(task) {
     actions.append(button('打开目录', { variant: 'text', iconName: 'folder_open', onClick: () => {
       api.open(task.directory);
     } }));
-    actions.append(button('删除', { variant: 'text', iconName: 'delete', onClick: async () => {
+    // 删除分两种，都要先把"会不会删文件、删哪些"说清楚
+    actions.append(button('移出列表', { variant: 'text', iconName: 'delete', onClick: async () => {
       const yes = await dialog({
-        title: '删除这条记录？',
-        body: '只从列表里移除记录，磁盘上的文件会保留。',
-        confirm: '删除',
+        title: '从列表移出？',
+        body: '只移除这条记录，磁盘上的文件会完整保留。',
+        confirm: '移出',
       });
       if (yes) { await api.removeTask(task.id, false); refreshTasks(); }
+    } }));
+    actions.append(button('删除并清理文件', { variant: 'text', iconName: 'delete_forever', onClick: async () => {
+      // 先把真正会被删掉的路径逐条列出来，用户确认后才动手
+      let preview = { items: [], total: 0 };
+      try { preview = await api.previewRemove(task.id); } catch (error) { toast('读取失败：' + error.message); return; }
+      const items = preview.items || [];
+      if (!items.length) {
+        const yes = await dialog({
+          title: '没有需要清理的文件',
+          body: '这个任务目录里已经没有本程序生成的文件了。要把记录移出列表吗？',
+          confirm: '移出',
+        });
+        if (yes) { await api.removeTask(task.id, false); refreshTasks(); }
+        return;
+      }
+      const list = items.map((item) =>
+        '· ' + (item.kind === 'dir' ? '［文件夹］' : '') + item.path + '（' + fmtSize(item.size) + '）').join('\n');
+      const yes = await dialog({
+        title: '删除 ' + items.length + ' 项，共 ' + fmtSize(preview.total) + '？',
+        body: '下面这些文件会被永久删除，无法恢复：\n\n' + list +
+              '\n\n不属于本任务的文件不会被删除，所在文件夹只有在空了之后才移除。',
+        confirm: '确认删除',
+      });
+      if (yes) { await api.removeTask(task.id, true); refreshTasks(); toast('已删除 ' + items.length + ' 项'); }
     } }));
   }
 

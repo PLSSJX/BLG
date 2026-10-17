@@ -208,6 +208,30 @@ def conflicting_files(target: Path, members) -> list:
     return bad
 
 
+def preview_removal(target: Path) -> list:
+    """列出"覆盖安装"会删掉哪些文件（不真的删）。给安装界面做确认用。"""
+    if not target.exists() or not target.is_dir():
+        return []
+    if is_drive_root(target) or not looks_like_install(target):
+        return []
+    names = _installed_names(target)
+    doomed: list = []
+    for item in target.iterdir():
+        if item.name in USER_KEEP_NAMES:
+            continue
+        if names is not None:
+            if item.is_dir():
+                prefix = item.name + "/"
+                allowed = any(n.startswith(prefix) for n in names)
+            else:
+                allowed = item.name in names
+        else:
+            allowed = item.name in APP_OWNED_NAMES
+        if allowed:
+            doomed.append(str(item))
+    return doomed
+
+
 def uninstall_existing(target: Path) -> list:
     """覆盖安装前清掉**旧版本的程序文件**，返回被保留的名字。
 
@@ -275,6 +299,7 @@ def run_gui() -> int:
     shortcut_var = tk.BooleanVar(value=True)
     launch_var = tk.BooleanVar(value=True)
     status_var = tk.StringVar(value="准备就绪。点「开始安装」继续。")
+    confirmed = [False]   # 用户是否已经确认过"清理旧版本文件"
 
     style = ttk.Style(root)
     try:
@@ -342,6 +367,21 @@ def run_gui() -> int:
             if W.app_is_running():
                 root.after(0, lambda: status_var.set("检测到程序正在运行，正在关闭…"))
                 W.kill_running_app()
+            # 删除是不可撤销的：先把具体要删的路径列出来，用户点了"继续"才动手
+            doomed = preview_removal(target)
+            if doomed and not confirmed[0]:
+                preview = "\n".join("· " + p for p in doomed[:12])
+                if len(doomed) > 12:
+                    preview += "\n…（共 " + str(len(doomed)) + " 项）"
+                if not messagebox.askokcancel(
+                        "确认清理旧版本",
+                        "安装前需要先删掉下面 " + str(len(doomed)) + " 项旧版本文件：\n\n"
+                        + preview
+                        + "\n\n" + str(NEST_NAME) + " 目录以外的文件不会被删除。"):
+                    status_var.set("已取消")
+                    return
+                confirmed[0] = True
+
             root.after(0, lambda: status_var.set("正在清理旧版本文件…"))
             uninstall_existing(target)
 

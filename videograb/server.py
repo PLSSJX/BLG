@@ -523,6 +523,16 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError("任务不存在", 404)
             return self._json({"ok": True, "task": task.to_dict()})
 
+        if route == "/api/tasks/preview-remove":
+            # 真正删除之前，把会删掉的文件逐条列给用户确认。
+            task = ctx.tasks.get(str(payload.get("id") or ""))
+            if not task:
+                raise ApiError("任务不存在")
+            items = ctx.tasks.files_to_delete(task)
+            return self._json({"ok": True, "items": items,
+                               "total": sum(i.get("size") or 0 for i in items),
+                               "directory": task.directory or ""})
+
         if route == "/api/tasks/remove":
             ok = ctx.tasks.remove(payload.get("id") or "",
                                   delete_files=bool(payload.get("delete_files")))
