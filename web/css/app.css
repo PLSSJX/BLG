@@ -605,7 +605,14 @@ body.mode-oled {
 }
 @keyframes dialog-in { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
 .dialog h3 { margin: 0 0 8px; font-size: 20px; font-weight: 400; }
-.dialog p { margin: 0 0 16px; font-size: 13.5px; color: var(--md-on-surface-variant); line-height: 1.7; }
+.dialog p {
+  margin: 0 0 16px; font-size: 13.5px; color: var(--md-on-surface-variant); line-height: 1.7;
+  /* 删除确认这类对话框要点名列出每一个文件，必须保留换行，
+     否则清单会被压成一行，用户根本没法看清要删什么 */
+  white-space: pre-line;
+  /* Windows 路径可能很长，没有这个会横向溢出 */
+  overflow-wrap: anywhere;
+}
 .dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
 
 /* 加载骨架 */

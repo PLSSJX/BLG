@@ -778,13 +778,19 @@ function buildTaskCard(task) {
         if (yes) { await api.removeTask(task.id, false); refreshTasks(); }
         return;
       }
-      const list = items.map((item) =>
+      // 清单太长时只显示前 30 项，避免弹窗变成一堵墙
+      const shown = items.slice(0, 30);
+      const list = shown.map((item) =>
         '· ' + (item.kind === 'dir' ? '［文件夹］' : '') + item.path + '（' + fmtSize(item.size) + '）').join('\n');
+      const more = items.length > shown.length
+        ? '\n… 另有 ' + (items.length - shown.length) + ' 项未显示（合计 ' + fmtSize(preview.total) + '）'
+        : '';
       const yes = await dialog({
         title: '删除 ' + items.length + ' 项，共 ' + fmtSize(preview.total) + '？',
-        body: '下面这些文件会被永久删除，无法恢复：\n\n' + list +
-              '\n\n不属于本任务的文件不会被删除，所在文件夹只有在空了之后才移除。',
+        body: '下面这些文件会被永久删除，无法恢复：\n\n' + list + more +
+              '\n\n不属于本任务的文件不会被删除；所在文件夹只有在空了之后才移除。',
         confirm: '确认删除',
+        danger: true,
       });
       if (yes) { await api.removeTask(task.id, true); refreshTasks(); toast('已删除 ' + items.length + ' 项'); }
     } }));
