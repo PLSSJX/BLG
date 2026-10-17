@@ -1,6 +1,6 @@
 {
- "version": "2.5.0",
- "generated": "2026-10-17 02:37:56 UTC",
+ "version": "2.5.1",
+ "generated": "2026-10-17 07:45:41 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -31,8 +31,8 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "ad1a1234553ee46f7a02d14ffa52479de2b065b042ff66db4487a6a525f74b0a",
-   "size": 66112
+   "sha256": "5fc65cb742c8990f926e3e3b37e0f55019a6fba8ed469f0f5828c73a249e6c4f",
+   "size": 68915
   },
   {
    "path": "web/js/theme.js",
@@ -93,7 +93,7 @@
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "e6153478343c041ce61e872cddfaa97d271f733c927ce9a903777fe57ec59b9e",
+   "sha256": "c29af0b763b41909523308b5216150850adbe51d2470ae86939b342400f38616",
    "size": 308
   },
   {
@@ -228,8 +228,8 @@
   },
   {
    "path": "videograb/net.py",
-   "sha256": "1b17c98bf21a1645d3e3eeb75f128137d7d42154e08f1d15e64dcc494c088855",
-   "size": 13989
+   "sha256": "2b5c9e641a0ec1f437c50b594352085a10a20215f459304e3759ee57d8c0ee16",
+   "size": 14730
   },
   {
    "path": "videograb/quality.py",
@@ -243,8 +243,8 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "811f1d5452ebb0c48e616b5ea2844612bc572813d7ef7a50ef559d3d955a26c0",
-   "size": 38336
+   "sha256": "a4bfc357cc19698f9650bbb87adbc51fb3fbb844a62cc73ad8e04b7f1aa5a614",
+   "size": 39840
   },
   {
    "path": "videograb/sites/__init__.py",
@@ -343,9 +343,9 @@
   }
  ],
  "installer": {
-  "name": "Video-Grabing-Setup-2.5.0.exe",
-  "size": 44224655,
-  "sha256": "d5d48f39ac1ee1cc69284c436ba6b70686f189e479e340ea2c7a26c750ad280c",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.5.0/Video-Grabing-Setup-2.5.0.exe"
+  "name": "Video-Grabing-Setup-2.5.1.exe",
+  "size": 44223476,
+  "sha256": "1d529eb6ecaad09e15d31ef8ac1034e6f1ace2138b32b58203430bce05d7e5ad",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.5.1/Video-Grabing-Setup-2.5.1.exe"
  }
 }

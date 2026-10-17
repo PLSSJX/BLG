@@ -406,7 +406,8 @@ class Handler(BaseHTTPRequestHandler):
 
             engines = ([get_engine(engine_id)] if engine_id != "auto"
                        else [get_engine(i) for i in ctx.settings.ordered_engines()])
-            errors = []
+            errors: list = []
+            usable = []
             for engine in engines:
                 ok, reason = engine.available(ctx)
                 if not ok:
@@ -414,17 +415,43 @@ class Handler(BaseHTTPRequestHandler):
                     continue
                 if engine.id == "pgc_bangumi" and ref.kind != "bangumi":
                     continue
+                usable.append(engine)
+
+            def _grab(engine):
                 try:
-                    play = engine.fetch_play(ctx, ref, ref.p, qn)
+                    return engine, engine.fetch_play(ctx, ref, ref.p, qn), None
                 except Exception as exc:
-                    errors.append(f"{engine.name}：{exc}")
-                    continue
-                return self._json({
-                    "ok": True, "play": play.to_dict(),
-                    "engine": engine.id, "engine_name": engine.name,
-                    "errors": errors,
-                })
-            raise ApiError("所有通道都没能取到播放地址：\n" + "\n".join(errors[:5]))
+                    return engine, None, str(exc)
+
+            # 并行把所有可用通道试一遍，再挑画质最高的那条。
+            # 以前这里是"第一个成功就返回"，而通道顺序里 web_durl（durl 单文件，
+            # 登录也只有 720P）排在前面，于是预览永远显示 720P —— 实际下载却
+            # 会因为比较全部通道而拿到 1080P。预览和真实结果对不上就是这么来的。
+            candidates = []
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=min(8, max(1, len(usable)))) as pool:
+                for engine, play, error in pool.map(_grab, usable):
+                    if play is None:
+                        errors.append(f"{engine.name}：{error}")
+                        continue
+                    if not (play.videos or play.durl):
+                        errors.append(f"{engine.name}：没有可下载的地址")
+                        continue
+                    candidates.append((engine, play))
+
+            if not candidates:
+                raise ApiError("所有通道都没能取到播放地址：\n" + "\n".join(errors[:5]))
+
+            best_engine, best_play = max(candidates, key=lambda item: item[1].best_height())
+            # 把参选的通道和画质一起返回，界面可以展示"为什么选这条"
+            board = [{"engine": e.id, "name": e.name, "height": p.best_height()}
+                     for e, p in candidates]
+            return self._json({
+                "ok": True, "play": best_play.to_dict(),
+                "engine": best_engine.id, "engine_name": best_engine.name,
+                "compared": sorted(board, key=lambda b: -b["height"]),
+                "errors": errors,
+            })
 
         if route == "/api/probe":
             raw = (payload.get("input") or "").strip()

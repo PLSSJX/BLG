@@ -303,13 +303,11 @@ function buildVideoCard() {
         const s = siteOf(info.site) || siteOf('bilibili');
         return s ? pill(s.name) : null;
       })(),
-      pill('通道：' + (store.parsed.engine_name || store.parsed.engine)),
+      // 只有 B 站才有"通道"这个概念；其它平台这条信息没有意义
+      (isBilibili() && store.parsed.engine_name)
+        ? pill('通道：' + store.parsed.engine_name) : null,
       info.bvid ? pill(info.bvid, 'mute') : null,
-      store.play ? pill(
-        store.play.is_dash ? 'DASH 音视频分离'
-          : (store.play.media === 'music'
-              ? (String(store.play.ext || 'mp3').toUpperCase() + ' 音频')
-              : '单文件 MP4'),
+      store.play ? pill(streamLabel(store.play),
         store.play.is_dash ? 'warn' : 'ok') : null),
   );
 
@@ -518,9 +516,10 @@ function buildDownloadCard() {
       store.parsed?.info?.media === 'music' ? '音质与格式' : '清晰度'),
     qualityRow,
 
-    h('div', { class: 'section-label' }, '抓取通道与编码'),
+    // 抓取通道是 B 站专属概念：其它平台只有一条官方接口，摆一个选择框只会让人困惑
+    h('div', { class: 'section-label' }, isBilibili() ? '抓取通道与编码' : '编码'),
     h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px' } },
-      h('div', { class: 'select-wrap' }, engineSelect),
+      isBilibili() ? h('div', { class: 'select-wrap' }, engineSelect) : null,
       h('div', { class: 'select-wrap' }, codecSelect)),
 
     streamHost,
@@ -595,6 +594,53 @@ async function submitTask() {
 
 /* ================================================================ 时间表（通道体检） */
 
+/* ---------------- 平台识别：让界面按平台说人话 ---------------- */
+
+function siteHosts(site) {
+  const urls = [site?.home, ...(site?.examples || [])];
+  return urls.map((u) => {
+    try { return new URL(u).hostname.replace(/^www\./, '').toLowerCase(); } catch { return ''; }
+  }).filter(Boolean);
+}
+
+/** 从输入文本判断是哪个平台；判断不出来返回 null。 */
+export function detectSite(text) {
+  const raw = String(text || '').trim();
+  if (!raw) return null;
+  let host = '';
+  try { host = new URL(raw).hostname.replace(/^www\./, '').toLowerCase(); } catch { host = ''; }
+  const sites = store.config?.sites || [];
+  if (!host) {
+    // BV 号 / av 号 / 纯数字分P：一定是 B 站
+    if (/^(BV[0-9A-Za-z]{10}|av\d+)$/i.test(raw)) return 'bilibili';
+    return null;
+  }
+  // b23.tv 之类的短链归到对应平台
+  for (const s of sites) {
+    if (siteHosts(s).some((x) => host === x || host.endsWith('.' + x))) return s.id;
+  }
+  return null;
+}
+
+/** 流的显示名。B 站说 DASH/durl 那套，其它平台说人话。 */
+export function streamLabel(play) {
+  if (!play) return null;
+  if (play.media === 'music') return String(play.ext || 'mp3').toUpperCase() + ' 音频';
+  if (!isBilibili()) {
+    return play.is_dash ? '视频流 + 音频流' : '音视频合一的文件';
+  }
+  return play.is_dash ? 'DASH 音视频分离' : '单文件 MP4';
+}
+
+/** 当前界面语境下是哪个平台。 */
+export function currentSite() {
+  return store.parsed?.ref?.site || detectSite(store.probeInput || store.input) || 'bilibili';
+}
+
+export function isBilibili() {
+  return currentSite() === 'bilibili';
+}
+
 export function renderMatrix(view) {
   clear(view);
   const page = h('div', { class: 'page' });
@@ -604,8 +650,29 @@ export function renderMatrix(view) {
     onkeydown: (e) => { if (e.key === 'Enter') runProbe(); },
   });
 
+  const onBili = isBilibili();
+  const siteInfo = (store.config?.sites || []).find((s) => s.id === currentSite());
+
+  page.append(h('div', { class: 'page-head' }, h('h1', { class: 'page-title' }, '通道体检')));
+
+  if (!onBili) {
+    // 这 10 条通道是 B 站专属的，其它平台看到它们只会困惑
+    page.append(
+      h('p', { class: 'page-sub' },
+        '「通道体检」只对哔哩哔哩有意义 —— 那 10 条通道是 B 站的不同取流接口。'
+        + (siteInfo ? '当前是「' + siteInfo.name + '」，走的是单一的官方接口，没有可比较的备用通道。' : '')),
+      card(
+        h('div', { class: 'card-title', html: icon('hub', 'outlined', 20) + '<span>'
+          + (siteInfo ? siteInfo.name : '当前平台') + ' 的取流路径</span>' }),
+        h('div', { class: 'card-desc' },
+          (siteInfo?.note || '直接使用该平台自己的官方接口解析，拿到地址后交给同一个下载内核。')
+          + ' 想对比 B 站的多通道情况，请在上面解析一个 B 站视频后再回到这里。'),
+      ));
+    view.append(page);
+    return;
+  }
+
   page.append(
-    h('div', { class: 'page-head' }, h('h1', { class: 'page-title' }, '通道体检')),
     h('p', { class: 'page-sub' },
       '把同一个 B 站视频同时交给全部抓取通道，逐条报告真实结果。B 站的风控和接口策略经常变，' +
       '这里显示的是「此刻这台机器上」的实测可用性，而不是写死的宣传。'),

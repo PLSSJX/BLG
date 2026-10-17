@@ -26,6 +26,8 @@ MIN_API_GAP = 0.15          # 同一进程内两次接口请求的最小间隔�
 RISK_CONTROL_CODES = (412, 429)
 # 只有这些域名会带上 B 站登录态，其余请求一律不带 Cookie
 COOKIE_HOSTS = ("bilibili.com", "b23.tv")
+# 打这些域名之前要先拿到 buvid3，否则容易被 412
+API_COOKIE_HOSTS = ("api.bilibili.com", "app.bilibili.com", "api.live.bilibili.com")
 
 RISK_CONTROL_HINT = "触发了 B 站风控（HTTP 412），冷却几秒后自动重试即可"
 
@@ -212,6 +214,18 @@ class HttpClient:
         allow_cookie: bool | None = None,
     ) -> HttpResult:
         settings = self.ctx.settings
+
+        # 打 B 站接口之前先把 buvid3 拿到手。没有这个指纹 cookie 时，
+        # 官方接口（尤其是 Web WBI 那条）会被风控直接回 412 —— 实测这是
+        # 「Web WBI 签名接口」长期不可用的主要原因。ensure_buvid() 只取一次，
+        # 内部有 _buvid_fetched 拦住重入。
+        host = (urllib.parse.urlparse(url).hostname or "").lower()
+        if any(host == h or host.endswith("." + h) for h in API_COOKIE_HOSTS):
+            try:
+                self.ensure_buvid()
+            except Exception:
+                pass
+
         hdrs = {
             "User-Agent": settings.user_agent or DEFAULT_UA,
             "Accept": "*/*",
