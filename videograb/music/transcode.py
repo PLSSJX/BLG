@@ -94,6 +94,18 @@ def _remove(path) -> None:
         pass
 
 
+def _unique_path(path: Path) -> Path:
+    """同名文件已存在时换一个名字，绝不覆盖已有文件。"""
+    if not path.exists():
+        return path
+    stem, suffix, parent = path.stem, path.suffix, path.parent
+    for index in range(2, 1000):
+        candidate = parent / f"{stem} ({index}){suffix}"
+        if not candidate.exists():
+            return candidate
+    return parent / (stem + "-" + str(os.getpid()) + suffix)
+
+
 def _tmp_path(out: Path) -> Path:
     return out.with_name(f"{out.stem}.part-{os.getpid()}{out.suffix}")
 
@@ -243,6 +255,11 @@ def convert(src, target: str, dest_dir=None, *, bitrate: str = "", progress=None
     # 目录只在真要写文件时才建，免得转不了还在别人磁盘上建空目录
     out_dir = Path(dest_dir) if dest_dir else src_path.parent
     out_path = out_dir / (src_path.stem + ext)
+    # 目标已存在且不是源文件本身时另起一个名字。
+    # 以前这里是直接写 —— 用户目录里恰好有个同名的 歌.mp3 就会被静默覆盖。
+    # decrypt.py 一直用 _unique_path，转码这条路漏了。
+    if out_path.exists() and not _same_file(src_path, out_path):
+        out_path = _unique_path(out_path)
 
     # ---------------------------------------------------------- 不重新编码
     if tid == "copy" or same:

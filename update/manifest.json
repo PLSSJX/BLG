@@ -1,6 +1,6 @@
 {
- "version": "2.4.7",
- "generated": "2026-10-16 17:55:30 UTC",
+ "version": "2.4.8",
+ "generated": "2026-10-17 02:21:05 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -93,7 +93,7 @@
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "d8d86caf265ddca02395b1c0ca0f79534329229f4d558055020a6f2949acb0ae",
+   "sha256": "a09799687eb1bf1227a2fb5585a73a0d5180d36fc3faf168376859ae659e63b2",
    "size": 308
   },
   {
@@ -218,8 +218,8 @@
   },
   {
    "path": "videograb/music/transcode.py",
-   "sha256": "b471ba3cc16e68ae67dd34a5dad9743d07e82b5a03ea05761aa99756d93b67e2",
-   "size": 39362
+   "sha256": "1075f4ac867754273e81c57341b985325fd4a53f7c16f4555ebcc8a29a1ac345",
+   "size": 40158
   },
   {
    "path": "videograb/muxer.py",
@@ -343,9 +343,9 @@
   }
  ],
  "installer": {
-  "name": "Video-Grabing-Setup-2.4.7.exe",
-  "size": 44221856,
-  "sha256": "5354927c5a9371809e2f4bccce4c0dd82a4f8d5e926476348f38c60e5ae27b6b",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.4.7/Video-Grabing-Setup-2.4.7.exe"
+  "name": "Video-Grabing-Setup-2.4.8.exe",
+  "size": 44217180,
+  "sha256": "908e47659ead1bacf06e0fcb56902c40dfe8771bfc26546b24beaa272cf351ed",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.4.8/Video-Grabing-Setup-2.4.8.exe"
  }
 }
