@@ -541,9 +541,14 @@ function buildStreamCard() {
     rows.push(['音频', '—', a.codec_text, (a.bandwidth / 1000).toFixed(0) + ' kbps', a.size_text,
       a.note || '']);
   }
+  // 「单文件 / 第 N 段 / 已封装音轨」是 B 站 durl 的概念，其它平台这样说没人看得懂
+  const onBili = store.parsed?.ref?.site ? store.parsed.ref.site === 'bilibili' : isBilibili();
   for (const d of play.durl || []) {
-    rows.push(['单文件', '第 ' + d.order + ' 段', '已封装音轨', '—', d.size_text,
-      d.order === 1 ? '免合并' : '']);
+    rows.push(onBili
+      ? ['单文件', '第 ' + d.order + ' 段', '已封装音轨', '—', d.size_text,
+         d.order === 1 ? '免合并' : '']
+      : [play.media === 'music' ? '音频' : '视频', d.order > 1 ? '第 ' + d.order + ' 段' : '完整文件',
+         '—', '—', d.size_text, '']);
   }
 
   const table = h('table', { class: 'matrix' },
@@ -560,8 +565,19 @@ function buildStreamCard() {
     play.phantom_quality?.length
       ? h('div', { class: 'hint-box', style: { marginTop: '12px' } },
           h('span', { html: icon('info', 'outlined', 20) }),
-          h('div', {}, '接口声称还支持 ' + play.phantom_quality.map((q) => qualityLabel(q)).join('、') +
-            '，但本次一个都没有下发。这些档位需要登录或大会员，在「我的」里填 SESSDATA 就能解锁。'))
+          h('div', {}, (() => {
+            const list = play.phantom_quality.map((q) => qualityLabel(q)).join('、');
+            // 解锁方式每个平台都不一样：B 站是 SESSDATA，网易云是 MUSIC_U，
+            // QQ 音乐/酷狗/酷我是各自的 Cookie。写死 SESSDATA 会让其它平台莫名其妙。
+            const key = {
+              bilibili: 'SESSDATA', wangyi: 'MUSIC_U', qqmusic: 'Cookie',
+              kugou: 'Cookie', kuwo: 'Cookie',
+            }[store.parsed?.ref?.site] || '登录凭据';
+            const where = siteOf(store.parsed?.ref?.site)?.name || '该平台';
+            return '接口声称还支持 ' + list + '，但本次一个都没有下发。'
+              + '这些档位需要登录（或会员）才能拿到，在「设置 → 平台登录」里填入 '
+              + where + ' 的 ' + key + ' 就能解锁。';
+          })()))
       : null);
 }
 
@@ -758,6 +774,8 @@ export function renderTasks(view) {
     h('div', { class: 'page-head' },
       h('h1', { class: 'page-title' }, '历史记录'),
       h('div', { class: 'spacer' }),
+      // 直接打开下载目录，不用先回解析页
+      button('打开下载目录', { variant: 'text', iconName: 'folder_open', onClick: () => api.open() }),
       button('清除已完成', { variant: 'text', iconName: 'delete', onClick: async () => {
         const result = await api.clearTasks();
         toast('已清除 ' + result.removed + ' 条记录');
