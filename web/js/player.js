@@ -79,7 +79,8 @@ export function next(auto = false) {
     return;
   }
   const last = player.index >= player.queue.length - 1;
-  if (last && player.loop !== 'all' && auto) {
+  // 只有"列表循环"和"乱序"才会绕回开头；单曲循环和关闭都不该跳
+  if (last && player.loop !== 'all' && player.loop !== 'shuffle' && auto) {
     player.audio.pause();
     render();
     return;
@@ -105,14 +106,26 @@ export function toggle() {
   render();
 }
 
+/** 循环模式一个按钮循环切换：关闭 → 列表循环 → 单曲循环 → 乱序播放 → 关闭。
+ *  乱序本来就是"换一种顺序继续播"，和循环是一类东西，拆两个按钮反而让人猜。 */
 function cycleLoop() {
-  player.loop = player.loop === 'off' ? 'all' : player.loop === 'all' ? 'one' : 'off';
+  player.loop = player.loop === 'off' ? 'all'
+    : player.loop === 'all' ? 'one'
+      : player.loop === 'one' ? 'shuffle' : 'off';
+  if (player.loop === 'shuffle') {
+    player.shuffle = true;
+    reshuffle();
+  } else {
+    player.shuffle = false;
+  }
   render();
 }
 
-function toggleShuffle() {
-  player.shuffle = !player.shuffle;
-  if (player.shuffle) reshuffle();
+/** 把一首歌插到当前这首后面（"添加到下一首播放"）。 */
+export function playNextItem(item) {
+  if (!item) return;
+  const at = Math.max(0, player.index);
+  player.queue.splice(at + 1, 0, item);
   render();
 }
 
@@ -138,25 +151,34 @@ export function render() {
   } }, h('i', { style: { width: pct.toFixed(2) + '%' } }));
 
   clear(bar).append(
+    renderQueuePanel(),
     h('div', { class: 'pb-info' },
       h('div', { class: 'pb-title' }, item.name || '未命名'),
       h('div', { class: 'pb-sub' },
         (player.index + 1) + ' / ' + player.queue.length
-        + (player.shuffle ? ' · 乱序' : '')
-        + (player.loop === 'one' ? ' · 单曲循环' : player.loop === 'all' ? ' · 列表循环' : ''))),
+        + (player.loop === 'one' ? ' · 单曲循环' : player.loop === 'all' ? ' · 列表循环'
+          : player.loop === 'shuffle' ? ' · 乱序播放' : ' · 播完停止'))),
     // 已播时间必须带个钩子：timeupdate 只改进度条宽度的话，这行数字会永远停在 00:00
     h('div', { class: 'pb-time', dataset: { role: 'elapsed' } }, fmtDuration(audio?.currentTime || 0)),
     bar2,
     h('div', { class: 'pb-time' }, fmtDuration(audio?.duration || 0)),
     h('div', { class: 'pb-buttons' },
-      button('', { variant: 'text', iconName: 'refresh', title: '乱序播放',
-        onClick: toggleShuffle, class: 'btn text' + (player.shuffle ? ' active' : '') }),
       button('', { variant: 'text', iconName: 'arrow_back', title: '上一首', onClick: () => prev() }),
       button('', { variant: 'text', iconName: audio && !audio.paused ? 'pause' : 'play_arrow',
         title: '播放/暂停', onClick: () => toggle() }),
       button('', { variant: 'text', iconName: 'chevron_right', title: '下一首', onClick: () => next(false) }),
-      button('', { variant: 'text', iconName: 'sync', title: '循环模式',
-        onClick: cycleLoop, class: 'btn text' + (player.loop !== 'off' ? ' active' : '') }),
+      // 图标库里没有 repeat / repeat_one / shuffle，只有 sync 和 refresh，
+      // 所以图标在两者之间切换，同时用一个短文字标出当前模式 —— 光看图标猜不出来。
+      button(LOOP_LABEL[player.loop] || '顺序', {
+        variant: 'text',
+        iconName: player.loop === 'one' || player.loop === 'shuffle' ? 'refresh' : 'sync',
+        title: '播放顺序：顺序 → 列表循环 → 单曲循环 → 乱序播放',
+        onClick: cycleLoop,
+        class: 'btn text' + (player.loop !== 'off' ? ' active' : ''),
+      }),
+      button('', { variant: 'text', iconName: 'sort', title: '查看播放列表',
+        class: 'btn text' + (QUEUE_STATE.open ? ' active' : ''),
+        onClick: () => { QUEUE_STATE.open = !QUEUE_STATE.open; render(); } }),
       button('', { variant: 'text', iconName: 'close', title: '关闭播放器', onClick: () => {
         releaseMedia(player.audio);
         player.queue = []; player.index = -1; render();
@@ -195,6 +217,52 @@ let closeCurrent = null;
  *  用一个覆盖层而不是底部播放条 —— 视频需要画面，夹在底部条里没法看。
  *  /media 已经支持 Range，可以直接拖动进度。
  */
+const LOOP_LABEL = { off: '顺序', all: '列表', one: '单曲', shuffle: '乱序' };
+const QUEUE_STATE = { open: false, expanded: false };
+
+/** 当前播放队列：和歌单展开逻辑一致 —— 默认只露 2 首，展开后在框内滚动。 */
+function renderQueuePanel() {
+  if (!QUEUE_STATE.open) return null;
+  const items = player.queue || [];
+  const shown = QUEUE_STATE.expanded ? items : items.slice(0, 2);
+  const rows = shown.map((item) => {
+    const real = items.indexOf(item);
+    const active = real === player.index;
+    return h('div', {
+      style: {
+        display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 8px',
+        borderRadius: '8px', cursor: 'pointer',
+        background: active ? 'var(--md-secondary-container)' : 'transparent',
+      },
+      onclick: () => { player.index = real; playCurrent(); render(); },
+    },
+      h('span', { style: { width: '18px', opacity: '.55', fontSize: '11.5px', flex: 'none' } }, String(real + 1)),
+      h('span', {
+        style: { flex: '1', minWidth: '0', fontSize: '12.5px', whiteSpace: 'nowrap',
+                 overflow: 'hidden', textOverflow: 'ellipsis',
+                 fontWeight: active ? '600' : '400' },
+      }, item.name || String(item.path || '').split(/[\\/]/).pop()),
+      active ? h('span', { style: { fontSize: '11px', opacity: '.7' } }, '正在播') : null,
+    );
+  });
+  return h('div', { class: 'queue-panel' },
+    h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '2px 4px 6px' } },
+      h('b', { style: { fontSize: '12.5px' } }, '播放列表'),
+      h('span', { style: { fontSize: '11.5px', opacity: '.6', flex: '1' } },
+        items.length + ' 首' + (player.loop === 'shuffle' ? ' · 乱序' : '')),
+      button('', { variant: 'text', iconName: 'close', title: '收起',
+        onClick: () => { QUEUE_STATE.open = false; render(); } })),
+    h('div', { class: 'song-scroll', style: { maxHeight: '260px' } }, ...rows),
+    items.length > 2
+      ? h('div', { class: 'btn-row', style: { marginTop: '6px' } },
+          button(QUEUE_STATE.expanded ? '收起' : '展开全部 ' + items.length + ' 首', {
+            variant: 'text',
+            iconName: QUEUE_STATE.expanded ? 'expand_less' : 'expand_more',
+            onClick: () => { QUEUE_STATE.expanded = !QUEUE_STATE.expanded; render(); },
+          }))
+      : null);
+}
+
 export function openVideo(path, name = '') {
   // 覆盖层会把底部播放条整个盖住（z-index 90 > 60），所以开始看视频时先把音乐停下，
   // 否则两路声音一起响，而用户没有任何办法按下底下那条播放条的暂停。

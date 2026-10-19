@@ -1017,7 +1017,7 @@ class TaskManager:
 # 音乐平台的 qn 不是 B 站那套画质码，而是音质档位。用 B 站码表去翻
 # 会得到「未知(2)」这种鬼东西，还会把 [2] 写进文件名。
 MUSIC_TIERS = {0: "自动", 1: "标准 128K", 2: "高品 320K", 3: "无损 FLAC", 4: "Hi-Res"}
-MUSIC_SITES = {"wangyi", "qqmusic", "kugou", "kuwo"}
+MUSIC_SITES = {"netease", "wangyi", "qqmusic", "kugou", "kuwo"}
 
 
 def _quality_text(task) -> str:

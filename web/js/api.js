@@ -61,6 +61,9 @@ export const api = {
   playlistFetch: (input) => post('/api/playlist/fetch', { input }),
   playlistSave: (playlist) => post('/api/playlist/save', { playlist }),
   playlistList: () => post('/api/playlist/list', {}),
+  playlistCreate: (title) => post('/api/playlist/create', { title }),
+  playlistAddSong: (site, id, song) => post('/api/playlist/add-song', { site, id, song }),
+  playlistRemoveSong: (site, id, url) => post('/api/playlist/remove-song', { site, id, url }),
   playlistRemove: (site, id) => post('/api/playlist/remove', { site, id }),
   ffmpegStatus: () => post('/api/ffmpeg/status', {}),
   ffmpegInstall: () => post('/api/ffmpeg/install', {}),
@@ -74,6 +77,7 @@ export const api = {
   localFormats: (source = '') => get('/api/local/formats?source=' + encodeURIComponent(source)),
 
   open: (path) => post('/api/open', { path }),
+  reveal: (path) => post('/api/open', { path, reveal: true }),
   quit: () => post('/api/quit', {}),
   updateCheck: () => post('/api/update/check', {}),
   updateVerify: () => post('/api/update/verify', {}),

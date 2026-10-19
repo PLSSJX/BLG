@@ -1,6 +1,6 @@
 /** 四个主页面，导航结构对齐 Kazumi 的 推荐 / 时间表 / 追番 / 我的。 */
 import { api } from './api.js';
-import { playQueue, playFile, player, openVideo } from './player.js';
+import { playQueue, playFile, playNextItem, player, openVideo } from './player.js';
 import { icon } from './icons.js';
 import {
   h, clear, card, button, chip, switchRow, field, pill, toast, dialog,
@@ -314,14 +314,66 @@ function buildMusicLibraryCard() {
           } })));
       return;
     }
-    const list = libraryState.items.map((item, i) => h('div', {
+    const allItems = libraryState.items;
+    // 默认收起，只露最近 2 首；点「展开全部」才展开
+    const expanded = store.libExpand;
+    // 展开后才有搜索框和过滤
+    const query = expanded ? (store.libQuery || '').trim().toLowerCase() : '';
+    const matched = query
+      ? allItems.filter((x) => ((x.title || x.name) + ' ' + (x.artist || '')).toLowerCase().includes(query))
+      : allItems;
+    const shown = expanded ? matched : allItems.slice(0, 2);
+    const list = shown.map((item, i) => h('div', {
       style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0', borderBottom: '1px solid var(--md-outline-variant)' },
     },
       h('div', { style: { flex: '1', minWidth: '0' } },
-        h('div', { style: { fontSize: '13.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, item.name),
-        h('div', { class: 'card-desc', style: { margin: '2px 0 0' } },
-          // 两个同名任务的产物是两条同名记录，只看文件名分不出来 —— 带上所在文件夹
-          (item.folder ? item.folder + ' · ' : '') + fmtSize(item.size))),
+        // 有 ID3 标签就用标签里的曲名，没有再退回文件名
+        h('div', { style: { fontSize: '13.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+          item.title || item.name),
+        // 曲名下面小字：作者 · 大小（有专辑就带上专辑）
+        h('div', { style: { fontSize: '11.5px', opacity: '.65', margin: '2px 0 0', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+          (item.artist ? item.artist : (item.folder || '未知作者'))
+            + (item.album ? ' · ' + item.album : '')
+            + ' · ' + fmtSize(item.size))),
+      button('加入歌单', { variant: 'text', iconName: 'add', title: '把这首歌加进某个歌单', onClick: async (ev) => {
+        ev.stopPropagation();
+        try {
+        let lists = [];
+        try { lists = (await api.playlistList()).playlists || []; } catch (err) { toast('读取歌单失败：' + err.message); return; }
+        if (!lists.length) { toast('还没有歌单，先去「我的歌单」新建一个', 4500); return; }
+        const picked = { value: null };
+        const rows = lists.map((pl) => h('label', {
+          style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', fontSize: '13px' },
+        },
+          h('input', { type: 'radio', name: 'pl', onchange: () => { picked.value = pl; } }),
+          h('span', { style: { flex: '1' } }, pl.title),
+          h('span', { class: 'card-desc', style: { margin: '0' } }, (pl.songs || []).length + ' 首')));
+        const yes = await dialog({ title: '加入哪个歌单？', body: h('div', { style: { maxHeight: '300px', overflow: 'auto' } }, ...rows), confirm: '加入' });
+        if (!yes || !picked.value) return;
+        try {
+          const r = await api.playlistAddSong(picked.value.site, picked.value.id, {
+            id: item.path, name: item.name, artist: item.artist || '本地文件',
+            url: 'file:///' + String(item.path).replace(/\\/g, '/'),
+            cover: item.cover || '',
+          });
+          toast(r.added === false
+            ? '这首歌已经在《' + picked.value.title + '》里了'
+            : '已加入《' + picked.value.title + '》', 4000);
+        } catch (err) { toast('加入失败：' + err.message); }
+        } catch (err) {
+          // 任何意外都要让用户看见，不能静默
+          toast('加入歌单出错：' + (err && err.message ? err.message : String(err)), 6000);
+        }
+      } }),
+      button('定位', { variant: 'text', iconName: 'folder_open', title: '在资源管理器里打开它所在的位置', onClick: async () => {
+        try { await api.reveal(item.path); } catch (err) { toast('定位失败：' + err.message); }
+      } }),
+      // 图标库里没有 arrow_forward / skip_next，用 sort 表示"插进队列"，
+      // 比 chevron 好 —— 后者看着像"进入下一页"。
+      button('下一首', { variant: 'text', iconName: 'sort', title: '添加到下一首播放', onClick: () => {
+        playNextItem({ path: item.path, name: item.name });
+        toast('已添加到下一首：' + item.name);
+      } }),
       button('播放', { variant: 'text', iconName: 'play_arrow', onClick: () => {
         playQueue(libraryState.items.map((x) => ({ path: x.path, name: x.name })), i);
       } })));
@@ -330,12 +382,7 @@ function buildMusicLibraryCard() {
         button('全部播放', { variant: 'tonal', iconName: 'play_arrow', onClick: () => {
           playQueue(libraryState.items.map((x) => ({ path: x.path, name: x.name })), 0);
         } }),
-        button('乱序播放', { variant: 'tonal', iconName: 'refresh', onClick: () => {
-          // 必须先置位再 playQueue：只有 playQueue 内部会按 shuffle 重排队列，
-          // 反过来写队列原样不动，按钮只是把标志翻了一下。
-          player.shuffle = true;
-          playQueue(libraryState.items.map((x) => ({ path: x.path, name: x.name })), 0);
-        } }),
+
         button('导入本地歌曲', { variant: 'tonal', iconName: 'upload', onClick: async () => {
           try {
             const picked = await api.pickLocalFiles();
@@ -348,10 +395,39 @@ function buildMusicLibraryCard() {
             paint();
           } catch (err) { toast('导入失败：' + err.message); }
         } }),
+        button('打开音乐目录', { variant: 'text', iconName: 'folder_open', onClick: async () => {
+          try { await api.open(libraryState.dir || undefined); } catch (err) { toast('打开失败：' + err.message); }
+        } }),
         button('刷新', { variant: 'text', iconName: 'refresh', onClick: () => {
           libraryState.items = null; paint();
         } })),
-      h('div', { style: { maxHeight: '320px', overflow: 'auto' } }, ...list));
+      // 搜索框只在展开后出现
+      expanded
+        ? h('div', { class: 'search-field', style: { margin: '4px 0 8px' } },
+            h('input', {
+              class: 'input', placeholder: '搜索曲名或作者…', value: store.libQuery || '',
+              oninput: (e) => {
+                store.libQuery = e.target.value;
+                // 只重画列表，保留输入焦点
+                const again = e.target.selectionStart;
+                paint();
+                const box = document.querySelector('.search-field input');
+                if (box) { box.focus(); try { box.setSelectionRange(again, again); } catch (err) {} }
+              },
+            }))
+        : null,
+      h('div', { class: 'song-scroll' }, ...list),
+      allItems.length
+        ? h('div', { class: 'btn-row', style: { marginTop: '8px' } },
+            expanded && query
+              ? h('span', { class: 'card-desc', style: { margin: '0 8px 0 0', alignSelf: 'center' } },
+                  '匹配 ' + matched.length + ' / ' + allItems.length + ' 首')
+              : null,
+            button(expanded ? '收起' : '展开全部 ' + allItems.length + ' 首', {
+              variant: 'text', iconName: expanded ? 'expand_less' : 'expand_more',
+              onClick: () => { store.libExpand = !store.libExpand; paint(); },
+            }))
+        : null);
   };
   paint();
   return card(
@@ -361,38 +437,199 @@ function buildMusicLibraryCard() {
   );
 }
 
-const playlistState = { data: null, local: null };
+const playlistState = { data: null, local: null, detail: null , query: null };
+
+/** 歌单内歌曲：一行两个，带封面 + 歌名 + 作者小字。 */
+function buildSongGrid(pl) {
+  const all = pl.songs || [];
+  const query = (playlistState.query || '').trim().toLowerCase();
+  const songs = query
+    ? all.filter((s) => ((s.name || '') + ' ' + (s.artist || '')).toLowerCase().includes(query))
+    : all;
+  const searchBox = h('div', { class: 'search-field', style: { margin: '6px 0 2px' } },
+    h('input', {
+      class: 'input', placeholder: '在这个歌单里搜…', value: playlistState.query || '',
+      oninput: (e) => {
+        playlistState.query = e.target.value;
+        const pos = e.target.selectionStart;
+        renderPlayer(document.getElementById('view'));
+        const box = document.querySelector('.search-field input');
+        if (box) { box.focus(); try { box.setSelectionRange(pos, pos); } catch (err) {} }
+      },
+    }));
+  if (!all.length) return h('span');
+  const grid = h('div', {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+      gap: '10px', marginTop: '8px',
+    },
+  });
+  for (let i = 0; i < songs.length; i += 2) {
+    // 一次塞两个，保证"一行两个"在这个网格里稳定成立
+    for (const s of songs.slice(i, i + 2)) {
+      const idx = songs.indexOf(s) + 1;
+      const cover = s.cover || s.cover_url || '';
+      grid.append(h('div', {
+        style: {
+          display: 'flex', alignItems: 'center', gap: '10px', padding: '8px',
+          borderRadius: '10px', background: 'var(--md-surface-container)',
+          border: '1px solid var(--md-outline-variant)', minWidth: '0',
+        },
+      },
+        cover
+          ? h('img', { src: api.coverUrl(cover), alt: '', loading: 'lazy',
+              style: { width: '40px', height: '40px', borderRadius: '8px', objectFit: 'cover', flex: 'none' } })
+          : h('span', { style: { width: '40px', height: '40px', borderRadius: '8px', flex: 'none',
+              display: 'grid', placeItems: 'center', background: 'var(--md-surface-container-high)',
+              color: 'var(--md-on-surface-variant)' },
+              html: icon('music_note', 'outlined', 20) }),
+        h('div', { style: { flex: '1', minWidth: '0' } },
+          h('div', { style: { fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+            idx + '. ' + (s.name || '未命名')),
+          h('div', { style: { fontSize: '11.5px', opacity: '.65', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '2px' } },
+            s.artist || '未知作者')),
+        button('', { variant: 'text', iconName: 'play_arrow', title: '播放', onClick: () => {
+          // 歌单里存的是 file:///D:/... 或平台链接；只有本地文件能直接播
+          const raw = String(s.url || '');
+          if (raw.startsWith('file:///')) {
+            const local = decodeURIComponent(raw.slice(8)).replace(/\//g, '\\');
+            playFile(local, s.name);
+          } else {
+            toast('这首是平台链接，先「全部下载」到本地再播放', 4200);
+          }
+        } }),
+        button('', { variant: 'text', iconName: 'delete', title: '从歌单移除', onClick: async () => {
+          try {
+            await api.playlistRemoveSong(pl.site, pl.id, s.url);
+            pl.songs = pl.songs.filter((x) => x.url !== s.url);
+            renderPlayer(document.getElementById('view'));
+          } catch (err) { toast('移除失败：' + err.message); }
+        } })));
+    }
+  }
+  return h('div', {},
+    searchBox,
+    h('div', { class: 'song-scroll' },
+      songs.length ? grid : h('div', { class: 'card-desc', style: { padding: '16px 0' } },
+        '没有匹配「' + playlistState.query + '」的歌曲')));
+}
 
 function buildPlaylistCard() {
   const holder = h('div', {});
+  const state = () => playlistState;
+
   const paint = () => {
     clear(holder);
     if (!playlistState.local) {
-      api.playlistList().then((r) => { playlistState.local = r.playlists || []; paint(); }).catch(() => { playlistState.local = []; paint(); });
+      api.playlistList()
+        .then((r) => { playlistState.local = r.playlists || []; paint(); })
+        .catch(() => { playlistState.local = []; paint(); });
       holder.append(h('div', { class: 'card-desc' }, busy('正在读取本地歌单…')));
       return;
     }
+    // 详情视图
+    const detail = playlistState.detail;
+    if (detail) {
+      const pl = (playlistState.local || []).find((x) => x.id === detail.id && x.site === detail.site);
+      if (!pl) { playlistState.detail = null; paint(); return; }
+      holder.append(
+        h('div', { class: 'btn-row', style: { marginBottom: '10px' } },
+          button('返回歌单列表', { variant: 'text', iconName: 'arrow_back', onClick: () => {
+            playlistState.detail = null; playlistState.query = null; paint();
+          } }),
+          button('播放全部', { variant: 'tonal', iconName: 'play_arrow', onClick: () => {
+            const list = (pl.songs || []).map((s) => ({ path: s.url, name: s.name }));
+            // 歌单里的歌是平台链接，不能直接播本地文件；提示去下载
+            toast('歌单里存的是平台链接，先「全部下载」到本地才能在播放器里听', 5000);
+          } }),
+          button('添加歌曲', { variant: 'tonal', iconName: 'add', onClick: async () => {
+            // 从音乐目录里挑，勾中的加进这个歌单
+            let lib = [];
+            try { lib = (await api.musicList()).items || []; } catch (err) { toast('读取音乐目录失败：' + err.message); return; }
+            if (!lib.length) { toast('音乐目录里还没有文件，先去下载或导入', 4500); return; }
+            const picked = new Set();
+            const rows = lib.slice(0, 200).map((it) => h('label', {
+              style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 0', fontSize: '13px' },
+            },
+              h('input', { type: 'checkbox', onchange: (e) => { if (e.target.checked) picked.add(it); else picked.delete(it); } }),
+              h('span', { style: { flex: '1', minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, it.name),
+              h('span', { class: 'card-desc', style: { margin: '0' } }, fmtSize(it.size))));
+            const box = h('div', { style: { maxHeight: '320px', overflow: 'auto' } }, ...rows);
+            const yes = await dialog({ title: '从本地音乐添加', body: box, confirm: '添加到歌单' });
+            if (!yes || !picked.size) return;
+            let ok = 0;
+            for (const it of picked) {
+              try {
+                await api.playlistAddSong(pl.site, pl.id, {
+                  id: it.path, name: it.name, artist: '本地文件', url: 'file:///' + it.path.replace(/\\/g, '/'),
+                });
+                ok += 1;
+              } catch (err) { /* 单首失败不影响其它 */ }
+            }
+            toast('已添加 ' + ok + ' 首到《' + pl.title + '》');
+            playlistState.local = null;
+            paint();
+          } }),
+          button('全部下载', { iconName: 'download', onClick: async (e) => {
+            const btn = e.currentTarget; btn.disabled = true;
+            let ok = 0;
+            for (const s of (pl.songs || [])) {
+              try { await api.submit({ input: s.url, engine: 'auto', qn: 0, mode: 'auto' }); ok += 1; } catch (err) { /* 单首失败不影响其它 */ }
+            }
+            btn.disabled = false;
+            toast('已创建 ' + ok + ' 个下载任务');
+            document.dispatchEvent(new CustomEvent('tasks-changed'));
+          } })),
+        h('div', { class: 'card-desc' }, '《' + pl.title + '》' + (pl.songs || []).length + ' 首'),
+        (pl.songs || []).length
+          ? buildSongGrid(pl)
+          : h('div', { style: { marginTop: '12px' } },
+              emptyState('music_note', '这个歌单还是空的',
+                '到「音乐」页用「换源搜索」找到歌，或解析一张歌单后整体保存进来。')),
+      );
+      return;
+    }
+
+    // 列表视图
+    holder.append(
+      h('div', { class: 'btn-row', style: { marginBottom: '10px' } },
+        button('新建歌单', { variant: 'tonal', iconName: 'add', onClick: async () => {
+          const nameInput = h('input', { class: 'input', placeholder: '给这个歌单起个名字' });
+          const yes = await dialog({ title: '新建歌单', body: nameInput, confirm: '创建' });
+          const name = (nameInput.value || '').trim();
+          if (!yes || !name) return;
+          try {
+            await api.playlistCreate(name);
+            playlistState.local = null;
+            paint();
+            toast('已新建《' + name + '》');
+          } catch (err) { toast('新建失败：' + err.message); }
+        } }),
+        button('去音乐页解析歌单', { variant: 'text', iconName: 'search', onClick: () => {
+          document.dispatchEvent(new CustomEvent('navigate', { detail: 'music' }));
+        } })));
+
     if (!playlistState.local.length) {
       holder.append(emptyState('music_note', '还没有本地歌单',
-        '在上面粘贴歌单链接，点「解析歌单」，然后保存到本地。'));
+        '点上面的「新建歌单」自己建一个，或到「音乐」页粘贴歌单链接解析后保存。'));
       return;
     }
     for (const pl of playlistState.local) {
-      holder.append(h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid var(--md-outline-variant)' } },
-        h('div', { style: { flex: '1' } },
+      holder.append(h('div', {
+        style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid var(--md-outline-variant)', cursor: 'pointer' },
+        onclick: (e) => { if (e.target.closest('button')) return; playlistState.query = null; playlistState.detail = { id: pl.id, site: pl.site }; paint(); },
+      },
+        h('div', { style: { flex: '1', minWidth: '0' } },
           h('b', {}, pl.title),
-          h('div', { class: 'card-desc', style: { margin: '2px 0 0' } }, (pl.songs || []).length + ' 首')),
-        button('全部下载', { variant: 'text', iconName: 'download', onClick: async (e) => {
-          const btn = e.currentTarget; btn.disabled = true;
-          let ok = 0;
-          for (const s of (pl.songs || [])) {
-            try { await api.submit({ input: s.url, engine: 'auto', qn: 0, mode: 'auto' }); ok += 1; } catch (err) {}
-          }
-          btn.disabled = false;
-          toast('已创建 ' + ok + ' 个下载任务');
-          document.dispatchEvent(new CustomEvent('tasks-changed'));
+          h('div', { class: 'card-desc', style: { margin: '2px 0 0' } },
+            (pl.songs || []).length + ' 首' + (pl.site === 'local' ? ' · 自建' : ''))),
+        button('打开', { variant: 'text', iconName: 'chevron_right', onClick: () => {
+          playlistState.detail = { id: pl.id, site: pl.site }; paint();
         } }),
-        button('移除', { variant: 'text', iconName: 'delete', onClick: async () => {
+        button('删除', { variant: 'text', iconName: 'delete', onClick: async () => {
+          const yes = await dialog({ title: '删除这个歌单？', body: '只删除这份收藏，已下载的文件不受影响。', confirm: '删除', danger: true });
+          if (!yes) return;
           await api.playlistRemove(pl.site, pl.id);
           playlistState.local = (playlistState.local || []).filter((x) => x !== pl);
           paint();
@@ -403,8 +640,7 @@ function buildPlaylistCard() {
 
   return card(
     h('div', { class: 'card-title', html: icon('music_note', 'outlined', 20) + '<span>我的歌单</span>' }),
-    h('div', { class: 'card-desc' }, '解析过的歌单保存在本机 data/playlists.json，随时可以整体重新下载。'),
-
+    h('div', { class: 'card-desc' }, '可以自己新建歌单，也可以把解析到的歌单保存下来。点歌单进入详情管理歌曲。'),
     h('div', { style: { marginTop: '10px' } }, holder),
   );
 }
@@ -1136,11 +1372,47 @@ export function renderTasks(view) {
     page.append(emptyState('cloud_download', '还没有任何下载记录',
       '在「解析」页解析一个视频，然后点「开始下载」，任务就会出现在这里。'));
   } else {
-    const grid = h('div', { class: 'grid', style: { marginTop: '12px' } });
-    for (const task of tasks) grid.append(buildTaskCard(task));
-    page.append(grid);
+    // 歌曲和视频分开列，各自折叠：默认只展开最近 2 条，其余点「显示全部」再看
+    const isMusic = (t) => MUSIC_SITE_IDS.has(t.site)
+      || (t.files || []).some((f) => f.kind === "audio");
+    page.append(buildTaskGroup('歌曲', tasks.filter(isMusic), 'music'));
+    page.append(buildTaskGroup('视频', tasks.filter((t) => !isMusic(t)), 'video'));
   }
   view.append(page);
+}
+
+// 网易云适配器的真实 id 是 netease；早期歌单存储里写成了 wangyi，
+// 两个都要认，否则已保存的老歌单会被漏掉。
+const MUSIC_SITE_IDS = new Set(['netease', 'wangyi', 'qqmusic', 'kugou', 'kuwo']);
+
+function buildTaskGroup(title, list, key) {
+  if (!list.length) return h('span');
+  // 进行中的任务永远显示，不参与折叠
+  const active = list.filter((t) => ['queued', 'running', 'merging'].includes(t.status));
+  const rest = list.filter((t) => !active.includes(t));
+  const expanded = store.taskExpand && store.taskExpand[key];
+  const shown = expanded ? rest : rest.slice(0, 2);
+
+  const grid = h('div', { class: 'grid' });
+  for (const t of [...active, ...shown]) grid.append(buildTaskCard(t));
+
+  return card(
+    h('div', { class: 'card-title',
+      html: icon(key === 'music' ? 'music_note' : 'movie', 'outlined', 20)
+        + '<span>' + title + '（' + list.length + '）</span>' }),
+    grid,
+    rest.length > 2
+      ? h('div', { class: 'btn-row', style: { marginTop: '10px' } },
+          button(expanded ? '收起' : '显示全部 ' + rest.length + ' 条', {
+            variant: 'text', iconName: expanded ? 'expand_less' : 'expand_more',
+            onClick: () => {
+              store.taskExpand = store.taskExpand || {};
+              store.taskExpand[key] = !expanded;
+              renderTasks(document.getElementById('view'));
+            },
+          }))
+      : null,
+  );
 }
 
 const STATUS_TEXT = {
@@ -2036,8 +2308,14 @@ export function renderPlayer(view) {
       pill('应用内播放 · 支持乱序与循环', 'mute')),
     h('p', { class: 'page-sub' },
       '这里只管播放：歌曲来自音乐下载目录和保存过的歌单。下载、转码请到左侧「音乐」页。'),
-    buildMusicLibraryCard(),
-    buildPlaylistCard(),
+    // 左右两栏：左边歌曲列表 + 目录设置，右边歌单。窄屏自动叠成一列。
+    h('div', { class: 'player-cols' },
+      h('div', { class: 'player-col' },
+        buildMusicLibraryCard(),
+        // 储存位置也能在播放页直接改，不用再跑去设置
+        buildMusicDirCard(store.config?.settings || {})),
+      h('div', { class: 'player-col' },
+        buildPlaylistCard())),
   );
   view.append(page);
 }

@@ -764,3 +764,34 @@ body.has-player .slab { padding-bottom: 74px; }
   border-top: 1px solid var(--md-outline-variant); flex-wrap: wrap; flex: none; }
 .trim-input { width: 110px; padding: 5px 8px; font-size: 12.5px; }
 .trim-note { font-size: 12px; opacity: .8; }
+
+
+/* 播放条是 position:fixed;left:0 的，会盖住侧边栏底部的「历史记录/设置」。
+   把它从侧边栏右边缘开始，并在窄屏（侧边栏隐藏）时恢复全宽。 */
+.player-bar { left: var(--rail-width, 80px); }
+@media (max-width: 760px) { .player-bar { left: 0; } }
+
+
+/* 列表不再无限拉长：超过这个高度就在框内滚动（鼠标滚轮） */
+.song-scroll { max-height: 340px; overflow-y: auto; overscroll-behavior: contain;
+  padding-right: 4px; }
+.song-scroll::-webkit-scrollbar { width: 8px; }
+.song-scroll::-webkit-scrollbar-thumb { background: var(--md-outline-variant); border-radius: 4px; }
+
+
+/* ---------------------------------------------------------- 播放页两栏 */
+.player-cols { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 12px; align-items: start; margin-top: 4px; }
+.player-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+@media (max-width: 1080px) { .player-cols { grid-template-columns: 1fr; } }
+/* 两栏下卡片内边距收紧一点，别像设置页那么松 */
+.player-col .card { padding: 14px 16px; }
+.player-col .card-title { margin-bottom: 2px; }
+.player-col .card-desc { font-size: 12px; }
+
+
+/* 播放队列面板：浮在播放条上方，和歌单一样限制高度、内部滚动 */
+.queue-panel { position: absolute; bottom: 100%; left: 0; right: 0;
+  background: var(--md-surface-container-high); border: 1px solid var(--md-outline-variant);
+  border-radius: 12px 12px 0 0; padding: 10px 12px; box-shadow: var(--elev-2); }
+.player-bar { position: fixed; }

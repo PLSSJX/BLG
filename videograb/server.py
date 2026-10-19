@@ -690,10 +690,26 @@ class Handler(BaseHTTPRequestHandler):
                         continue
                     full = _os.path.join(base, name)
                     try:
+                        # 同目录里通常还躺着下载时保存的封面（cover.jpg 之类），
+                        # 顺手带上，歌单里就能显示封面了。
+                        cover = ""
+                        for probe in ("cover.jpg", "cover.png", "cover.webp", "folder.jpg"):
+                            cand = _os.path.join(base, probe)
+                            if _os.path.isfile(cand):
+                                cover = cand
+                                break
+                        # 真正读音频标签。以前从文件名猜"歌手 - 歌名"，
+                        # 结果把 "VALORANT 08-30-2026" 的日期拆成了作者。
+                        from .music.tags import read_tags
+                        tags = read_tags(full)
                         items.append({"name": name,
+                                      "title": tags.get("title") or _os.path.splitext(name)[0],
+                                      "artist": tags.get("artist") or "",
+                                      "album": tags.get("album") or "",
                                       "path": full,
                                       # 同名文件靠所在文件夹区分
                                       "folder": _os.path.basename(base) if base.lower() != str(root).lower() else "",
+                                      "cover": cover,
                                       "size": _os.path.getsize(full),
                                       "music": ext not in (".mp4", ".mkv", ".webm")})
                     except OSError:
@@ -726,6 +742,34 @@ class Handler(BaseHTTPRequestHandler):
                 # PlaylistError：本地 playlists.json 读不出来（被占用/拒绝访问），
                 # 为了不覆盖已有收藏而主动放弃这次保存。
                 raise ApiError("保存失败：" + str(exc)[:100]) from None
+            return self._json({"ok": True, "playlist": entry})
+
+        if route == "/api/playlist/create":
+            from . import playlist as _pl
+            try:
+                entry = _pl.create_empty(str(payload.get("title") or ""))
+            except (ValueError, OSError) as exc:
+                raise ApiError(str(exc)) from None
+            return self._json({"ok": True, "playlist": entry})
+
+        if route == "/api/playlist/add-song":
+            from . import playlist as _pl
+            try:
+                entry = _pl.add_song(str(payload.get("site") or ""),
+                                     str(payload.get("id") or ""),
+                                     payload.get("song") or {})
+            except (ValueError, OSError) as exc:
+                raise ApiError(str(exc)) from None
+            return self._json({"ok": True, "playlist": entry})
+
+        if route == "/api/playlist/remove-song":
+            from . import playlist as _pl
+            try:
+                entry = _pl.remove_song(str(payload.get("site") or ""),
+                                        str(payload.get("id") or ""),
+                                        str(payload.get("url") or ""))
+            except (ValueError, OSError) as exc:
+                raise ApiError(str(exc)) from None
             return self._json({"ok": True, "playlist": entry})
 
         if route == "/api/playlist/list":
@@ -891,7 +935,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if route == "/api/open":
             target = payload.get("path") or str(ctx.download_dir())
-            return self._json({"ok": True, "detail": _open_in_explorer(target)})
+            return self._json({"ok": True,
+                               "detail": _open_in_explorer(target, bool(payload.get("reveal")))})
 
         if route == "/api/update/check":
             from .updater import check_update
@@ -1258,10 +1303,16 @@ def _python_version() -> str:
     return f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
 
 
-def _open_in_explorer(target: str) -> str:
+def _open_in_explorer(target: str, reveal: bool = False) -> str:
+    """打开目录；reveal=True 时在资源管理器里选中这个文件。"""
     path = Path(target)
     try:
         if os.name == "nt":
+            if reveal and path.is_file():
+                # explorer 的 /select 会选中文件，比只打开父目录好用
+                import subprocess
+                subprocess.Popen(["explorer", "/select,", str(path)])
+                return f"已定位 {path.name}"
             if path.is_file():
                 os.startfile(str(path.parent))  # type: ignore[attr-defined]
             else:

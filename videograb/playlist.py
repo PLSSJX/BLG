@@ -372,6 +372,59 @@ def add_local(pl: dict) -> dict:
     return entry
 
 
+def create_empty(title: str) -> dict:
+    """手动新建一个空歌单。"""
+    name = (title or "").strip()
+    if not name:
+        raise ValueError("请填写歌单名称")
+    if len(name) > 60:
+        name = name[:60]
+    pid = "local-" + str(int(time.time() * 1000))
+    return add_local({"id": pid, "site": "local", "title": name, "songs": []})
+
+
+def add_song(site: str, pid: str, song: dict) -> dict:
+    """往指定歌单里加一首歌（提供完整歌曲信息，不只是 id）。"""
+    if not isinstance(song, dict):
+        raise ValueError("歌曲数据格式不对")
+    url = str(song.get("url") or "").strip()
+    name = str(song.get("name") or "").strip()
+    if not url or not name:
+        raise ValueError("歌曲缺少名字或地址")
+    with _STORE_LOCK:
+        items = _load_for_update()
+        target = next((x for x in items
+                       if str(x.get("id")) == str(pid) and x.get("site") == site), None)
+        if target is None:
+            raise ValueError("找不到这个歌单")
+        songs = list(target.get("songs") or [])
+        if any(str(s.get("url")) == url for s in songs):
+            # 已经有了：把 added=False 带回去，前端才能提示"已在歌单内"，
+            # 而不是每次都假装加成功了。
+            already = dict(target)
+            already["added"] = False
+            return already
+        songs.append({"id": str(song.get("id") or ""), "name": name,
+                      "artist": str(song.get("artist") or ""),
+                      "url": url})
+        target["songs"] = songs
+        save_local(items)
+        return target
+
+
+def remove_song(site: str, pid: str, url: str) -> dict:
+    with _STORE_LOCK:
+        items = _load_for_update()
+        target = next((x for x in items
+                       if str(x.get("id")) == str(pid) and x.get("site") == site), None)
+        if target is None:
+            raise ValueError("找不到这个歌单")
+        target["songs"] = [s for s in (target.get("songs") or [])
+                           if str(s.get("url")) != str(url)]
+        save_local(items)
+        return target
+
+
 def remove_local(site: str, pid: str) -> bool:
     with _STORE_LOCK:
         items = _load_for_update()
