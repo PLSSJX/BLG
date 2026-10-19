@@ -195,11 +195,11 @@ class Tray:
         except Exception:
             pass
 
-    def _player(self, action: str):
+    def _player(self, action: str, arg: str = ""):
         win = self._window()
         if not win:
             return
-        js = ("try{window.__vgTray&&window.__vgTray." + action + "()}catch(e){}")
+        js = ("try{window.__vgTray&&window.__vgTray." + action + "(" + arg + ")}catch(e){}")
         try:
             win.evaluate_js(js)
         except Exception:
@@ -209,10 +209,16 @@ class Tray:
     def _build_menu(self) -> int:
         menu = user32.CreatePopupMenu()
         items = [("显示主界面", 100), (None, 0),
-                 ("播放 / 暂停", 201), ("上一首", 202), ("下一首", 203), (None, 0)]
+                 ("播放 / 暂停", 201), ("上一首", 202), ("下一首", 203), (None, 0),
+                 ("播放方式", 0),          # 小标题，灰掉不可点
+                 ("　顺序播放", 211), ("　列表循环", 212),
+                 ("　单曲循环", 213), ("　乱序播放", 214), (None, 0)]
         for label, cmd in items:
             if label is None:
                 user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
+            elif cmd == 0:
+                # 标题行：灰色不可点
+                user32.AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, label)
             else:
                 user32.AppendMenuW(menu, MF_STRING, cmd, label)
         for index, (label, _hash) in enumerate(self.PAGES):
@@ -230,6 +236,9 @@ class Tray:
             self._player("prev")
         elif cmd == 203:
             self._player("next")
+        elif cmd in (211, 212, 213, 214):
+            mode = {211: "off", 212: "all", 213: "one", 214: "shuffle"}[cmd]
+            self._player("setLoop", "'" + mode + "'")
         elif 300 <= cmd < 300 + len(self.PAGES):
             self._navigate(self.PAGES[cmd - 300][1])
         elif cmd == 900:

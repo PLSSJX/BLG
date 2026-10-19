@@ -193,6 +193,15 @@ export function initPlayer() {
     next: () => next(false),
     prev: () => prev(),
     isPlaying: () => !!(player.audio && !player.audio.paused),
+    // 托盘里直接指定播放方式，不用先点开主界面
+    setLoop: (mode) => {
+      if (!LOOP_LABEL[mode]) return;
+      player.loop = mode;
+      player.shuffle = mode === 'shuffle';
+      if (player.shuffle) reshuffle();
+      render();
+    },
+    loopLabel: () => LOOP_LABEL[player.loop] || '顺序',
   };
   const audio = new Audio();
   audio.preload = 'metadata';
