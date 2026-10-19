@@ -1135,6 +1135,26 @@ def _hms_to_seconds(value) -> float:
     return total
 
 
+def _probe_duration(src_path) -> float:
+    """用 ffprobe 读视频时长（秒）。读不到就返回 0，让后续逻辑按"不知道"处理。"""
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        return 0.0
+    probe = str(Path(ffmpeg).with_name("ffprobe.exe" if os.name == "nt" else "ffprobe"))
+    if not Path(probe).is_file():
+        probe = str(Path(ffmpeg).with_name("ffprobe"))
+    if not Path(probe).is_file():
+        return 0.0
+    try:
+        result = subprocess.run(
+            [probe, "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(src_path)],
+            capture_output=True, text=True, timeout=60)
+        return float((result.stdout or "0").strip() or 0)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return 0.0
+
+
 def trim_video(src_path, dest_dir, start, end, *, precise: bool = False,
                progress=None) -> dict:
     """裁剪视频的一段。
@@ -1158,6 +1178,15 @@ def trim_video(src_path, dest_dir, start, end, *, precise: bool = False,
         raise ValueError("开始时间不能是负数")
     if finish and finish <= begin:
         raise ValueError("结束时间必须晚于开始时间")
+
+    # 先探一下源视频多长。起点超出时长时，-c copy 模式**不会报错**，
+    # 而是产出一个几百 KB 的垃圾文件（实测：21.7 秒的视频裁「30~40 秒」→ 200 + 0.8 MB）。
+    # 精确模式会失败，两种模式行为不一致，用户看到的是"裁剪成功了但文件不对"。
+    duration = _probe_duration(src_path)
+    if duration and begin >= duration:
+        raise ValueError("起点 %.1f 秒超出了视频长度（这个视频只有 %.1f 秒）" % (begin, duration))
+    if finish and duration and finish > duration + 0.5:
+        raise ValueError("结束时间 %.1f 秒超出了视频长度（这个视频只有 %.1f 秒）" % (finish, duration))
 
     out_dir = Path(dest_dir)
     try:

@@ -692,6 +692,8 @@ class Handler(BaseHTTPRequestHandler):
                     try:
                         items.append({"name": name,
                                       "path": full,
+                                      # 同名文件靠所在文件夹区分
+                                      "folder": _os.path.basename(base) if base.lower() != str(root).lower() else "",
                                       "size": _os.path.getsize(full),
                                       "music": ext not in (".mp4", ".mkv", ".webm")})
                     except OSError:
@@ -1154,7 +1156,10 @@ def _inside_allowed(target: Path, ctx: Context) -> bool:
     """判断路径是否落在允许对外播放的目录内。"""
     # 音乐目录必须放行：默认它在 <下载目录>/音乐 之下，一旦用户在设置里
     # 指定了别的音乐目录，产物就不在下载目录里了，「播放」页/任务卡片点开会 403。
-    allowed = [ctx.download_dir(), DATA_DIR]
+    # 只放行真正存放媒体文件的目录。
+    # DATA_DIR 曾经也在这里 —— 但里面是 config.json（含 SESSDATA 等凭据），
+    # 等于多开一条经 /media 读凭据的路。媒体文件不会放在 data/ 下，去掉是安全的。
+    allowed = [ctx.download_dir()]
     try:
         allowed.append(ctx.music_dir())
     except Exception:

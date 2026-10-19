@@ -101,7 +101,7 @@ class Task:
             "engine": self.engine,
             "engine_used": self.engine_used,
             "qn": self.qn,
-            "qn_label": qn_label(self.qn) if self.qn else "",
+            "qn_label": _quality_text(self),
             "mode": self.mode,
             "status": self.status,
             "title": self.title,
@@ -593,7 +593,7 @@ class TaskManager:
 
         multi = len(info.pages) > 1
         stem = base if not multi else safe_filename(f"{base} - P{page.page:02d} {page.part}")
-        quality_tag = f" [{qn_short(task.qn)}]" if task.qn else ""
+        quality_tag = f" [{_quality_text(task)}]" if task.qn else ""
 
         # 3) 按模式下载
         if task.mode == "meta":
@@ -1014,6 +1014,21 @@ class TaskManager:
 # 程序自己创建的下载目录里会放一个这样的标记文件。
 # 有了它才能区分"这是我上次下载留下的目录"和"用户自己的同名文件夹" ——
 # 后者绝不能被写入、更不能被删除。
+# 音乐平台的 qn 不是 B 站那套画质码，而是音质档位。用 B 站码表去翻
+# 会得到「未知(2)」这种鬼东西，还会把 [2] 写进文件名。
+MUSIC_TIERS = {0: "自动", 1: "标准 128K", 2: "高品 320K", 3: "无损 FLAC", 4: "Hi-Res"}
+MUSIC_SITES = {"wangyi", "qqmusic", "kugou", "kuwo"}
+
+
+def _quality_text(task) -> str:
+    """任务卡/文件名里显示的质量标签。音乐与视频用两套说法。"""
+    if not task.qn:
+        return ""
+    if getattr(task, "site", "") in MUSIC_SITES:
+        return MUSIC_TIERS.get(int(task.qn), "音质 " + str(task.qn))
+    return qn_label(task.qn)
+
+
 DIR_MARKER = ".videograb"
 
 # 本进程内已被占用的输出目录（小写绝对路径）。

@@ -319,7 +319,9 @@ function buildMusicLibraryCard() {
     },
       h('div', { style: { flex: '1', minWidth: '0' } },
         h('div', { style: { fontSize: '13.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, item.name),
-        h('div', { class: 'card-desc', style: { margin: '2px 0 0' } }, fmtSize(item.size))),
+        h('div', { class: 'card-desc', style: { margin: '2px 0 0' } },
+          // 两个同名任务的产物是两条同名记录，只看文件名分不出来 —— 带上所在文件夹
+          (item.folder ? item.folder + ' · ' : '') + fmtSize(item.size))),
       button('播放', { variant: 'text', iconName: 'play_arrow', onClick: () => {
         playQueue(libraryState.items.map((x) => ({ path: x.path, name: x.name })), i);
       } })));

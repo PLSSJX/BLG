@@ -56,7 +56,10 @@ def status() -> dict:
             "in_bin": bool(path) and str(BIN_DIR).lower() in path.lower()}
 
 
-def _download(url: str, target: Path, progress=None) -> None:
+def _download(url: str, target: Path, progress=None) -> str:
+    """下载并返回整包的 SHA-256。"""
+    import hashlib
+    digest = hashlib.sha256()
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=120) as resp, open(target, "wb") as out:
@@ -67,6 +70,7 @@ def _download(url: str, target: Path, progress=None) -> None:
                 if not block:
                     break
                 out.write(block)
+                digest.update(block)
                 done += len(block)
                 if progress and total:
                     progress(min(0.99, done / total), "已下载 %.1f / %.1f MB" % (done / 1048576, total / 1048576))
@@ -74,6 +78,7 @@ def _download(url: str, target: Path, progress=None) -> None:
                     progress(0.5, "已下载 %.1f MB" % (done / 1048576))
     except (urllib.error.URLError, OSError, TimeoutError) as exc:
         raise FfmpegError("下载失败：" + str(exc)[:140]) from None
+    return digest.hexdigest()
 
 
 def _extract(zip_path: Path, progress=None) -> list:
@@ -116,11 +121,14 @@ def install(progress=None) -> dict:
             if progress:
                 progress(0.02, "正在从 " + label + " 下载…")
             zip_path = tmp_dir / "ffmpeg.zip"
-            _download(url, zip_path, progress)
+            sha = _download(url, zip_path, progress)
+            # 记下整包哈希：现在没有官方公布的哈希可供比对，
+            # 至少把这次下载的指纹留在返回里，事后可以复核是不是同一个包。
             files = _extract(zip_path, progress)
             if progress:
                 progress(1.0, "完成")
-            return {"ok": True, "source": label, "files": files, "path": found_path()}
+            return {"ok": True, "source": label, "files": files,
+                    "path": found_path(), "sha256": sha}
         except FfmpegError as exc:
             errors.append(label + "：" + str(exc))
         finally:

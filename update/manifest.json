@@ -1,6 +1,6 @@
 {
  "version": "2.5.2",
- "generated": "2026-10-19 10:36:26 UTC",
+ "generated": "2026-10-19 10:57:51 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -31,13 +31,13 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "1e486def0b54ff9a9be95aedc01bd7f7f6b75822bc6ab474337ac2621d116cfe",
-   "size": 102775
+   "sha256": "2f0aa074e30c5493f3b615bb4040fd5cdbd9aabf1af9799a0e532936d9ec404e",
+   "size": 102950
   },
   {
    "path": "web/js/player.js",
-   "sha256": "0b06c0c3e38039a05a608a0f57e5b6b6084e7369dff763e3b8e69e0781c7e069",
-   "size": 11449
+   "sha256": "2737ca907da9681c16c507ae10dbf5c2f245bbbefbd8e36191c0d1d3061ea29d",
+   "size": 11603
   },
   {
    "path": "web/js/theme.js",
@@ -203,8 +203,8 @@
   },
   {
    "path": "videograb/ffmpeg_setup.py",
-   "sha256": "276cbde1a3749d139df4b4416cc5f5017ea4c42f28fa7db5a2cdf7dba5c6693c",
-   "size": 4995
+   "sha256": "ab0cdff4a71b8b41e9d65dffd46a226fe6dd90b79aaf1ece815af282b736017e",
+   "size": 5386
   },
   {
    "path": "videograb/hls.py",
@@ -233,8 +233,8 @@
   },
   {
    "path": "videograb/music/transcode.py",
-   "sha256": "4e314d29e53a362d09a12ff4eeb45df92ca3477d90ad26e5b24aa51ccf6afe91",
-   "size": 46416
+   "sha256": "062bd91cd9e3ff0bce41579584293f9277e2ca46e649622c618dce7c51fb4496",
+   "size": 47954
   },
   {
    "path": "videograb/muxer.py",
@@ -248,8 +248,8 @@
   },
   {
    "path": "videograb/playlist.py",
-   "sha256": "82822bac223f4b0f911e1bb24757b0826b64d9b293614e9452cb723e3c69dff5",
-   "size": 19763
+   "sha256": "e24d3298d892ba553a0381b8a87d5c9b86f5401dfbde360052b5ba93c27a526a",
+   "size": 20250
   },
   {
    "path": "videograb/quality.py",
@@ -263,8 +263,8 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "dc57d86cb724d43562d948e7f01da709059892f48af5b8c200bf961e75d713f0",
-   "size": 59680
+   "sha256": "c894abd670a0a902c5dffa218253a52b5cb1fb4dad20b18bd921703c2e0b22d3",
+   "size": 60126
   },
   {
    "path": "videograb/sites/__init__.py",
@@ -333,8 +333,8 @@
   },
   {
    "path": "videograb/tasks.py",
-   "sha256": "f9659b60ecb2dd7db2d3541fc35afdb9964584d9898df7c9fdfd5b620314340a",
-   "size": 51268
+   "sha256": "8e54aea1c5f010213e6e581113e59d36eb8c62b6f0bc18e7c10a9af3b714955b",
+   "size": 51885
   },
   {
    "path": "videograb/updater.py",

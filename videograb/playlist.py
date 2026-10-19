@@ -60,12 +60,17 @@ def _netease(pid: str, limit: int = 200) -> dict:
                 "album": ((row.get("al") or row.get("album") or {}) or {}).get("name") or "",
                 "url": "https://music.163.com/song?id=" + str(row.get("id")),
             })
+    # 真实曲目数以上游为准：trackIds 才是完整列表，songs 可能被 limit 截过。
+    # 只报 len(songs) 会让 500 首的歌单显示成「共 200 首」，被砍掉的没有任何提示。
+    total = int(playlist.get("trackCount") or len(playlist.get("trackIds") or []) or len(songs))
     return {
         "site": "wangyi",
         "id": pid,
         "title": playlist.get("name") or "未命名歌单",
         "cover": playlist.get("coverImgUrl") or "",
         "count": len(songs),
+        "total": total,
+        "truncated": len(songs) < total,
         "songs": songs,
     }
 
@@ -113,12 +118,15 @@ def _qq(disstid: str, limit: int = 200) -> dict:
         })
     if not songs:
         raise PlaylistError("这个 QQ 音乐歌单里没有歌曲")
+    total = int(cd.get("songnum") or len(songs))
     return {
         "site": "qqmusic",
         "id": disstid,
         "title": cd.get("dissname") or "未命名歌单",
         "cover": cd.get("logo") or "",
         "count": len(songs),
+        "total": total,
+        "truncated": len(songs) < total,
         "songs": songs,
     }
 

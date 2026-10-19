@@ -286,7 +286,8 @@ export function openVideo(path, name = '') {
     btnPrecise.disabled = true;
     try {
       const r = await api.trimVideo(path, start, end, precise);
-      note.textContent = '完成：' + r.output.split(/[\\/]/).pop() + '（' + (r.size / 1048576).toFixed(1) + ' MB）';
+      note.textContent = '完成：' + r.output.split(/[\\/]/).pop() + '（' + (r.size / 1048576).toFixed(1) + ' MB）'
+        + (precise ? '' : '　⚠ 快速裁剪会对齐到关键帧，实际起止可能和填写的时间有偏差；要精确请用「精确裁剪」');
     } catch (err) {
       note.textContent = '失败：' + err.message;
     } finally {
