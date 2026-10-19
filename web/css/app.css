@@ -800,3 +800,25 @@ body.has-player .slab { padding-bottom: 74px; }
 /* 中止/失败的任务：进度条定格，不转圈、不推进 */
 .progress.stopped > i { background: var(--md-error); transition: none; }
 .progress.stopped { opacity: .75; }
+
+
+/* ------------------------------------------------ 自绘标题栏
+   高度和按钮宽度必须和 videograb/titlebar.py 的 TITLEBAR_HEIGHT /
+   BUTTON_WIDTH 一致 —— 后端按这两个值把右侧按钮区划给页面，
+   否则点击穿透不过去，按钮点不动。 */
+#titlebar { position: fixed; top: 0; left: 0; right: 0; height: 44px;
+  display: flex; align-items: center; z-index: 95;
+  background: var(--md-surface-container); border-bottom: 1px solid var(--md-outline-variant);
+  -webkit-user-select: none; user-select: none; }
+#titlebar .tb-title { padding-left: 18px; font-size: 13px; font-weight: 600;
+  letter-spacing: .3px; color: var(--md-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+#titlebar .tb-buttons { display: flex; height: 100%; flex: none; }
+#titlebar .tb-btn { width: 52px; height: 100%; border: 0; background: transparent;
+  color: var(--md-on-surface); display: grid; place-items: center; cursor: pointer;
+  transition: background .12s ease, color .12s ease; }
+#titlebar .tb-btn .tb-glyph { font-size: 15px; line-height: 1; }
+#titlebar .tb-btn:hover { background: var(--md-surface-container-high); }
+#titlebar .tb-close:hover { background: #c42b1c; color: #fff; }
+body.has-titlebar { padding-top: 44px; }
+body.has-titlebar .rail, body.has-titlebar .page-wrap { top: 44px; }

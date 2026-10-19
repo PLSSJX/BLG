@@ -89,6 +89,25 @@ def _run_webview(url: str, on_closed=None, ctx=None) -> bool:
         )
         if on_closed is not None:
             on_closed(window)
+        if ctx is not None:
+            # 自绘标题栏的按钮由后端代为调用窗口方法
+            ctx.window = window
+            if (ctx.settings.titlebar or "").strip().lower() == "custom":
+                try:
+                    from .titlebar import install as install_titlebar
+                    from .window_frame import find_window
+                    def _hook():
+                        # 窗口刚 create 还没真正显示，等它出现再挂钩子
+                        for _ in range(160):
+                            hwnd = find_window(WINDOW_TITLE)
+                            if hwnd and install_titlebar(hwnd):
+                                return
+                            import time as _t
+                            _t.sleep(0.25)
+                    import threading as _th
+                    _th.Thread(target=_hook, daemon=True, name="titlebar-hook").start()
+                except Exception as exc:
+                    print("  自绘标题栏未启用：" + str(exc)[:120])
         # 关键：webview.start() 会一直阻塞到窗口关闭，所以模式必须在它之前写进去，
         # 否则窗口活着的整段时间里 /api/state 都只能报默认值。
         if ctx is not None:

@@ -1,13 +1,13 @@
 {
- "version": "3.0.6",
- "generated": "2026-10-19 13:53:29 UTC",
+ "version": "3.1.0",
+ "generated": "2026-10-19 13:59:31 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
   {
    "path": "web/css/app.css",
-   "sha256": "4e076b490065031038bf10d1d2920bc11a6691fc769993f1b6e2f84df78b3a63",
-   "size": 34771
+   "sha256": "8128efe2359dc6a7905c95a0c5b8db1e029df6a29b327aa13234171d883ee47a",
+   "size": 36131
   },
   {
    "path": "web/index.html",
@@ -16,13 +16,13 @@
   },
   {
    "path": "web/js/api.js",
-   "sha256": "e21d3f104628aa713136bb0228037ea6da87f563c94e3b35209db8cb0897b345",
-   "size": 4944
+   "sha256": "ca1443981facb10e134e8e035e371aac5a7d2223d72ea0ff250210569596110c",
+   "size": 5148
   },
   {
    "path": "web/js/app.js",
-   "sha256": "6fbfdd5b46ca7ffae514e8d4bc7a2e63eabe8302cb55b01f179cef6b9733cec3",
-   "size": 8242
+   "sha256": "df3ac4c068bc7cd5a331b6ad39587820a2f37a5b0f694cebc6d03863abb0c53f",
+   "size": 10017
   },
   {
    "path": "web/js/icons.js",
@@ -98,7 +98,7 @@
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "dd571304a0fb41cc6a855ea84b4928f7e226c518a4230113742ad7eeb6ec549e",
+   "sha256": "4e4536aa0824a48c34192500940e56673a54b67880f34b2155280614448a366a",
    "size": 398
   },
   {
@@ -118,8 +118,8 @@
   },
   {
    "path": "videograb/config.py",
-   "sha256": "d5dd7f0567b66319874c636d16e3839fe8fca6a43c3545d4c0a794709d14d8b6",
-   "size": 14172
+   "sha256": "e6dd4c9cbd1965eeb9f713f35648bfbb3356131830ee1674e74b01780d03a7df",
+   "size": 14301
   },
   {
    "path": "videograb/convert.py",
@@ -128,8 +128,8 @@
   },
   {
    "path": "videograb/desktop.py",
-   "sha256": "5a782dfa7ae8e2e8026619c0b7b2775e5e1899d67c46dd7a8d181e56133a4341",
-   "size": 9151
+   "sha256": "efabeb720c620059c853a73c60fb60754e929d9f0eff5bc8e18f39af7572991a",
+   "size": 10175
   },
   {
    "path": "videograb/downloader.py",
@@ -273,8 +273,8 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "e75d662c0a3bdadea970b3ed07028b8df8544eb20985aa0a646f2f0b125b5fb0",
-   "size": 65962
+   "sha256": "d65fd4a24d926c9824343758271bb45c328a01ba3f2a9211573dbb3fd794a75c",
+   "size": 67625
   },
   {
    "path": "videograb/sites/__init__.py",
@@ -347,6 +347,11 @@
    "size": 51896
   },
   {
+   "path": "videograb/titlebar.py",
+   "sha256": "e16fa61a836acbe39a5de0a389d9654698aea0d9e5e97341a05cef311c3fec9f",
+   "size": 6090
+  },
+  {
    "path": "videograb/tray.py",
    "sha256": "a91166100010d6877de441e07bac910d20e2196ef816de88905351391378462e",
    "size": 15228
@@ -381,6 +386,6 @@
   "name": "MakiseToolkit-Setup-3.0.5.exe",
   "size": 119599395,
   "sha256": "85db22397bf153939e3e6fd93ee32595b01f198c61b456830d6213aaef028c76",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v3.0.6/MakiseToolkit-Setup-3.0.5.exe"
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v3.1.0/MakiseToolkit-Setup-3.0.5.exe"
  }
 }

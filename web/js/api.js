@@ -28,6 +28,10 @@ const post = (path, body) => request(path, { method: 'POST', body: JSON.stringif
 
 export const api = {
   state: () => get('/api/state'),
+  // 自绘标题栏的三个按钮
+  windowMinimize: () => post('/api/window/minimize', {}),
+  windowMaximize: () => post('/api/window/maximize', {}),
+  windowClose: () => post('/api/window/close', {}),
   tasks: () => get('/api/tasks'),
   engines: () => get('/api/engines'),
 

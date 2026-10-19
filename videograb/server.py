@@ -65,6 +65,14 @@ def build_state(ctx: Context) -> dict:
         # 前端拿它给所有写操作签名；跨站页面读不到这个响应（CORS），拿不到令牌
         "api_token": getattr(ctx, "api_token", ""),
         "window_mode": getattr(ctx, "window_mode", "") or "server",
+        # 前端靠它决定要不要画自绘标题栏 —— 之前漏了这个字段，
+        # 结果原生标题栏被去掉了、HTML 标题栏又没画，窗口一个按钮都没有。
+        "titlebar": (
+            "custom"
+            if (getattr(ctx, "window_mode", "") == "webview"
+                and (getattr(ctx.settings, "titlebar", "") or "").strip().lower() == "custom")
+            else "native"
+        ),
         "frozen": is_frozen(),
         "base_dir": str(BASE_DIR),
     }
@@ -527,6 +535,32 @@ class Handler(BaseHTTPRequestHandler):
                 page=int(payload.get("page") or 1),
             )
             return self._json({"ok": True, "task": task.to_dict()})
+
+        if route in ("/api/window/minimize", "/api/window/maximize",
+                     "/api/window/close"):
+            # 自绘标题栏的按钮走这里 —— 页面里没有 pywebview 的对象，
+            # 只能由后端代劳。窗口引用在建窗时挂到 ctx 上。
+            win = getattr(ctx, "window", None)
+            if win is None:
+                raise ApiError("当前不是窗口模式，无法控制窗口")
+            action = route.rsplit("/", 1)[-1]
+            try:
+                if action == "minimize":
+                    win.minimize()
+                elif action == "maximize":
+                    # 已经是最大化就还原，按钮行为跟原生一致
+                    zoomed = getattr(ctx, "window_zoomed", False)
+                    if zoomed:
+                        win.restore()
+                    else:
+                        win.maximize()
+                    ctx.window_zoomed = not zoomed
+                else:
+                    if ctx.on_quit:
+                        ctx.on_quit()
+            except Exception as exc:
+                raise ApiError("窗口操作失败：" + str(exc)[:100]) from None
+            return self._json({"ok": True, "action": action})
 
         if route == "/api/window/frame":
             # 界面算好 Material 3 的颜色后下发过来，我们应用到 Windows 的窗口边框上。

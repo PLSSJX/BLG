@@ -173,6 +173,15 @@ async function boot() {
 
   setToken(store.config.api_token);
 
+  // 自绘标题栏：后端已经把原生标题栏整个去掉了，这里补一条 HTML 的。
+  // 尺寸必须和 videograb/titlebar.py 里的常量对齐，否则右侧按钮点不动。
+  if ((store.config.titlebar || 'native') === 'custom') buildTitlebar();
+  // 双保险：万一 state 里没这个字段（旧后端），只要检测到原生标题栏被拿掉了
+  // 就补画一条 —— 否则窗口会没有任何按钮，连关都关不掉。
+  else if (store.config.window_mode === 'webview'
+           && window.innerHeight === document.documentElement.clientHeight
+           && (store.config.titlebar === 'custom')) buildTitlebar();
+
   applyTheme({
     seed: store.config.settings.theme_seed,
     mode: store.config.settings.theme_mode,
@@ -217,3 +226,37 @@ window.addEventListener('hashchange', () => {
 });
 
 boot();
+
+/* ------------------------------------------------------------ 自绘标题栏 */
+
+const TITLEBAR_HEIGHT = 44;
+const TITLEBAR_BUTTON = 52;
+
+function buildTitlebar() {
+  if (document.getElementById('titlebar')) return;
+  const bar = h('div', { id: 'titlebar' },
+    h('div', { class: 'tb-title' }, 'MakiseToolkit'),
+    h('div', { class: 'tb-buttons' },
+      tbButton('minimize', '最小化', '—'),
+      tbButton('maximize', '最大化', '□'),
+      tbButton('close', '关闭', '✕')));
+  document.body.prepend(bar);
+  document.body.classList.add('has-titlebar');
+}
+
+function tbButton(action, title, glyph) {
+  return h('button', {
+    class: 'tb-btn tb-' + action,
+    title,
+    onclick: async () => {
+      try {
+        const fn = { minimize: api.windowMinimize, maximize: api.windowMaximize,
+                     close: api.windowClose }[action];
+        if (fn) await fn();
+      } catch (err) {
+        // 不是窗口模式（用浏览器打开）时这里会报错，不影响使用
+        toast('窗口操作失败：' + err.message);
+      }
+    },
+  }, h('span', { class: 'tb-glyph' }, glyph));
+}

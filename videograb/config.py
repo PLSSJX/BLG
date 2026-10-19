@@ -136,6 +136,8 @@ class Settings:
     download_dir: str = ""          # 留空 = exe 同级的 downloads 目录
     # 音乐单独放一个目录，别和视频混在一起。留空 = <download_dir>/音乐
     music_dir: str = ""
+    # "native" = 系统标题栏；"custom" = 自绘标题栏（可调高度/配色/按钮大小）
+    titlebar: str = "native"
     # 登录态：填了才能解锁 1080P 及以上
     sessdata: str = ""
     bili_jct: str = ""
