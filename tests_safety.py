@@ -217,10 +217,20 @@ def test_self_delete():
 def test_real_install():
     print("\nJ. 真实静默安装到非空目录（集成）")
     import subprocess
-    setup = ROOT / "dist" / "MakiseToolkit-Setup-2.4.7.exe"
-    if not setup.is_file():
-        print("  [--] 跳过：安装包不在")
+    # 版本号写死过（一直是 2.4.7），版本一涨这个集成测试就永远跳过，
+    # 而且界面上只显示"跳过"，看起来像通过 —— 等于白写。
+    # 改成扫 dist 下任意版本的安装包，取最新的那个。
+    # 同时认新旧两种命名：改名前的安装包叫 Video-Grabing-Setup-*，
+    # 改名后叫 MakiseToolkit-Setup-*。只认一种会让这个集成测试悄悄跳过。
+    candidates = []
+    for pattern in ("MakiseToolkit-Setup-*.exe", "Video-Grabing-Setup-*.exe"):
+        candidates.extend((ROOT / "dist").glob(pattern))
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    if not candidates:
+        print("  [--] 跳过：dist 下没有安装包（先跑 build.py --installer）")
         return
+    setup = candidates[0]
+    print("  使用安装包：" + setup.name)
     sb = sandbox("realinstall")
     touch(sb / "用户文件.txt", "用户的数据")
     touch(sb / "我的项目" / "main.py", "用户的代码")
@@ -230,7 +240,11 @@ def test_real_install():
     nested = sb / "VGPlatform"
     check(proc.returncode == 0, "安装成功（退出码 0）")
     check(nested.is_dir(), "在选中目录下建了 VGPlatform")
-    check((nested / "MakiseToolkit.exe").is_file(), "主程序在 VGPlatform 里")
+    # 这个集成测试可能拿到改名前的安装包（Video-Grabing-Setup-*），
+    # 它装出来的是 Video-Grabing.exe。两种名字都要认，否则测旧包必假失败。
+    exes = [p.name.lower() for p in nested.glob("*.exe")]
+    check(any(n.startswith("makisetoolkit") or n.startswith("video-grabing") for n in exes),
+          "主程序在 VGPlatform 里（" + str(exes) + "）")
     check((sb / "用户文件.txt").exists(), "用户文件完好")
     check((sb / "我的项目" / "main.py").exists(), "用户目录完好")
     # 顶层不该出现散落的程序文件
