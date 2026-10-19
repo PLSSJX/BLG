@@ -9,16 +9,55 @@ from __future__ import annotations
 import base64
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
 # 系统对话框里显示的过滤器
+# 可选格式必须和 transcode.py 真正认识的格式对齐，否则用户在对话框里
+# 根本看不到那些文件，会以为程序不支持。
 FILTER = (
-    "音乐文件|*.ncm;*.qmc0;*.qmc3;*.qmcflac;*.qmcogg;*.mflac;*.mflac0;*.mgg;*.mgg1;"
-    "*.kgm;*.kgma;*.vpr;*.kwm;*.mp3;*.flac;*.m4a;*.ogg;*.wav;*.aac"
+    "音乐文件|*.mp3;*.flac;*.m4a;*.ogg;*.opus;*.wav;*.aac;*.wma;*.ape"
+    ";*.ncm;*.qmc0;*.qmc3;*.qmcflac;*.qmcogg;*.mflac;*.mflac0;*.mgg;*.mgg1;"
+    "*.kgm;*.kgma;*.vpr;*.kwm"
     "|平台加密格式|*.ncm;*.qmc0;*.qmc3;*.qmcflac;*.qmcogg;*.mflac;*.mflac0;*.mgg;*.mgg1;*.kgm;*.kgma;*.vpr;*.kwm"
     "|所有文件|*.*"
 )
+
+DOC_FILTER = (
+    "文档|*.docx;*.xlsx;*.pdf;*.md"
+    "|Word 文档|*.docx"
+    "|Excel 表格|*.xlsx"
+    "|PDF|*.pdf"
+    "|Markdown|*.md"
+    "|所有文件|*.*"
+)
+
+IMAGE_FILTER = (
+    "图片|*.jpg;*.jpeg;*.png;*.bmp;*.webp"
+    "|所有文件|*.*"
+)
+
+
+POWERSHELL_CANDIDATES = (
+    r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+    r"C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe",
+)
+
+
+def powershell_exe() -> str:
+    """找到 powershell.exe。
+
+    实测环境里 PATH 常常**不含** WindowsPowerShell 目录，直接按名字调用会
+    立刻失败（进程都起不来，1ms 返回）。所以先 which，再退回固定路径。
+    """
+    found = shutil.which("powershell")
+    if found:
+        return found
+    for candidate in POWERSHELL_CANDIDATES:
+        if os.path.isfile(candidate):
+            return candidate
+    return "powershell"
 
 
 def _run_powershell(script: str, timeout: int = 300) -> tuple[bool, str]:
@@ -64,10 +103,10 @@ VIDEO_FILTER = (
 def pick_files(ctx=None, kind: str = "music") -> list:
     """弹出系统文件对话框，返回用户选中的绝对路径。取消则返回空列表。
 
-    kind 决定对话框里默认能看到什么：music（音频与加密格式）还是 video。
-    剪辑页要选视频，用音乐筛选器根本看不到 .mp4。
+    kind 决定对话框里默认能看到什么：music / video / doc / image。
+    用错筛选器会让对应类型的文件在对话框里直接不可见 —— 用户会以为程序不支持。
     """
-    chosen = VIDEO_FILTER if kind == "video" else FILTER
+    chosen = {"video": VIDEO_FILTER, "doc": DOC_FILTER, "image": IMAGE_FILTER}.get(kind, FILTER)
     script = PICK_SCRIPT.replace("{filter}", chosen.replace("'", "''"))
     ok, output = _run_powershell(script)
     if not ok or not output:

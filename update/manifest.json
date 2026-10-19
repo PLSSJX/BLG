@@ -1,6 +1,6 @@
 {
  "version": "2.5.2",
- "generated": "2026-10-19 11:50:09 UTC",
+ "generated": "2026-10-19 12:00:56 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -31,8 +31,8 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "82a19eb295483650cfc47ecd92e72e936bf4715e08ec1a2b9dd95e05d833c57d",
-   "size": 132169
+   "sha256": "cb289f40280623f8d7568f1b3ace5f5b82e3db92f53a664574aeda30f15f6e3f",
+   "size": 132754
   },
   {
    "path": "web/js/player.js",
@@ -123,8 +123,8 @@
   },
   {
    "path": "videograb/convert.py",
-   "sha256": "ce271dd31a8fdb7188a31e37c301629c1dae4134204db7120252bd9e3c300ccb",
-   "size": 19019
+   "sha256": "cc3bd780356f80e2357a91738f547c623ccced488710cd4bd99e846a3099ca1c",
+   "size": 23184
   },
   {
    "path": "videograb/desktop.py",
@@ -218,8 +218,8 @@
   },
   {
    "path": "videograb/localfile.py",
-   "sha256": "da06baf629ec00efc8568ab8bb0ec39abac310e1ec9f95e9f707fa6c8ec1b8c3",
-   "size": 5024
+   "sha256": "9049582feef734375692b7e9c2190176ddcf344175ad3b2a2d8af4e6e9996606",
+   "size": 6186
   },
   {
    "path": "videograb/models.py",
@@ -273,8 +273,8 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "3b25f7b8bc754546d342fc99ff16aa27b2110f6c238699f366b7ac85ecdf4141",
-   "size": 65906
+   "sha256": "885b59561dc3bdba44f22bb3c87030c7c84fe6bbae6ece7eafe0988e205081a1",
+   "size": 65919
   },
   {
    "path": "videograb/sites/__init__.py",

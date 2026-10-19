@@ -304,7 +304,7 @@ function buildMusicLibraryCard() {
         h('div', { class: 'btn-row', style: { justifyContent: 'center', marginTop: '10px' } },
           button('导入本地歌曲', { variant: 'tonal', iconName: 'upload', onClick: async () => {
             try {
-              const picked = await api.pickLocalFiles();
+              const picked = await api.pickLocalFiles('music');
               if (picked.cancelled) return;
               const r = await api.importMusic(picked.paths || []);
               toast(r.done.length ? '已导入 ' + r.done.length + ' 首' : '导入失败', 4000);
@@ -385,7 +385,7 @@ function buildMusicLibraryCard() {
 
         button('导入本地歌曲', { variant: 'tonal', iconName: 'upload', onClick: async () => {
           try {
-            const picked = await api.pickLocalFiles();
+            const picked = await api.pickLocalFiles('music');
             if (picked.cancelled) return;
             const r = await api.importMusic(picked.paths || []);
             toast(r.done.length
@@ -690,7 +690,7 @@ function buildLocalCard() {
 
   const pick = async () => {
     try {
-      const result = await api.pickLocalFiles();
+      const result = await api.pickLocalFiles('music');
       if (!result.count) { toast('没有选择文件'); return; }
       const scanned = await api.scanLocalFiles(result.paths);
       store.localFiles = scanned.items || [];
@@ -2417,7 +2417,7 @@ export function renderImage(view) {
     h('div', { class: 'btn-row', style: { marginTop: '10px' } },
       button('选择图片', { variant: 'tonal', iconName: 'folder_open', onClick: async () => {
         try {
-          const r = await api.pickLocalFiles();
+          const r = await api.pickLocalFiles('image');
           if (!r.cancelled) { bigjpgState.paths = r.paths || []; renderImage(document.getElementById('view')); }
         } catch (e) { toast('选择失败：' + e.message); }
       } })),
@@ -2499,8 +2499,8 @@ export function renderImage(view) {
 const docState = { paths: [], target: 'docx', results: null };
 
 const DOC_FORMATS = [
-  ['docx', 'Word 文档', '段落 + 表格', ['xlsx', 'md']],
-  ['xlsx', 'Excel 表格', '按行按列', ['docx', 'md']],
+  ['docx', 'Word 文档', '段落 + 表格', ['xlsx', 'md', 'pdf']],
+  ['xlsx', 'Excel 表格', '按行按列', ['docx', 'md', 'pdf']],
   ['pdf', 'PDF', '仅文本层，无版式', ['docx', 'xlsx', 'md']],
   ['md', 'Markdown', '纯文本 + 表格', ['docx', 'xlsx']],
 ];
@@ -2527,7 +2527,7 @@ export function renderDoc(view) {
         h('div', { class: 'btn-row', style: { marginTop: '10px' } },
           button('选择文件', { variant: 'tonal', iconName: 'folder_open', onClick: async () => {
             try {
-              const r = await api.pickLocalFiles();
+              const r = await api.pickLocalFiles('doc');
               if (r.cancelled) return;
               docState.paths = r.paths || [];
               docState.results = null;
@@ -2577,6 +2577,13 @@ export function renderDoc(view) {
       card(
         h('div', { class: 'card-title', html: icon('info', 'outlined', 20) + '<span>能做什么、不能做什么</span>' }),
         h('div', { class: 'card-desc' }, 'Word / Excel / Markdown 之间是完整读写，表格会保留成真表格。'),
+        h('div', { class: 'hint-box', style: { marginTop: '8px' } },
+          h('span', { html: icon('info', 'outlined', 20) }),
+          h('div', {},
+            h('b', {}, 'Word / Excel 转 PDF 用的是本机的 Microsoft Office：'),
+            h('div', {}, '· 版式、字体、分页由 Word/Excel 自己保证，中文不会乱'),
+            h('div', {}, '· 需要装了 Office；第一次调用会比较慢（要冷启动 Word）'),
+            h('div', {}, '· 没装 Office 时会明确报错，不会产出坏文件'))),
         h('div', { class: 'hint-box', style: { marginTop: '8px' } },
           h('span', { html: icon('warning_amber', 'outlined', 20) }),
           h('div', {},

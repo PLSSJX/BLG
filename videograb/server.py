@@ -574,8 +574,8 @@ class Handler(BaseHTTPRequestHandler):
             if not paths:
                 raise ApiError("还没有选择文件")
             target = str(payload.get("target") or "").strip().lower()
-            if target not in ("docx", "xlsx", "md"):
-                raise ApiError("目标格式只能是 docx、xlsx 或 md")
+            if target not in ("docx", "xlsx", "md", "pdf"):
+                raise ApiError("目标格式只能是 docx、xlsx、md 或 pdf")
             dest = Path(payload.get("dest") or str(ctx.download_dir() / "文档转换"))
             done, failed = [], []
             for raw in paths:

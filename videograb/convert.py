@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 import zipfile
 import zlib
@@ -406,10 +407,24 @@ def convert(src_path, out_dir, target: str) -> dict:
     # md 是纯文本，直接读；其余走各自解析器
     if source != "md" and source not in READERS:
         raise ConvertError("不支持读取 ." + source + "，目前支持：docx、xlsx、pdf、md")
-    if target not in ("docx", "xlsx", "md"):
-        raise ConvertError("不支持输出 ." + target + "，可选：docx、xlsx、md")
+    if target not in ("docx", "xlsx", "md", "pdf"):
+        raise ConvertError("不支持输出 ." + target + "，可选：docx、xlsx、md、pdf")
     if source == target:
         raise ConvertError("源文件和目标格式一样了")
+    if target == "pdf":
+        # PDF 只能由 Office 生成，源必须是 docx / xlsx
+        if source not in ("docx", "xlsx"):
+            raise ConvertError("只有 .docx 或 .xlsx 能转成 PDF；PDF 本身不能再转 PDF")
+        out_dir = Path(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / (src.stem + ".pdf")
+        index = 2
+        while out_path.exists():
+            out_path = out_dir / (src.stem + " (" + str(index) + ").pdf")
+            index += 1
+        office_to_pdf(src, out_path)
+        return {"ok": True, "source": source, "target": "pdf",
+                "output": str(out_path), "size": out_path.stat().st_size}
 
     data = (Path(src).read_text(encoding="utf-8", errors="replace")
             if source == "md" else READERS[source](src))
@@ -454,3 +469,78 @@ def convert(src_path, out_dir, target: str) -> dict:
             write_xlsx(sheets, out_path)
     return {"ok": True, "source": source, "target": target,
             "output": str(out_path), "size": out_path.stat().st_size}
+
+
+# ---------------------------------------------------------------- 转 PDF（走 Office COM）
+
+# 纯标准库写不出带中文的 PDF：base-14 字体只有 Latin-1，嵌中文字体要自己
+# 解析 TTF/TTC 并做 CID 子集，那是另一个量级的工程。既然目标用户是 Windows
+# 桌面，直接用已装的 Office 转最靠谱 —— 版式、字体、分页都由 Word/Excel 自己保证。
+_PS_TEMPLATE = r'''
+$ErrorActionPreference = 'Stop'
+$src = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{src}'))
+$dst = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{dst}'))
+$app = New-Object -ComObject {progid}
+try {
+    $app.Visible = $false
+    $app.DisplayAlerts = 0
+    if ('{progid}' -eq 'Word.Application') {
+        $doc = $app.Documents.Open($src, $false, $true)
+        try { $doc.SaveAs([ref]$dst, [ref]17) } finally { $doc.Close(0) }
+    } else {
+        $book = $app.Workbooks.Open($src, 0, $true)
+        try { $book.ExportAsFixedFormat(0, $dst) } finally { $book.Close($false) }
+    }
+    'OK'
+} finally {
+    $app.Quit()
+}
+'''
+
+
+def _office_progid(ext: str) -> str:
+    return {"docx": "Word.Application", "xlsx": "Excel.Application"}.get(ext, "")
+
+
+def office_to_pdf(src_path, out_path) -> None:
+    """用本机已安装的 Word / Excel 把文档另存为 PDF。"""
+    if os.name != "nt":
+        raise ConvertError("转 PDF 依赖本机的 Word / Excel，只能在 Windows 上用")
+    src = Path(src_path)
+    progid = _office_progid(src.suffix.lower().lstrip("."))
+    if not progid:
+        raise ConvertError("只有 .docx 和 .xlsx 能转 PDF")
+    import base64
+    import subprocess
+    import tempfile
+    script = (_PS_TEMPLATE
+              .replace("{src}", base64.b64encode(str(src).encode("utf-8")).decode())
+              .replace("{dst}", base64.b64encode(str(out_path).encode("utf-8")).decode())
+              .replace("{progid}", progid))
+    with tempfile.NamedTemporaryFile("w", suffix=".ps1", delete=False, encoding="utf-8") as fh:
+        fh.write(script)
+        script_path = fh.name
+    # 必须用绝对路径：实测环境 PATH 里没有 WindowsPowerShell 目录，
+    # 按名字调 powershell 会直接失败（进程起不来）。
+    from .localfile import powershell_exe
+    # 关键：**不要** capture_output。把 stdout/stderr 接成管道时，Word COM
+    # 启动会卡死（实测挂到 500 秒超时）；重定向到 DEVNULL 就正常，10 秒内出结果。
+    # 成功与否靠产物文件判断，不靠退出码。
+    try:
+        subprocess.run(
+            [powershell_exe(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+             "-WindowStyle", "Hidden", "-File", script_path],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            timeout=180)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise ConvertError("调用 Office 失败：" + str(exc)[:120]) from None
+    finally:
+        try:
+            os.unlink(script_path)
+        except OSError:
+            pass
+    if not Path(out_path).exists() or Path(out_path).stat().st_size < 512:
+        hint = "调用 Office 失败" if progid == "Word.Application" else "调用 Excel 失败"
+        raise ConvertError(
+            "转 PDF 失败（" + hint + "）。常见原因：没装 Microsoft Office、"
+            "Office 正弹窗等待操作，或被杀毒软件拦截了 COM 自动化。")
