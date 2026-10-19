@@ -103,6 +103,33 @@ def scale_of_window(hwnd: int = 0) -> float:
         return 1.0
 
 
+def scale() -> float:
+    """主显示器的缩放比（100% -> 1.0，150% -> 1.5）。
+
+    进程是 Per-Monitor V2 感知的，所以给 pywebview 的窗口尺寸是**物理像素**。
+    想要"界面上看起一样大"，物理尺寸必须乘这个比值 —— 否则 200% 缩放下
+    1480 物理像素只有 740 CSS 像素宽，布局会直接塌成手机版。
+    """
+    if os.name != "nt":
+        return 1.0
+    try:
+        import ctypes
+        user32 = ctypes.windll.user32
+        dc = user32.GetDC(None)
+        if not dc:
+            return 1.0
+        try:
+            # LOGPIXELSX = 88
+            dpi = ctypes.windll.gdi32.GetDeviceCaps(ctypes.c_void_p(dc), 88)
+        finally:
+            user32.ReleaseDC(None, ctypes.c_void_p(dc))
+        if dpi and dpi > 0:
+            return round(dpi / 96.0, 3)
+    except Exception:
+        pass
+    return 1.0
+
+
 def work_area() -> tuple[int, int]:
     """主显示器的可用区域（物理像素）。SPI_GETWORKAREA = 0x0030。"""
     if os.name != "nt":

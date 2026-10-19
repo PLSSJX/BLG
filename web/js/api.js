@@ -29,6 +29,8 @@ const post = (path, body) => request(path, { method: 'POST', body: JSON.stringif
 export const api = {
   state: () => get('/api/state'),
   // 自绘标题栏的三个按钮
+  windowDrag: () => post('/api/window/drag', {}),
+  windowResize: (edge) => post('/api/window/resize', { edge }),
   windowMinimize: () => post('/api/window/minimize', {}),
   windowMaximize: () => post('/api/window/maximize', {}),
   windowClose: () => post('/api/window/close', {}),

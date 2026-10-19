@@ -234,7 +234,28 @@ const TITLEBAR_BUTTON = 52;
 
 function buildTitlebar() {
   if (document.getElementById('titlebar')) return;
-  const bar = h('div', { id: 'titlebar' },
+  // 按下标题栏（按钮除外）就让系统开始拖动；双击切换最大化。
+  //
+  // 双击必须自己在这里判断：第一次 mousedown 就把系统拖拽循环启动了，
+  // 第二次点击被那个模态循环吃掉，页面的 dblclick 根本不会触发（实测）。
+  let lastDown = 0;
+  const onDown = (e) => {
+    if (e.button !== 0) return;
+    if (e.target.closest('button')) return;
+    const now = Date.now();
+    if (now - lastDown < 420) {
+      lastDown = 0;                       // 双击：切换最大化，不再发起拖动
+      api.windowMaximize().catch(() => {});
+      return;
+    }
+    lastDown = now;
+    api.windowDrag().catch(() => {});
+  };
+  // 边缘缩放：WebView2 是跨进程窗口，边缘的命中测试到不了父窗口，
+  // 只能由页面自己发现"按在边上"再让系统接管。
+  installResizeHandles();
+
+  const bar = h('div', { id: 'titlebar', onmousedown: onDown },
     h('div', { class: 'tb-title' }, 'MakiseToolkit'),
     h('div', { class: 'tb-buttons' },
       tbButton('minimize', '最小化'),
@@ -259,4 +280,62 @@ function tbButton(action, title) {
       }
     },
   }, h('span', { class: 'tb-glyph g-' + action }));
+}
+
+/* ------------------------------------------------------------ 边缘缩放 */
+
+// 边缘判定要按**物理像素**给，不能用固定 CSS 像素：
+// 300% 缩放下 6 CSS px 等于 18 物理像素，抓取区宽得离谱；
+// 反过来 100% 下又太窄。除以 devicePixelRatio 之后各种缩放手感一致。
+function resizeEdgeWidth() {
+  const dpr = window.devicePixelRatio || 1;
+  return Math.min(10, Math.max(3, Math.round(8 / dpr)));
+}
+
+function edgeAt(e) {
+  const w = window.innerWidth, h = window.innerHeight;
+  const x = e.clientX, y = e.clientY;
+  const edge = resizeEdgeWidth();
+  const left = x <= edge, right = x >= w - edge;
+  const top = y <= edge, bottom = y >= h - edge;
+  if (top && left) return 'topleft';
+  if (top && right) return 'topright';
+  if (bottom && left) return 'bottomleft';
+  if (bottom && right) return 'bottomright';
+  if (left) return 'left';
+  if (right) return 'right';
+  if (top) return 'top';
+  if (bottom) return 'bottom';
+  return '';
+}
+
+const EDGE_CURSOR = {
+  left: 'ew-resize', right: 'ew-resize', top: 'ns-resize', bottom: 'ns-resize',
+  topleft: 'nwse-resize', bottomright: 'nwse-resize',
+  topright: 'nesw-resize', bottomleft: 'nesw-resize',
+};
+
+function installResizeHandles() {
+  if (window.__vgResizeReady) return;
+  window.__vgResizeReady = true;
+  let current = '';
+
+  // 用捕获阶段，避免被页面里的元素吃掉
+  document.addEventListener('mousemove', (e) => {
+    const edge = edgeAt(e);
+    if (edge !== current) {
+      current = edge;
+      document.body.style.cursor = edge ? EDGE_CURSOR[edge] : '';
+    }
+  }, true);
+
+  document.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    const edge = edgeAt(e);
+    if (!edge) return;
+    e.preventDefault();
+    e.stopPropagation();
+    document.body.style.cursor = '';
+    api.windowResize(edge).catch(() => {});
+  }, true);
 }

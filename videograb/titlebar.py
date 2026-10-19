@@ -42,6 +42,7 @@ HTTOPRIGHT = 14
 HTBOTTOM = 15
 HTBOTTOMLEFT = 16
 HTBOTTOMRIGHT = 17
+HTTRANSPARENT = -1
 
 GWLP_WNDPROC = -4
 
@@ -57,6 +58,12 @@ kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
 LRESULT = ctypes.c_ssize_t
 WNDPROC = ctypes.WINFUNCTYPE(LRESULT, wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM)
 
+user32.PostMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
+user32.PostMessageW.restype = wt.BOOL
+user32.ReleaseCapture.argtypes = []
+user32.ReleaseCapture.restype = wt.BOOL
+user32.SendMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
+user32.SendMessageW.restype = ctypes.c_ssize_t
 user32.SetWindowLongPtrW.argtypes = [wt.HWND, ctypes.c_int, ctypes.c_void_p]
 user32.SetWindowLongPtrW.restype = ctypes.c_void_p
 user32.CallWindowProcW.argtypes = [ctypes.c_void_p, wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
@@ -105,6 +112,21 @@ def install(hwnd: int) -> bool:
                 return 1
             if msg == WM_NCPAINT:
                 return 0
+            if msg == WM_ERASEBKGND and _bg_brush:
+                rect = wt.RECT()
+                user32.GetClientRect(ctypes.c_void_p(h), ctypes.byref(rect))
+                user32.FillRect(ctypes.c_void_p(wparam), ctypes.byref(rect),
+                                ctypes.c_void_p(_bg_brush))
+                return 1
+            if msg == WM_START_RESIZE:
+                user32.ReleaseCapture()
+                user32.SendMessageW(ctypes.c_void_p(h), WM_NCLBUTTONDOWN, wparam, 0)
+                return 0
+            if msg == WM_START_DRAG:
+                # 这里就在 UI 线程上，可以安全地进入系统拖拽循环
+                user32.ReleaseCapture()
+                user32.SendMessageW(ctypes.c_void_p(h), WM_NCLBUTTONDOWN, HTCAPTION, 0)
+                return 0
         except Exception:
             pass
         return user32.CallWindowProcW(_installed[hwnd]["old"], h, msg, wparam, lparam)
@@ -118,6 +140,9 @@ def install(hwnd: int) -> bool:
     SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_FRAMECHANGED = 0x01, 0x02, 0x04, 0x20
     user32.SetWindowPos(hwnd, None, 0, 0, 0, 0,
                         SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED)
+    # WebView2 的子窗口是异步建出来的，这里先挂一次，再由调用方补挂
+    _hook_children(hwnd)
+    _fit_children(hwnd)
     return True
 
 
@@ -163,14 +188,208 @@ def _hit_test(hwnd: int, lparam: int) -> int:
         if on_bottom:
             return HTBOTTOM
 
-    # 标题栏区域：顶部 TITLEBAR_HEIGHT 像素
-    if y < top + TITLEBAR_HEIGHT:
-        buttons_left = right - BUTTON_WIDTH * BUTTON_COUNT
-        if x >= buttons_left:
-            return HTCLIENT          # 右侧按钮区交给页面，否则点不动
-        return HTCAPTION             # 其余部分：拖动、双击最大化、贴边分屏都靠它
-
+    # 一律交还给页面。
+    #
+    # 原来这里是"顶部 TITLEBAR_HEIGHT 像素返回 HTCAPTION"，但那有两个问题：
+    # ① 这里用的是**物理像素**，而 HTML 标题栏的 44px 是 **CSS 像素**，
+    #    150% 缩放下实际占 66 物理像素，两者对不上；
+    # ② WebView2 的渲染窗口在独立进程、盖满客户区，这个函数在真实路径上
+    #    根本不会被调用（系统问的是那个子窗口）。
+    # 拖动、双击、缩放全部由页面用 CSS 像素判断再主动发起，天然跟着 DPI 走。
     return HTCLIENT
+
+
+def _child_hit_test(top: int, child: int, lparam: int) -> int:
+    """子窗口的命中测试。
+
+    WebView2 是盖满客户区的子窗口，鼠标在标题栏上时命中的是它，不是顶层窗口 ——
+    所以顶层返回 HTCAPTION 也轮不到。这里让标题栏那一条返回 HTTRANSPARENT，
+    系统就会把消息继续往上交给父窗口，父窗口再给 HTCAPTION，拖动才成立。
+    右侧按钮区必须保留给页面，否则按钮点不动。
+    """
+    x, y = _signed(_loword(lparam)), _signed(_hiword(lparam))
+    rect = wt.RECT()
+    user32.GetWindowRect(top, ctypes.byref(rect))
+    if rect.right <= rect.left:
+        return HTCLIENT
+    if rect.top <= y < rect.top + TITLEBAR_HEIGHT:
+        buttons_left = rect.right - BUTTON_WIDTH * BUTTON_COUNT
+        if x < buttons_left:
+            return HTTRANSPARENT
+    return HTCLIENT
+
+
+def _subclass_child(top: int, child: int) -> None:
+    if not child or child in _installed:
+        return
+
+    def child_proc(h, msg, wparam, lparam):
+        try:
+            if msg == WM_NCHITTEST:
+                result = _child_hit_test(top, h, lparam)
+                if result != HTCLIENT:
+                    return result
+        except Exception:
+            pass
+        return user32.CallWindowProcW(_installed[h]["old"], h, msg, wparam, lparam)
+
+    proc = WNDPROC(child_proc)
+    old = user32.SetWindowLongPtrW(child, GWLP_WNDPROC, ctypes.cast(proc, ctypes.c_void_p))
+    if old:
+        _installed[child] = {"proc": proc, "old": old}
+
+
+def _hook_children(top: int) -> int:
+    """把顶层窗口下面所有子窗口都挂上钩子。返回挂上的数量。"""
+    kids: list = []
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    def collect(h, _l):
+        kids.append(h)
+        return True
+
+    try:
+        user32.EnumChildWindows(ctypes.c_void_p(top), collect, None)
+    except OSError:
+        return 0
+    count = 0
+    for kid in kids:
+        try:
+            _subclass_child(top, kid)
+            count += 1
+        except (OSError, ValueError):
+            continue
+    return count
+
+
+# 给父窗口留出的可拖拽边距。子窗口内缩这么多之后，最外圈就归父窗口了，
+# 四边四角的 WM_NCHITTEST 才轮得到我们，缩放才成立。
+INSET = 0   # WebView2 会自己重排子窗口，内缩留边距的做法留不住，改由页面发起缩放
+
+WM_ERASEBKGND = 0x0014
+_bg_brush = 0
+
+
+def set_background(hwnd: int, colorref: int) -> None:
+    """给父窗口刷上和主题一致的底色。
+
+    子窗口内缩之后，最外圈 6px 是父窗口画的 —— 不设底色的话就是系统默认的
+    白色，等于又给自己造了个白框。
+    """
+    global _bg_brush
+    if os.name != "nt" or not hwnd:
+        return
+    try:
+        gdi = ctypes.windll.gdi32
+        if _bg_brush:
+            gdi.DeleteObject(ctypes.c_void_p(_bg_brush))
+        _bg_brush = gdi.CreateSolidBrush(ctypes.c_uint(colorref & 0xFFFFFF))
+        user32.InvalidateRect(ctypes.c_void_p(hwnd), None, True)
+    except OSError:
+        pass
+
+
+WM_APP = 0x8000
+WM_START_DRAG = WM_APP + 71
+def is_zoomed(hwnd: int) -> bool:
+    """窗口当前是不是最大化。
+
+    不缓存状态：用户可能拖到屏幕顶端让系统最大化、也可能用 Win+Up，
+    缓存会和真实状态对不上，双击时就变成"该还原却继续最大化"。
+    """
+    if os.name != "nt" or not hwnd:
+        return False
+    try:
+        return bool(user32.IsZoomed(ctypes.c_void_p(hwnd)))
+    except OSError:
+        return False
+
+
+WM_NCLBUTTONDOWN = 0x00A1
+
+
+HT_CODES = {
+    "left": HTLEFT, "right": HTRIGHT, "top": HTTOP, "bottom": HTBOTTOM,
+    "topleft": HTTOPLEFT, "topright": HTTOPRIGHT,
+    "bottomleft": HTBOTTOMLEFT, "bottomright": HTBOTTOMRIGHT,
+}
+WM_START_RESIZE = WM_APP + 72
+
+
+def start_resize(hwnd: int, edge: str) -> bool:
+    """从页面发起一次系统缩放拖拽。
+
+    和拖动同一个道理：WebView2 的渲染窗口在独立进程里，边缘的命中测试
+    永远到不了父窗口，所以只能由页面检测到"按在边上"之后主动让系统接管。
+    """
+    if os.name != "nt" or not hwnd:
+        return False
+    ht = HT_CODES.get((edge or "").lower())
+    if not ht:
+        return False
+    try:
+        return bool(user32.PostMessageW(ctypes.c_void_p(hwnd), WM_START_RESIZE, ht, 0))
+    except OSError:
+        return False
+
+
+def start_drag(hwnd: int) -> bool:
+    """让系统接手势开始拖动窗口。
+
+    为什么不能靠 WM_NCHITTEST 返回 HTCAPTION：WebView2 渲染在**独立进程**里，
+    它那个 Chrome_RenderWidgetHostHWND 盖满客户区，而跨进程窗口没法子类化
+    （SetWindowLongPtr 返回 ERROR_ACCESS_DENIED）。鼠标点永远先命中它，
+    父窗口的命中测试根本轮不到。
+
+    改成：页面里按下标题栏时调这里，ReleaseCapture 之后补一条
+    WM_NCLBUTTONDOWN(HTCAPTION)，系统就会当成"用户按住了标题栏"，
+    拖动、贴边分屏、双击最大化全都由系统原生处理。
+    """
+    if os.name != "nt" or not hwnd:
+        return False
+    try:
+        # 关键：不能在 HTTP 线程里直接 SendMessage(WM_NCLBUTTONDOWN)。
+        # 拖拽是一个**模态移动循环**，必须跑在窗口自己的 UI 线程上；
+        # 跨线程发过去只会立刻返回、窗口纹丝不动（实测就是拖不动）。
+        # 所以只往窗口消息队列投一条自定义消息，由窗口过程在 UI 线程里发起。
+        ok = user32.PostMessageW(ctypes.c_void_p(hwnd), WM_START_DRAG, 0, 0)
+        return bool(ok)
+    except OSError:
+        return False
+
+def _fit_children(top: int) -> None:
+    """把子窗口拉满整个窗口。
+
+    WM_NCCALCSIZE 把非客户区去掉之后，窗口变"大"了，但 WebView2 那个子窗口
+    还按**旧客户区**的尺寸摆着，四周就露出一圈父窗口背景（白框）。
+    这里把每个子窗口重设成 (0,0,客户区宽,客户区高)。
+    """
+    rect = wt.RECT()
+    if not user32.GetClientRect(ctypes.c_void_p(top), ctypes.byref(rect)):
+        return
+    width, height = rect.right - rect.left, rect.bottom - rect.top
+    if width <= 0 or height <= 0:
+        return
+    SWP_NOZORDER = 0x0004
+    SWP_NOACTIVATE = 0x0010
+    kids: list = []
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    def collect(h, _l):
+        kids.append(h)
+        return True
+
+    try:
+        user32.EnumChildWindows(ctypes.c_void_p(top), collect, None)
+    except OSError:
+        return
+    for kid in kids:
+        try:
+            user32.SetWindowPos(ctypes.c_void_p(kid), None, INSET, INSET,
+                                max(1, width - INSET * 2), max(1, height - INSET * 2),
+                                SWP_NOZORDER | SWP_NOACTIVATE)
+        except OSError:
+            continue
 
 
 def uninstall(hwnd: int) -> None:

@@ -536,6 +536,26 @@ class Handler(BaseHTTPRequestHandler):
             )
             return self._json({"ok": True, "task": task.to_dict()})
 
+        if route == "/api/window/resize":
+            from .titlebar import start_resize
+            from .window_frame import find_window
+            from .desktop import WINDOW_TITLE
+            hwnd = find_window(WINDOW_TITLE) or find_window("")
+            if not hwnd:
+                raise ApiError("找不到窗口")
+            return self._json({"ok": True,
+                               "resizing": start_resize(hwnd, str(payload.get("edge") or ""))})
+
+        if route == "/api/window/drag":
+            # 页面按下标题栏 -> 让系统接管拖动（WebView2 跨进程，命中测试穿不过去）
+            from .titlebar import start_drag
+            from .window_frame import find_window
+            from .desktop import WINDOW_TITLE
+            hwnd = find_window(WINDOW_TITLE) or find_window("")
+            if not hwnd:
+                raise ApiError("找不到窗口")
+            return self._json({"ok": True, "dragging": start_drag(hwnd)})
+
         if route in ("/api/window/minimize", "/api/window/maximize",
                      "/api/window/close"):
             # 自绘标题栏的按钮走这里 —— 页面里没有 pywebview 的对象，
@@ -548,13 +568,15 @@ class Handler(BaseHTTPRequestHandler):
                 if action == "minimize":
                     win.minimize()
                 elif action == "maximize":
-                    # 已经是最大化就还原，按钮行为跟原生一致
-                    zoomed = getattr(ctx, "window_zoomed", False)
-                    if zoomed:
+                    # 用系统真实状态判断，不用缓存的标志
+                    from .titlebar import is_zoomed
+                    from .window_frame import find_window
+                    from .desktop import WINDOW_TITLE
+                    hwnd = find_window(WINDOW_TITLE) or find_window("")
+                    if is_zoomed(hwnd):
                         win.restore()
                     else:
                         win.maximize()
-                    ctx.window_zoomed = not zoomed
                 else:
                     if ctx.on_quit:
                         ctx.on_quit()
@@ -575,6 +597,17 @@ class Handler(BaseHTTPRequestHandler):
                 border=str(payload.get("border") or ""),
                 dark=bool(payload.get("dark")),
             )
+            if ok and (getattr(ctx.settings, "titlebar", "") or "").lower() == "custom":
+                # 自绘模式下子窗口是内缩的，最外圈由父窗口绘制，得刷上主题底色
+                try:
+                    from .titlebar import set_background
+                    from .window_frame import find_window, _colorref
+                    from .desktop import WINDOW_TITLE
+                    hwnd = find_window(WINDOW_TITLE) or find_window("")
+                    if hwnd:
+                        set_background(hwnd, _colorref(str(payload.get("caption") or "")))
+                except Exception:
+                    pass
             return self._json({"ok": True, "applied": ok})
 
         if route == "/api/local/pick":

@@ -79,11 +79,20 @@ def _run_webview(url: str, on_closed=None, ctx=None) -> bool:
         print("  没有内置窗口组件（pywebview 不可用）：" + str(exc)[:120])
         return False
     try:
-        win_w, win_h = fit_to_screen(*WINDOW_SIZE)
+        # WINDOW_SIZE 是"界面上看起来"的尺寸（CSS 像素）。进程是 DPI 感知的，
+        # pywebview 要的是物理像素，所以要乘缩放比 —— 不乘的话 200% 缩放下
+        # 窗口只有 740 CSS 像素宽，整个布局会塌掉。
+        try:
+            from .dpi import scale as _dpi_scale
+            _s = _dpi_scale() or 1.0
+        except Exception:
+            _s = 1.0
+        win_w, win_h = fit_to_screen(int(WINDOW_SIZE[0] * _s), int(WINDOW_SIZE[1] * _s))
+        _min = (int(MIN_SIZE[0] * _s), int(MIN_SIZE[1] * _s))
         window = webview.create_window(
             WINDOW_TITLE, url,
             width=win_w, height=win_h,
-            min_size=MIN_SIZE,
+            min_size=_min,
             text_select=True,
             confirm_close=False,
         )
@@ -101,6 +110,15 @@ def _run_webview(url: str, on_closed=None, ctx=None) -> bool:
                         for _ in range(160):
                             hwnd = find_window(WINDOW_TITLE)
                             if hwnd and install_titlebar(hwnd):
+                                # 子窗口是陆续建出来的，补挂几轮
+                                from .titlebar import _hook_children
+                                import time as _t2
+                                for _ in range(40):
+                                    _t2.sleep(0.5)
+                                    try:
+                                        _hook_children(hwnd)
+                                    except Exception:
+                                        pass
                                 return
                             import time as _t
                             _t.sleep(0.25)

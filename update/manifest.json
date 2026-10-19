@@ -1,6 +1,6 @@
 {
  "version": "3.1.0",
- "generated": "2026-10-19 14:02:37 UTC",
+ "generated": "2026-10-19 14:57:39 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -16,13 +16,13 @@
   },
   {
    "path": "web/js/api.js",
-   "sha256": "ca1443981facb10e134e8e035e371aac5a7d2223d72ea0ff250210569596110c",
-   "size": 5148
+   "sha256": "391ba3f3bb9925a099133ce3e294658f70dfbe18f2acefe8f5a1a32d21c266d8",
+   "size": 5262
   },
   {
    "path": "web/js/app.js",
-   "sha256": "4f76689c43386c9879ef78a7c2d66aab436d21ec1eb3f9406e899ba9ef51aa79",
-   "size": 9994
+   "sha256": "bd97d14139ee8295473e1be277ad19fcdf6303d2330dcec23e26b7577a532c4c",
+   "size": 12780
   },
   {
    "path": "web/js/icons.js",
@@ -128,8 +128,8 @@
   },
   {
    "path": "videograb/desktop.py",
-   "sha256": "efabeb720c620059c853a73c60fb60754e929d9f0eff5bc8e18f39af7572991a",
-   "size": 10175
+   "sha256": "499d3010474e6580de8b8c96d01626540bfe051a0dcefe27f5964029af1c6149",
+   "size": 11190
   },
   {
    "path": "videograb/downloader.py",
@@ -138,8 +138,8 @@
   },
   {
    "path": "videograb/dpi.py",
-   "sha256": "eebae609644dfb47bbfd5e603cb6e2beee321780f3281087373f32d2fa5d7502",
-   "size": 3810
+   "sha256": "831e7da61780acdab1aa8cbe041b9f55b7a9afb16e27d9be74004cb794797929",
+   "size": 4689
   },
   {
    "path": "videograb/engines/__init__.py",
@@ -273,8 +273,8 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "d65fd4a24d926c9824343758271bb45c328a01ba3f2a9211573dbb3fd794a75c",
-   "size": 67625
+   "sha256": "c6f2327240561b7df03f0badb3bc2a2a630127711cc6c2ff7a59df8897c11b0d",
+   "size": 69368
   },
   {
    "path": "videograb/sites/__init__.py",
@@ -348,8 +348,8 @@
   },
   {
    "path": "videograb/titlebar.py",
-   "sha256": "e16fa61a836acbe39a5de0a389d9654698aea0d9e5e97341a05cef311c3fec9f",
-   "size": 6090
+   "sha256": "f6dc28828e69990538497aa3dc2278c3f866e55a78ac8aae21c79878ba58a320",
+   "size": 14436
   },
   {
    "path": "videograb/tray.py",
@@ -384,8 +384,8 @@
  ],
  "installer": {
   "name": "MakiseToolkit-Setup-3.1.0.exe",
-  "size": 113935064,
-  "sha256": "4c316760376945107c188aa54baed1a0b18fe552616214a2355c380565624141",
+  "size": 119604472,
+  "sha256": "8c90151474eab2b21a953f0e8c59dc0aa15888ab605f8e2df220f1976e451eb8",
   "url": "https://github.com/PLSSJX/BLG/releases/download/v3.1.0/MakiseToolkit-Setup-3.1.0.exe"
  }
 }
