@@ -1,6 +1,6 @@
 {
  "version": "2.5.2",
- "generated": "2026-10-19 12:15:24 UTC",
+ "generated": "2026-10-19 12:23:14 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -123,8 +123,8 @@
   },
   {
    "path": "videograb/convert.py",
-   "sha256": "cc3bd780356f80e2357a91738f547c623ccced488710cd4bd99e846a3099ca1c",
-   "size": 23184
+   "sha256": "d8f7c84d18397537dfa371a7ebccac1afca5b80fdc84fddccd454bcbca1240e9",
+   "size": 28260
   },
   {
    "path": "videograb/desktop.py",

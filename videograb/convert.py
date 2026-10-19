@@ -422,8 +422,19 @@ def convert(src_path, out_dir, target: str) -> dict:
         while out_path.exists():
             out_path = out_dir / (src.stem + " (" + str(index) + ").pdf")
             index += 1
-        office_to_pdf(src, out_path)
-        return {"ok": True, "source": source, "target": "pdf",
+        # 优先用 Office（版式最准），没有或失败就退回"文档→HTML→无头浏览器"
+        engine = ""
+        try:
+            office_to_pdf(src, out_path)
+            engine = "office"
+        except ConvertError as office_error:
+            try:
+                doc_to_html_pdf(src, out_path)
+                engine = "browser"
+            except ConvertError:
+                # 两条都不通时，把 Office 的原因抛出去（信息更具体）
+                raise office_error from None
+        return {"ok": True, "source": source, "target": "pdf", "engine": engine,
                 "output": str(out_path), "size": out_path.stat().st_size}
 
     data = (Path(src).read_text(encoding="utf-8", errors="replace")
@@ -544,3 +555,109 @@ def office_to_pdf(src_path, out_path) -> None:
         raise ConvertError(
             "转 PDF 失败（" + hint + "）。常见原因：没装 Microsoft Office、"
             "Office 正弹窗等待操作，或被杀毒软件拦截了 COM 自动化。")
+
+
+# ---------------------------------------------------------------- 转 PDF（不依赖 Office 的备用通路）
+
+def _html_for_blocks(blocks, title: str) -> str:
+    """把文档块渲染成一份 A4 排版的 HTML。"""
+    parts = []
+    for kind, value in blocks:
+        if kind == "p":
+            text = str(value).strip()
+            if text:
+                parts.append("<p>" + escape(text) + "</p>")
+        elif kind == "table":
+            rows = value or []
+            if not rows:
+                continue
+            head = "".join("<th>" + escape(str(c)) + "</th>" for c in rows[0])
+            body = "".join(
+                "<tr>" + "".join("<td>" + escape(str(c)) + "</td>" for c in row) + "</tr>"
+                for row in rows[1:])
+            parts.append("<table><thead><tr>" + head + "</tr></thead><tbody>"
+                         + body + "</tbody></table>")
+    return (
+        '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">'
+        "<title>" + escape(title) + "</title><style>"
+        "@page{size:A4;margin:18mm 16mm}"
+        'body{font-family:"Microsoft YaHei","SimSun","Segoe UI",sans-serif;'
+        "font-size:11pt;line-height:1.7;color:#111}"
+        "p{margin:0 0 .6em}"
+        "table{border-collapse:collapse;width:100%;margin:.6em 0;font-size:10pt}"
+        "th,td{border:1px solid #999;padding:4px 6px;text-align:left}"
+        "th{background:#eee}"
+        "</style></head><body>" + "".join(parts) + "</body></html>")
+
+
+def _browser_candidates() -> list:
+    """能用 --print-to-pdf 的浏览器。Edge 在 Win10/11 上是系统自带的。"""
+    names = []
+    for var in ("ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA"):
+        base = os.environ.get(var)
+        if not base:
+            continue
+        names.append(os.path.join(base, "Microsoft", "Edge", "Application", "msedge.exe"))
+        names.append(os.path.join(base, "Google", "Chrome", "Application", "chrome.exe"))
+    names.append(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
+    names.append(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
+    return [n for n in names if os.path.isfile(n)]
+
+
+def _html_to_pdf_once(html: str, out_path) -> bool:
+    """用无头浏览器把 HTML 打成 PDF。成功返回 True。"""
+    import subprocess
+    import tempfile
+    browsers = _browser_candidates()
+    if not browsers:
+        return False
+    with tempfile.TemporaryDirectory(prefix="vgpdf-") as tmp:
+        html_path = os.path.join(tmp, "doc.html")
+        with open(html_path, "w", encoding="utf-8") as fh:
+            fh.write(html)
+        profile = os.path.join(tmp, "profile")
+        for exe in browsers:
+            try:
+                os.unlink(out_path)
+            except OSError:
+                pass
+            cmd = [exe, "--headless=new", "--disable-gpu", "--no-first-run",
+                   "--no-default-browser-check", "--disable-extensions",
+                   "--user-data-dir=" + profile,
+                   "--print-to-pdf-no-header",
+                   "--print-to-pdf=" + str(out_path),
+                   "file:///" + html_path.replace("\\", "/")]
+            try:
+                subprocess.run(cmd, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               timeout=120)
+            except (OSError, subprocess.SubprocessError):
+                continue
+            target = Path(out_path)
+            if target.is_file() and target.stat().st_size > 512:
+                try:
+                    if target.read_bytes()[:5] == b"%PDF-":
+                        return True
+                except OSError:
+                    pass
+    return False
+
+
+def doc_to_html_pdf(src_path, out_path) -> None:
+    """不依赖 Office 的转 PDF：文档 → HTML → 无头浏览器打印。"""
+    source = Path(src_path).suffix.lower().lstrip(".")
+    if source == "docx":
+        blocks = read_docx(src_path)
+    elif source == "xlsx":
+        blocks = []
+        for name, rows in read_xlsx(src_path).items():
+            blocks.append(("p", name))
+            if rows:
+                blocks.append(("table", rows))
+    else:
+        raise ConvertError("只有 .docx 或 .xlsx 能转 PDF")
+    html = _html_for_blocks(blocks, Path(src_path).stem)
+    if not _html_to_pdf_once(html, out_path):
+        raise ConvertError(
+            "转 PDF 失败：既没能调用 Office，也没找到可用的 Edge / Chrome。"
+            "装一个 Microsoft Edge 或 Google Chrome 就能走备用通路。")
