@@ -123,14 +123,63 @@ def clear_titlebar(hwnd: int) -> bool:
         user32 = ctypes.windll.user32
         user32.SendMessageW(ctypes.c_void_p(hwnd), WM_SETTEXT, 0, ctypes.c_wchar_p(""))
         # 两个尺寸都要清：只清 SMALL，有些窗口会把 BIG 缩下来当标题栏图标用
-        user32.SendMessageW(ctypes.c_void_p(hwnd), WM_SETICON, ICON_SMALL, 0)
-        user32.SendMessageW(ctypes.c_void_p(hwnd), WM_SETICON, ICON_BIG, 0)
+        # 塞透明图标顶掉系统回退的 exe 图标；同时把类图标也换掉，
+        # 因为有的窗口会从窗口类里取图标。
+        blank = blank_icon()
+        for kind in (ICON_SMALL, ICON_BIG):
+            user32.SendMessageW(ctypes.c_void_p(hwnd), WM_SETICON, kind,
+                                ctypes.c_void_p(blank) if blank else 0)
+        if blank:
+            try:
+                # GCLP_HICON = -14, GCLP_HICONSM = -34
+                user32.SetClassLongPtrW(ctypes.c_void_p(hwnd), -14, ctypes.c_void_p(blank))
+                user32.SetClassLongPtrW(ctypes.c_void_p(hwnd), -34, ctypes.c_void_p(blank))
+            except (OSError, AttributeError):
+                pass
         SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_FRAMECHANGED = 0x01, 0x02, 0x04, 0x20
         user32.SetWindowPos(ctypes.c_void_p(hwnd), None, 0, 0, 0, 0,
                             SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED)
         return True
     except OSError:
         return False
+
+
+class ICONINFO(ctypes.Structure):
+    _fields_ = [("fIcon", ctypes.c_int), ("xHotspot", ctypes.c_uint),
+                ("yHotspot", ctypes.c_uint), ("hbmMask", ctypes.c_void_p),
+                ("hbmColor", ctypes.c_void_p)]
+
+
+_blank_icon = None
+
+
+def blank_icon() -> int:
+    """造一个全透明的 16x16 图标。
+
+    为什么不是直接把图标设成 NULL：Windows 在窗口没有图标时会**回退到 exe
+    的应用程序图标**继续画在标题栏左上角 —— 这正是清了 WM_GETICON 之后
+    图标还在的原因。塞一个透明图标进去，位置还在但什么都看不见。
+    """
+    global _blank_icon
+    if _blank_icon:
+        return _blank_icon
+    try:
+        gdi = ctypes.windll.gdi32
+        size = 16
+        # 32bpp 全 0 = 全透明
+        color = gdi.CreateBitmap(size, size, 1, 32, ctypes.c_void_p(0))
+        # AND 掩码全 1 = 透明
+        mask_bits = (ctypes.c_ubyte * (size * size // 8))(*([0xFF] * (size * size // 8)))
+        mask = gdi.CreateBitmap(size, size, 1, 1, mask_bits)
+        info = ICONINFO(1, 0, 0, ctypes.c_void_p(mask), ctypes.c_void_p(color))
+        handle = ctypes.windll.user32.CreateIconIndirect(ctypes.byref(info))
+        gdi.DeleteObject(ctypes.c_void_p(color))
+        gdi.DeleteObject(ctypes.c_void_p(mask))
+        if handle:
+            _blank_icon = handle
+        return _blank_icon or 0
+    except OSError:
+        return 0
 
 
 def titlebar_icon_cleared(hwnd: int) -> bool:

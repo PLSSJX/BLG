@@ -1,6 +1,6 @@
 {
- "version": "3.0.4",
- "generated": "2026-10-19 13:43:34 UTC",
+ "version": "3.0.5",
+ "generated": "2026-10-19 13:45:47 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -98,7 +98,7 @@
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "1c39a6c35217c8d9a989977738e8c672066e3cb79e0371b5a1214e02a8f5072a",
+   "sha256": "b316a9892b8e55a8f1f795e271c17ecfff063a82843b27aaadf29f489b61bafb",
    "size": 398
   },
   {
@@ -373,14 +373,14 @@
   },
   {
    "path": "videograb/window_frame.py",
-   "sha256": "294de8b077dff99c7b473cb423d091dd879530736861123b9fb1632fa7ead09a",
-   "size": 8589
+   "sha256": "6885dfa6176ef8367a5737959b6ae2e1aa22cc793f7e1f97d8b59e0326599510",
+   "size": 10565
   }
  ],
  "installer": {
-  "name": "MakiseToolkit-Setup-3.0.3.exe",
-  "size": 119597053,
-  "sha256": "a82acbd405b19d22996e3109e5b4777bc367519aa6d6e3afabbaa967e38ebaa8",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v3.0.4/MakiseToolkit-Setup-3.0.3.exe"
+  "name": "MakiseToolkit-Setup-3.0.5.exe",
+  "size": 119248825,
+  "sha256": "b581522e05d41ecdebfa806f96f24d632aaa3aaad4194fdb2349b4c765ca5f53",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v3.0.5/MakiseToolkit-Setup-3.0.5.exe"
  }
 }
