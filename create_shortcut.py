@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import base64
 import ctypes
 import subprocess
@@ -72,9 +73,36 @@ def ps_quote(text: str) -> str:
     return "'" + str(text).replace("'", "''") + "'"
 
 
+def _shell_candidates() -> list:
+    """找 powershell.exe。
+
+    实测某些环境（包括打包后的进程）PATH 里**没有** WindowsPowerShell 目录，
+    按名字调用会立刻失败，进程根本起不来 —— 这里补上固定路径兜底。
+    """
+    import shutil as _shutil
+    found = []
+    for name in ("powershell", "pwsh"):
+        path = _shutil.which(name)
+        if path:
+            found.append(path)
+    for fixed in (r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                  r"C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe",
+                  r"C:\Program Files\PowerShell\7\pwsh.exe"):
+        if os.path.isfile(fixed):
+            found.append(fixed)
+    seen = set()
+    unique = []
+    for item in found:
+        key = item.lower()
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    return unique
+
+
 def run_powershell(script: str) -> tuple[bool, str]:
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
-    for shell in ("powershell", "pwsh"):
+    for shell in _shell_candidates():
         try:
             proc = subprocess.run(
                 [shell, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
@@ -165,7 +193,7 @@ def main() -> int:
             failures += 1
 
     if failures == 0:
-        print("\n完成。回到桌面双击「" + args.name + "」即可启动，程序会自动打开浏览器。")
+        print("\n完成。回到桌面双击「" + args.name + "」即可启动（内置窗口，不会弹浏览器）。")
     return 0 if failures == 0 else 1
 
 
