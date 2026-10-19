@@ -802,6 +802,7 @@ body.has-player .slab { padding-bottom: 74px; }
 .progress.stopped { opacity: .75; }
 
 
+
 /* ------------------------------------------------ 自绘标题栏
    高度和按钮宽度必须和 videograb/titlebar.py 的 TITLEBAR_HEIGHT /
    BUTTON_WIDTH 一致 —— 后端按这两个值把右侧按钮区划给页面，
@@ -816,9 +817,25 @@ body.has-player .slab { padding-bottom: 74px; }
 #titlebar .tb-buttons { display: flex; height: 100%; flex: none; }
 #titlebar .tb-btn { width: 52px; height: 100%; border: 0; background: transparent;
   color: var(--md-on-surface); display: grid; place-items: center; cursor: pointer;
-  transition: background .12s ease, color .12s ease; }
-#titlebar .tb-btn .tb-glyph { font-size: 15px; line-height: 1; }
+  position: relative; transition: background .12s ease, color .12s ease; }
 #titlebar .tb-btn:hover { background: var(--md-surface-container-high); }
+#titlebar .tb-btn:active { background: var(--md-surface-container-highest); }
 #titlebar .tb-close:hover { background: #c42b1c; color: #fff; }
+
+/* 三个图形全部用 CSS 画：线条带圆角，比字符更贴合 Material 的圆润感 */
+#titlebar .tb-glyph { display: block; position: relative; }
+
+#titlebar .g-minimize { width: 15px; height: 1.8px; border-radius: 1px;
+  background: currentColor; }
+#titlebar .g-maximize { width: 14px; height: 14px;
+  border: 1.8px solid currentColor; border-radius: 4px; }
+#titlebar .g-close { width: 15px; height: 15px; }
+#titlebar .g-close::before, #titlebar .g-close::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 16px; height: 1.8px; border-radius: 1px;
+  background: currentColor; }
+#titlebar .g-close::before { transform: translate(-50%, -50%) rotate(45deg); }
+#titlebar .g-close::after  { transform: translate(-50%, -50%) rotate(-45deg); }
+
 body.has-titlebar { padding-top: 44px; }
 body.has-titlebar .rail, body.has-titlebar .page-wrap { top: 44px; }

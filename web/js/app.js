@@ -237,14 +237,14 @@ function buildTitlebar() {
   const bar = h('div', { id: 'titlebar' },
     h('div', { class: 'tb-title' }, 'MakiseToolkit'),
     h('div', { class: 'tb-buttons' },
-      tbButton('minimize', '最小化', '—'),
-      tbButton('maximize', '最大化', '□'),
-      tbButton('close', '关闭', '✕')));
+      tbButton('minimize', '最小化'),
+      tbButton('maximize', '最大化'),
+      tbButton('close', '关闭')));
   document.body.prepend(bar);
   document.body.classList.add('has-titlebar');
 }
 
-function tbButton(action, title, glyph) {
+function tbButton(action, title) {
   return h('button', {
     class: 'tb-btn tb-' + action,
     title,
@@ -258,5 +258,5 @@ function tbButton(action, title, glyph) {
         toast('窗口操作失败：' + err.message);
       }
     },
-  }, h('span', { class: 'tb-glyph' }, glyph));
+  }, h('span', { class: 'tb-glyph g-' + action }));
 }
