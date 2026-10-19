@@ -4,8 +4,7 @@ import { playQueue, playFile, playNextItem, player, openVideo } from './player.j
 import { icon } from './icons.js';
 import {
   h, clear, card, button, chip, switchRow, field, pill, toast, dialog,
-  escapeHtml, fmtSize, fmtDuration, fmtCount, fmtDate, busy, emptyState,
-} from './ui.js';
+  escapeHtml, fmtSize, fmtDuration, fmtCount, fmtDate, busy, emptyState, mount } from './ui.js';
 import { applyTheme, THEME_MODES } from './theme.js';
 
 /** 全局共享状态。 */
@@ -35,7 +34,7 @@ export function renderHome(view) {
   clear(view);
   const page = h('div', { class: 'page' });
 
-  page.append(
+  mount(page, 
     h('div', { class: 'page-head' },
       h('h1', { class: 'page-title' }, '解析'),
       h('div', { class: 'spacer' }),
@@ -49,20 +48,20 @@ export function renderHome(view) {
   );
 
   if (store.parsed) {
-    page.append(buildVideoCard());
-    page.append(buildDownloadCard());
-    page.append(buildStreamCard());
+    mount(page, buildVideoCard());
+    mount(page, buildDownloadCard());
+    mount(page, buildStreamCard());
   } else {
-    page.append(h('div', { style: { marginTop: '12px' } },
+    mount(page, h('div', { style: { marginTop: '12px' } },
       emptyState('search', '还没有解析任何视频',
         '在上面的输入框里粘贴一个视频链接或分享文案，然后点「解析」。')));
   }
 
   // 通道体检并进解析页了 —— 它本来就是"这个视频能用哪些通道"，和最上面那张卡片是一回事
   const probe = buildProbeSection();
-  if (probe) page.append(probe);
+  if (probe) mount(page, probe);
 
-  view.append(page);
+  mount(view, page);
 }
 
 /* ------------------------------------------------------------ 本地文件转换 */
@@ -85,7 +84,7 @@ function buildMusicSearchCard() {
   const status = h('div', { class: 'card-desc', style: { marginTop: '8px' } });
   const paint = () => {
     const n = lines().length;
-    clear(status).append(n > 1 ? ('共 ' + n + ' 个地址，可以一次全部下载') : '');
+    mount(clear(status), n > 1 ? ('共 ' + n + ' 个地址，可以一次全部下载') : '');
   };
   input.addEventListener('input', paint);
   paint();
@@ -118,11 +117,11 @@ function buildMusicSearchCard() {
         const raw = (store.musicInput || '').trim().split('\n').map((s) => s.trim()).filter(Boolean)[0] || '';
         if (!raw) { toast('请先粘贴歌单链接'); return; }
         const btn = e.currentTarget; btn.disabled = true;
-        clear(status).append(busy('正在解析歌单…'));
+        mount(clear(status), busy('正在解析歌单…'));
         try {
           const pl = await api.playlistFetch(raw);
           playlistState.data = pl;
-          clear(status).append(
+          mount(clear(status), 
             pill('《' + pl.title + '》' + pl.count + ' 首', 'ok'),
             '(' + (pl.songs || []).slice(0, 3).map((s) => s.name).join('、') + '…)');
           renderMusic(document.getElementById('view'));
@@ -132,7 +131,7 @@ function buildMusicSearchCard() {
             if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
           }, 120);
         } catch (err) {
-          clear(status).append(h('div', { class: 'hint-box' },
+          mount(clear(status), h('div', { class: 'hint-box' },
             h('span', { html: icon('error_outline', 'outlined', 20) }), h('div', {}, err.message)));
         }
         btn.disabled = false;
@@ -141,7 +140,7 @@ function buildMusicSearchCard() {
         const items = lines();
         if (!items.length) { toast('请先粘贴音乐链接'); return; }
         const btn = e.currentTarget; btn.disabled = true;
-        clear(status).append(busy('正在批量创建下载任务…'));
+        mount(clear(status), busy('正在批量创建下载任务…'));
         let ok = 0, bad = 0;
         for (const item of items) {
           try {
@@ -152,7 +151,7 @@ function buildMusicSearchCard() {
           }
         }
         btn.disabled = false;
-        clear(status).append(pill('已创建 ' + ok + ' 个任务' + (bad ? '，' + bad + ' 个失败' : ''), bad ? 'warn' : 'ok'));
+        mount(clear(status), pill('已创建 ' + ok + ' 个任务' + (bad ? '，' + bad + ' 个失败' : ''), bad ? 'warn' : 'ok'));
         document.dispatchEvent(new CustomEvent('tasks-changed'));
       } })),
     status,
@@ -194,7 +193,7 @@ async function runMusicParse() {
   const view = document.getElementById('view');
   const btn = view.querySelector('.search-field .btn');
   const original = btn?.innerHTML;
-  if (btn) { btn.disabled = true; btn.innerHTML = ''; btn.append(busy('解析中')); }
+  if (btn) { btn.disabled = true; btn.innerHTML = ''; mount(btn, busy('解析中')); }
   try {
     store.parsed = await api.parse(raw, 'auto');
     if (!store.parsed?.info) throw new Error('接口没有返回信息');
@@ -224,12 +223,12 @@ function buildSourceSwapCard() {
   async function runSearch() {
     const q = (swapState.q || '').trim();
     if (!q) { toast('请输入歌名'); return; }
-    clear(holder).append(h('div', { class: 'card-desc' }, busy('正在搜索…')));
+    mount(clear(holder), h('div', { class: 'card-desc' }, busy('正在搜索…')));
     try {
       const r = await api.musicSearch(q, 10);
       swapState.items = r.items || [];
     } catch (err) {
-      clear(holder).append(h('div', { class: 'hint-box' },
+      mount(clear(holder), h('div', { class: 'hint-box' },
         h('span', { html: icon('error_outline', 'outlined', 20) }), h('div', {}, err.message)));
       return;
     }
@@ -239,8 +238,8 @@ function buildSourceSwapCard() {
   function paintResults() {
     clear(holder);
     const items = swapState.items || [];
-    if (!items.length) { holder.append(h('div', { class: 'card-desc' }, '没有搜到。换个「歌名 歌手」试试。')); return; }
-    holder.append(h('div', { class: 'btn-row', style: { marginBottom: '8px' } },
+    if (!items.length) { mount(holder, h('div', { class: 'card-desc' }, '没有搜到。换个「歌名 歌手」试试。')); return; }
+    mount(holder, h('div', { class: 'btn-row', style: { marginBottom: '8px' } },
       button('全部加入下载', { iconName: 'download', onClick: async (e) => {
         const btn = e.currentTarget; btn.disabled = true;
         let ok = 0;
@@ -295,11 +294,11 @@ function buildMusicLibraryCard() {
     if (!libraryState.items) {
       api.musicList().then((r) => { libraryState.items = r.items || []; libraryState.dir = r.dir || ''; paint(); })
         .catch(() => { libraryState.items = []; paint(); });
-      holder.append(h('div', { class: 'card-desc' }, busy('正在扫描音乐目录…')));
+      mount(holder, h('div', { class: 'card-desc' }, busy('正在扫描音乐目录…')));
       return;
     }
     if (!libraryState.items.length) {
-      holder.append(emptyState('music_note', '音乐目录里还没有文件',
+      mount(holder, emptyState('music_note', '音乐目录里还没有文件',
         '下载、转码或从视频提取的音轨会出现在这里，也可以直接导入本地歌曲。'),
         h('div', { class: 'btn-row', style: { justifyContent: 'center', marginTop: '10px' } },
           button('导入本地歌曲', { variant: 'tonal', iconName: 'upload', onClick: async () => {
@@ -377,7 +376,7 @@ function buildMusicLibraryCard() {
       button('播放', { variant: 'text', iconName: 'play_arrow', onClick: () => {
         playQueue(libraryState.items.map((x) => ({ path: x.path, name: x.name })), i);
       } })));
-    holder.append(
+    mount(holder, 
       h('div', { class: 'btn-row', style: { marginBottom: '8px' } },
         button('全部播放', { variant: 'tonal', iconName: 'play_arrow', onClick: () => {
           playQueue(libraryState.items.map((x) => ({ path: x.path, name: x.name })), 0);
@@ -470,7 +469,7 @@ function buildSongGrid(pl) {
     for (const s of songs.slice(i, i + 2)) {
       const idx = songs.indexOf(s) + 1;
       const cover = s.cover || s.cover_url || '';
-      grid.append(h('div', {
+      mount(grid, h('div', {
         style: {
           display: 'flex', alignItems: 'center', gap: '10px', padding: '8px',
           borderRadius: '10px', background: 'var(--md-surface-container)',
@@ -525,7 +524,7 @@ function buildPlaylistCard() {
       api.playlistList()
         .then((r) => { playlistState.local = r.playlists || []; paint(); })
         .catch(() => { playlistState.local = []; paint(); });
-      holder.append(h('div', { class: 'card-desc' }, busy('正在读取本地歌单…')));
+      mount(holder, h('div', { class: 'card-desc' }, busy('正在读取本地歌单…')));
       return;
     }
     // 详情视图
@@ -533,7 +532,7 @@ function buildPlaylistCard() {
     if (detail) {
       const pl = (playlistState.local || []).find((x) => x.id === detail.id && x.site === detail.site);
       if (!pl) { playlistState.detail = null; paint(); return; }
-      holder.append(
+      mount(holder, 
         h('div', { class: 'btn-row', style: { marginBottom: '10px' } },
           button('返回歌单列表', { variant: 'text', iconName: 'arrow_back', onClick: () => {
             playlistState.detail = null; playlistState.query = null; paint();
@@ -592,7 +591,7 @@ function buildPlaylistCard() {
     }
 
     // 列表视图
-    holder.append(
+    mount(holder, 
       h('div', { class: 'btn-row', style: { marginBottom: '10px' } },
         button('新建歌单', { variant: 'tonal', iconName: 'add', onClick: async () => {
           const nameInput = h('input', { class: 'input', placeholder: '给这个歌单起个名字' });
@@ -611,12 +610,12 @@ function buildPlaylistCard() {
         } })));
 
     if (!playlistState.local.length) {
-      holder.append(emptyState('music_note', '还没有本地歌单',
+      mount(holder, emptyState('music_note', '还没有本地歌单',
         '点上面的「新建歌单」自己建一个，或到「音乐」页粘贴歌单链接解析后保存。'));
       return;
     }
     for (const pl of playlistState.local) {
-      holder.append(h('div', {
+      mount(holder, h('div', {
         style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid var(--md-outline-variant)', cursor: 'pointer' },
         onclick: (e) => { if (e.target.closest('button')) return; playlistState.query = null; playlistState.detail = { id: pl.id, site: pl.site }; paint(); },
       },
@@ -660,14 +659,14 @@ function buildLocalCard() {
   const renderList = () => {
     clear(list);
     if (!store.localFiles.length) {
-      list.append(h('div', { class: 'hint' }, '还没有选择文件。支持 .ncm / .qmc* / .mflac / .mgg / .kgm / .vpr / .kwm，也接受普通音频。'));
+      mount(list, h('div', { class: 'hint' }, '还没有选择文件。支持 .ncm / .qmc* / .mflac / .mgg / .kgm / .vpr / .kwm，也接受普通音频。'));
       return;
     }
     for (const item of store.localFiles) {
       const tag = item.encrypted
         ? pill('加密 · ' + String(item.kind || '').toUpperCase(), 'warn')
         : pill('通用格式', 'mute');
-      list.append(h('div', { class: 'local-row' },
+      mount(list, h('div', { class: 'local-row' },
         h('div', { class: 'grow' },
           h('div', { class: 'name' }, item.name),
           h('div', { class: 'hint' }, fmtSize(item.size) + (item.error ? ' · ' + item.error : ''))),
@@ -678,11 +677,11 @@ function buildLocalCard() {
   const renderTargets = () => {
     clear(targetSelect);
     if (!formats) {
-      targetSelect.append(h('option', { value: 'copy' }, '保持原格式（正在检测…）'));
+      mount(targetSelect, h('option', { value: 'copy' }, '保持原格式（正在检测…）'));
       return;
     }
     for (const t of formats.targets || []) {
-      targetSelect.append(h('option', { value: t.id },
+      mount(targetSelect, h('option', { value: t.id },
         t.label + (t.needs_ffmpeg && !formats.ffmpeg ? '（需要 ffmpeg）' : '')));
     }
     targetSelect.value = store.localTarget || 'copy';
@@ -698,7 +697,7 @@ function buildLocalCard() {
       toast('已选择 ' + store.localFiles.length + ' 个文件' + (enc ? '（其中 ' + enc + ' 个需要解密）' : ''));
       renderList();
     } catch (error) {
-      clear(status).append('选择文件失败：' + error.message);
+      mount(clear(status), '选择文件失败：' + error.message);
     }
   };
 
@@ -712,7 +711,7 @@ function buildLocalCard() {
       store.localFiles = [];
       renderList();
     } catch (error) {
-      clear(status).append('提交失败：' + error.message);
+      mount(clear(status), '提交失败：' + error.message);
     }
   };
 
@@ -787,10 +786,10 @@ function siteOf(id) {
 
 function fillEngineOptions(select, current) {
   clear(select);
-  select.append(h('option', { value: 'auto' }, '自动（按优先级依次尝试，选实际画质最高的）'));
+  mount(select, h('option', { value: 'auto' }, '自动（按优先级依次尝试，选实际画质最高的）'));
   for (const engine of store.config?.engines || []) {
     const suffix = engine.available ? '' : '（当前不可用）';
-    select.append(h('option', { value: engine.id }, engine.name + suffix));
+    mount(select, h('option', { value: engine.id }, engine.name + suffix));
   }
   select.value = current || 'auto';
 }
@@ -803,7 +802,7 @@ async function runParse() {
   const original = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '';
-  btn.append(busy('解析中'));
+  mount(btn, busy('解析中'));
 
   try {
     store.parsed = await api.parse(input, store.engine);   // { info, ref, engine, engine_name }
@@ -838,7 +837,7 @@ async function loadStreams() {
   const requestId = ++streamRequestId;
   const view = document.getElementById('view');
   const host = view.querySelector('#streamHost');
-  if (host) { clear(host).append(h('div', { class: 'card-desc' }, busy('正在取流…'))); }
+  if (host) { mount(clear(host), h('div', { class: 'card-desc' }, busy('正在取流…'))); }
   try {
     // 注意解包：接口返回的是 { ok, play, engine, engine_name } 信封，
     // store.play 要存里面的 play 本身，否则所有字段都是 undefined。
@@ -852,7 +851,7 @@ async function loadStreams() {
     if (requestId !== streamRequestId) return;
     store.play = null;
     if (host) {
-      clear(host).append(h('div', { class: 'hint-box' },
+      mount(clear(host), h('div', { class: 'hint-box' },
         h('span', { html: icon('error_outline', 'outlined', 20) }),
         h('div', {}, '取流失败：' + error.message.split('\n').slice(0, 4).join(' / '))));
     }
@@ -964,7 +963,7 @@ function buildPagePicker(info) {
       h('span', { class: 'page-name' }, p.part || '(未命名)'),
       p.duration ? h('span', { class: 'page-dur' }, fmtDuration(p.duration)) : null);
     rows.set(number, row);
-    list.append(row);
+    mount(list, row);
   }
 
   const toolbar = h('div', { class: 'btn-row', style: { marginBottom: '10px' } },
@@ -1004,7 +1003,7 @@ function buildDownloadCard() {
   // 模式
   const modeRow = h('div', { class: 'chips' });
   for (const mode of modes) {
-    modeRow.append(chip(mode.name, {
+    mount(modeRow, chip(mode.name, {
       active: store.mode === mode.id,
       title: mode.desc,
       onClick: () => { store.mode = mode.id; renderHome(document.getElementById('view')); },
@@ -1032,10 +1031,10 @@ function buildDownloadCard() {
     return found ? found.name : ('qn' + qn);
   };
   if (!play) {
-    qualityRow.append(h('span', { class: 'card-desc', style: { margin: '0' } }, '正在获取可用画质…'));
+    mount(qualityRow, h('span', { class: 'card-desc', style: { margin: '0' } }, '正在获取可用画质…'));
   } else {
     if (!actual.length) {
-      qualityRow.append(h('span', { class: 'card-desc', style: { margin: '0' } }, '当前通道没有报告画质档位'));
+      mount(qualityRow, h('span', { class: 'card-desc', style: { margin: '0' } }, '当前通道没有报告画质档位'));
     }
     const isBilibili = (store.parsed?.info?.site || 'bilibili') === 'bilibili';
     // B 站的 qn 有自己的中文名；其它平台的 qn 是我们折算出来的占位值，
@@ -1051,7 +1050,7 @@ function buildDownloadCard() {
     actual.forEach((qn, index) => {
       const stream = (play.videos || []).find((v) => v.qn === qn);
       const tag = stream ? stream.resolution : (play.durl.length ? '单文件' : '');
-      qualityRow.append(chip(labelOf(qn, index), {
+      mount(qualityRow, chip(labelOf(qn, index), {
         active: store.qn === qn,
         tag,
         onClick: () => {
@@ -1062,7 +1061,7 @@ function buildDownloadCard() {
       }));
     });
     for (const qn of phantom) {
-      qualityRow.append(chip(qualityName(qn), {
+      mount(qualityRow, chip(qualityName(qn), {
         phantom: true,
         tag: QUALITY_HINT[qn] || '未下发',
         title: '接口声称支持该档位，但本次实际没有下发（' + (QUALITY_HINT[qn] || '需要更高权限') + '）',
@@ -1077,7 +1076,7 @@ function buildDownloadCard() {
     onchange: (e) => saveSetting({ prefer_codec: e.target.value }, false),
   });
   for (const item of store.config?.codec_preferences || []) {
-    codecSelect.append(h('option', { value: item.id }, item.name));
+    mount(codecSelect, h('option', { value: item.id }, item.name));
   }
   codecSelect.value = store.config?.settings?.prefer_codec || 'auto';
 
@@ -1273,7 +1272,7 @@ function buildProbeSection() {
         button('开始体检', { iconName: 'bolt', onClick: () => runProbe() })),
     ));
 
-  if (store.probe) wrap.append(buildProbeResult());
+  if (store.probe) mount(wrap, buildProbeResult());
   return wrap;
 }
 
@@ -1285,11 +1284,11 @@ async function runProbe() {
   const host = view.querySelector('.page');
   const holder = h('div', { class: 'card', style: { marginTop: '8px' } },
     h('div', { class: 'card-desc' }, busy('正在把所有通道跑一遍，请稍候…')));
-  host.append(holder);
+  mount(host, holder);
   try {
     store.probe = await api.probe(input, 0);
   } catch (error) {
-    clear(holder).append(h('div', { class: 'hint-box' },
+    mount(clear(holder), h('div', { class: 'hint-box' },
       h('span', { html: icon('error_outline', 'outlined', 20) }),
       h('div', {}, '体检失败：' + error.message)));
     return;
@@ -1344,7 +1343,7 @@ export function renderTasks(view) {
   const page = h('div', { class: 'page' });
   const stats = store.taskStats || {};
 
-  page.append(
+  mount(page, 
     h('div', { class: 'page-head' },
       h('h1', { class: 'page-title' }, '历史记录'),
       h('div', { class: 'spacer' }),
@@ -1369,7 +1368,7 @@ export function renderTasks(view) {
 
   const tasks = store.tasks || [];
   if (!tasks.length) {
-    page.append(emptyState('cloud_download', '还没有任何下载记录',
+    mount(page, emptyState('cloud_download', '还没有任何下载记录',
       '在「解析」页解析一个视频，然后点「开始下载」，任务就会出现在这里。'));
   } else {
     // 歌曲和视频分开列，各自折叠：默认只展开最近 2 条，其余点「显示全部」再看
@@ -1387,10 +1386,10 @@ export function renderTasks(view) {
       if (AUDIO_EXT.test(src)) return true;
       return MUSIC_SITE_IDS.has(t.site);
     };
-    page.append(buildTaskGroup('歌曲', tasks.filter(isMusic), 'music'));
-    page.append(buildTaskGroup('视频', tasks.filter((t) => !isMusic(t)), 'video'));
+    mount(page, buildTaskGroup('歌曲', tasks.filter(isMusic), 'music'));
+    mount(page, buildTaskGroup('视频', tasks.filter((t) => !isMusic(t)), 'video'));
   }
-  view.append(page);
+  mount(view, page);
 }
 
 // 网易云适配器的真实 id 是 netease；早期歌单存储里写成了 wangyi，
@@ -1406,7 +1405,7 @@ function buildTaskGroup(title, list, key) {
   const shown = expanded ? rest : rest.slice(0, 2);
 
   const grid = h('div', { class: 'grid' });
-  for (const t of [...active, ...shown]) grid.append(buildTaskCard(t));
+  for (const t of [...active, ...shown]) mount(grid, buildTaskCard(t));
 
   return card(
     h('div', { class: 'card-title',
@@ -1459,20 +1458,20 @@ function buildTaskCard(task) {
 
   const actions = h('div', { class: 'btn-row', style: { marginTop: '10px' } });
   if (active) {
-    actions.append(button('取消', { variant: 'text', iconName: 'close', onClick: async () => {
+    mount(actions, button('取消', { variant: 'text', iconName: 'close', onClick: async () => {
       await api.cancelTask(task.id); toast('已请求取消'); refreshTasks();
     } }));
   } else {
-    actions.append(button('重试', { variant: 'text', iconName: 'refresh', onClick: async () => {
+    mount(actions, button('重试', { variant: 'text', iconName: 'refresh', onClick: async () => {
       await api.retryTask(task.id); toast('已重新排队'); refreshTasks();
     } }));
-    actions.append(button('打开目录', { variant: 'text', iconName: 'folder_open', onClick: () => {
+    mount(actions, button('打开目录', { variant: 'text', iconName: 'folder_open', onClick: () => {
       api.open(task.directory);
     } }));
     // 视频任务抽出音轨存成音乐，之后就能在「播放」页听
     const vids = (task.files || []).filter((f) => f.kind === 'video' && /\.(mp4|mkv|webm|flv|ts|m4v)$/i.test(f.path || ''));
     if (vids.length) {
-      actions.append(button('提取音轨', { variant: 'text', iconName: 'music_note', onClick: async (e) => {
+      mount(actions, button('提取音轨', { variant: 'text', iconName: 'music_note', onClick: async (e) => {
         const btn = e.currentTarget; btn.disabled = true;
         try {
           const r = await api.extractAudio(vids.map((v) => v.path), 'mp3');
@@ -1486,7 +1485,7 @@ function buildTaskCard(task) {
       } }));
     }
     // 删除分两种，都要先把"会不会删文件、删哪些"说清楚
-    actions.append(button('移出列表', { variant: 'text', iconName: 'delete', onClick: async () => {
+    mount(actions, button('移出列表', { variant: 'text', iconName: 'delete', onClick: async () => {
       const yes = await dialog({
         title: '从列表移出？',
         body: '只移除这条记录，磁盘上的文件会完整保留。',
@@ -1494,7 +1493,7 @@ function buildTaskCard(task) {
       });
       if (yes) { await api.removeTask(task.id, false); refreshTasks(); }
     } }));
-    actions.append(button('删除并清理文件', { variant: 'text', iconName: 'delete', onClick: async () => {
+    mount(actions, button('删除并清理文件', { variant: 'text', iconName: 'delete', onClick: async () => {
       // 先把真正会被删掉的路径逐条列出来，用户确认后才动手
       let preview = { items: [], total: 0 };
       try { preview = await api.previewRemove(task.id); } catch (error) { toast('读取失败：' + error.message); return; }
@@ -1552,7 +1551,8 @@ function buildTaskCard(task) {
         h('div', { class: 'sub' },
           (task.page_title ? task.page_title + ' · ' : '') +
           (task.qn_label || '自动画质') + ' · ' +
-          (task.engine_used || task.engine) + ' · ' + task.mode),
+          (task.engine_used || task.engine || '—') + ' · ' + (task.mode || '手动')),
+          // 老版本的 tasks.json 里没有 mode 字段，直接拼会显示 undefined
         progress,
         foot,
       )),
@@ -1584,16 +1584,17 @@ export function renderSettings(view) {
   const settings = store.config?.settings || {};
   const page = h('div', { class: 'page' });
 
-  page.append(
+  mount(page, 
     h('div', { class: 'page-head' }, h('h1', { class: 'page-title' }, '设置')),
     h('p', { class: 'page-sub' }, '主题外观、账号、下载选项、抓取通道、更新与自检。改动即时生效并写入 data/config.json。'),
     h('div', { class: 'split' },
       buildAppearanceCard(settings),
       buildCredentialsCard(),
       buildDownloadCard2(settings),
+      // 视频下载和音乐下载是一对，紧挨着放，方便对照
+      buildMusicDirCard(settings),
       buildExtrasCard(settings),
       buildBigjpgCard(settings),
-      buildMusicDirCard(settings),
       buildFfmpegCard(),
       buildEnginesCard(),
       buildToolsCard(),
@@ -1601,7 +1602,7 @@ export function renderSettings(view) {
       buildUpdateCard(),
       buildProgramCard()),
   );
-  view.append(page);
+  mount(view, page);
 }
 
 /** 保存设置。返回是否成功 —— 调用方必须据此决定要不要改本地状态，
@@ -1631,7 +1632,7 @@ function buildAppearanceCard(settings) {
     const dot = h('div', { class: 'dot', style: { background: preset.color } },
       settings.theme_seed?.toLowerCase() === preset.color.toLowerCase()
         ? h('span', { html: icon('check', 'filled', 20) }) : null);
-    swatches.append(h('button', {
+    mount(swatches, h('button', {
       class: 'swatch' + (settings.theme_seed?.toLowerCase() === preset.color.toLowerCase() ? ' active' : ''),
       onclick: () => saveSetting({ theme_seed: preset.color }),
     }, dot, h('span', {}, preset.label)));
@@ -1639,7 +1640,7 @@ function buildAppearanceCard(settings) {
 
   const modeRow = h('div', { class: 'chips' });
   for (const mode of THEME_MODES) {
-    modeRow.append(chip(mode.label, {
+    mount(modeRow, chip(mode.label, {
       active: settings.theme_mode === mode.id,
       onClick: () => saveSetting({ theme_mode: mode.id }),
     }));
@@ -1746,15 +1747,15 @@ function buildSiteCredentials(site) {
 }
 
 async function checkLogin(host) {
-  clear(host).append(busy('正在校验登录态…'));
+  mount(clear(host), busy('正在校验登录态…'));
   try {
     const info = await api.loginCheck();
-    clear(host).append(
+    mount(clear(host), 
       pill(info.logged_in ? '登录态有效' : '未登录', info.logged_in ? 'ok' : 'mute'),
       ' ' + (info.detail || ''),
       info.name ? '（' + info.name + (info.vip ? ' · 大会员' : '') + '）' : '');
   } catch (error) {
-    clear(host).append('校验失败：' + error.message);
+    mount(clear(host), '校验失败：' + error.message);
   }
 }
 
@@ -1769,11 +1770,11 @@ function buildDownloadCard2(settings) {
     const actual = info?.settings?.download_dir || '';
     if (info?.settings?.download_dir_ok === false) {
       // 配置了但没生效 —— 必须说出来，否则用户以为改成功了
-      dirHint.append(pill('这个路径用不了，已回落到默认目录', 'warn'),
+      mount(dirHint, pill('这个路径用不了，已回落到默认目录', 'warn'),
         h('div', { class: 'hint', style: { marginTop: '4px' } },
           '实际下载到：' + actual + '。请检查盘符是否存在、路径是否合法。'));
     } else {
-      dirHint.append(h('div', { class: 'hint' }, '当前下载到：' + actual));
+      mount(dirHint, h('div', { class: 'hint' }, '当前下载到：' + actual));
     }
   };
   refreshHint(store.config);
@@ -1786,15 +1787,15 @@ function buildDownloadCard2(settings) {
   });
 
   const qualitySelect = h('select', { class: 'select' });
-  qualitySelect.append(h('option', { value: '0' }, '自动（每次选实际可用的最高画质）'));
+  mount(qualitySelect, h('option', { value: '0' }, '自动（每次选实际可用的最高画质）'));
   for (const q of store.config?.qualities || []) {
-    qualitySelect.append(h('option', { value: String(q.qn) },
+    mount(qualitySelect, h('option', { value: String(q.qn) },
       q.name + (q.needs_vip ? ' · 需大会员' : q.needs_login ? ' · 需登录' : '')));
   }
   qualitySelect.value = String(settings.prefer_quality || 0);
 
   return card(
-    h('div', { class: 'card-title', html: icon('download', 'outlined', 20) + '<span>下载</span>' }),
+    h('div', { class: 'card-title', html: icon('download', 'outlined', 20) + '<span>视频下载</span>' }),
     h('div', { class: 'card-desc' }, '多线程分块下载，支持断点续传；中断后重新下载会自动跳过已完成的块。'),
     field('下载目录', h('div', { class: 'search-field' }, dir,
       button('选择…', { variant: 'tonal', iconName: 'folder_open', onClick: async () => {
@@ -1837,7 +1838,7 @@ function buildMusicDirCard(settings) {
     placeholder: '留空 = 下载目录下的「音乐」子文件夹',
   });
   return card(
-    h('div', { class: 'card-title', html: icon('headphones', 'outlined', 20) + '<span>音乐下载目录</span>' }),
+    h('div', { class: 'card-title', html: icon('headphones', 'outlined', 20) + '<span>音乐下载</span>' }),
     h('div', { class: 'card-desc' },
       '音乐和视频分开放，避免混在一个文件夹里。留空则自动用「下载目录/音乐」。'),
     h('div', { class: 'search-field', style: { marginTop: '10px' } }, input,
@@ -1863,18 +1864,18 @@ function buildFfmpegCard() {
   const refresh = async () => {
     clear(holder); clear(actions);
     let info = {};
-    try { info = await api.ffmpegStatus(); } catch (e) { clear(holder).append('检查失败：' + e.message); return; }
+    try { info = await api.ffmpegStatus(); } catch (e) { mount(clear(holder), '检查失败：' + e.message); return; }
     if (info.found) {
-      holder.append(h('div', {}, pill('已就绪', 'ok')),
+      mount(holder, h('div', {}, pill('已就绪', 'ok')),
         h('div', { class: 'hint', style: { marginTop: '6px' } }, info.path));
-      actions.append(button('重新检查', { variant: 'text', iconName: 'refresh', onClick: refresh }));
+      mount(actions, button('重新检查', { variant: 'text', iconName: 'refresh', onClick: refresh }));
     } else {
-      holder.append('还没有 ffmpeg。转码、剪辑、音轨提取都需要它，第一次用到时再来这里下载即可。',
+      mount(holder, '还没有 ffmpeg。转码、剪辑、音轨提取都需要它，第一次用到时再来这里下载即可。',
         h('div', { class: 'hint', style: { marginTop: '6px' } },
           '会下载到：' + (info.bin_dir || 'bin/') + '　·　来源：' + ((info.sources || []).join(' / ') || 'gyan.dev')));
-      actions.append(button('下载 ffmpeg', { iconName: 'download', onClick: async (e) => {
+      mount(actions, button('下载 ffmpeg', { iconName: 'download', onClick: async (e) => {
         const btn = e.currentTarget; btn.disabled = true;
-        clear(holder).append(busy('正在下载并解压（约 115 MB，慢的话要几分钟），请稍候…'));
+        mount(clear(holder), busy('正在下载并解压（约 115 MB，慢的话要几分钟），请稍候…'));
         try {
           const r = await api.ffmpegInstall();
           toast('ffmpeg 已就绪' + (r.source ? '（' + r.source + '）' : ''));
@@ -1980,7 +1981,7 @@ function buildEnginesCard() {
     if (engine.badge) {
       row.querySelector('.name').append(pill(engine.badge, engine.available ? 'ok' : 'warn'));
     }
-    list.append(row);
+    mount(list, row);
   }
 
   return card(
@@ -1996,7 +1997,7 @@ function buildSitesCard() {
   const sites = store.config?.sites || [];
   const list = h('div', {});
   for (const site of sites) {
-    list.append(h('div', { class: 'site-row' },
+    mount(list, h('div', { class: 'site-row' },
       h('span', { class: 'site-dot', style: { background: site.color || 'var(--md-primary)' } }),
       h('div', { class: 'grow' },
         h('div', { class: 'name' }, site.name,
@@ -2022,7 +2023,7 @@ function buildUpdateCard() {
   const result = h('div', { style: { marginTop: '10px' } });
   let pendingInstaller = '';
 
-  const show = (node) => { clear(result).append(node); };
+  const show = (node) => { mount(clear(result), node); };
 
   const check = async (event) => {
     const btn = event.currentTarget;
@@ -2059,17 +2060,17 @@ function buildUpdateCard() {
             b.disabled = true;
             const holder = h('div', { class: 'card-desc', style: { marginTop: '10px' } },
               busy('正在下载并准备安装…'));
-            result.append(holder);
+            mount(result, holder);
             try {
               const got = await api.updateApply();
-              clear(holder).append(pill('安装程序已就绪，正在重启…', 'ok'));
+              mount(clear(holder), pill('安装程序已就绪，正在重启…', 'ok'));
               document.body.innerHTML =
                 '<div style="display:grid;place-items:center;height:100vh;font:16px/1.8 system-ui;color:#888">' +
                 '<div style="text-align:center">正在更新到 ' + (got.latest || '新版本') +
                 '<br><span style="font-size:13px">程序会自动重新打开，请稍候</span></div></div>';
             } catch (error) {
               b.disabled = false;
-              clear(holder).append(h('div', { class: 'hint-box' },
+              mount(clear(holder), h('div', { class: 'hint-box' },
                 h('span', { html: icon('error_outline', 'outlined', 20) }),
                 h('div', {}, '自动更新失败：' + error.message)));
             }
@@ -2077,12 +2078,12 @@ function buildUpdateCard() {
           button('仅下载安装包', { iconName: 'cloud_download', onClick: async (e2) => {
             const b = e2.currentTarget; b.disabled = true;
             const holder = h('div', { class: 'card-desc', style: { marginTop: '10px' } }, busy('正在下载…'));
-            result.append(holder);
+            mount(result, holder);
             try {
               const got = await api.updateDownload();
               pendingInstaller = got.path;
-              clear(holder).append(pill('已下载 ' + fmtSize(got.size), 'ok'));
-              result.append(h('div', { class: 'btn-row', style: { marginTop: '10px' } },
+              mount(clear(holder), pill('已下载 ' + fmtSize(got.size), 'ok'));
+              mount(result, h('div', { class: 'btn-row', style: { marginTop: '10px' } },
                 button('运行安装程序', { iconName: 'restart_alt', onClick: async () => {
                   try {
                     const launched = await api.updateLaunch(pendingInstaller);
@@ -2090,7 +2091,7 @@ function buildUpdateCard() {
                   } catch (error) { toast('启动失败：' + error.message); }
                 } })));
             } catch (error) {
-              clear(holder).append(h('div', { class: 'hint-box' },
+              mount(clear(holder), h('div', { class: 'hint-box' },
                 h('span', { html: icon('error_outline', 'outlined', 20) }),
                 h('div', {}, error.message + ' 也可以到发布页手动下载。')));
             }
@@ -2121,7 +2122,7 @@ function buildUpdateCard() {
             '共比对 ' + r.checked + ' 个文件，全部与仓库基线一致。更新源：' + r.source)));
       } else {
         const list = h('div', { class: 'log' });
-        for (const item of r.bad) list.append(h('div', {}, item.path + ' —— ' + item.detail));
+        for (const item of r.bad) mount(list, h('div', {}, item.path + ' —— ' + item.detail));
         show(h('div', {},
           pill(r.bad.length + ' 个文件异常', 'err'),
           h('div', { class: 'card-desc', style: { marginTop: '8px' } },
@@ -2144,8 +2145,8 @@ function buildUpdateCard() {
     try {
       const r = await api.updateRepair();
       const list = h('div', { class: 'log' });
-      for (const path of r.repaired) list.append(h('div', {}, '✓ ' + path));
-      for (const item of r.failed) list.append(h('div', {}, '✗ ' + item.path + ' —— ' + item.error));
+      for (const path of r.repaired) mount(list, h('div', {}, '✓ ' + path));
+      for (const item of r.failed) mount(list, h('div', {}, '✗ ' + item.path + ' —— ' + item.error));
       if (!r.targets.length) {
         show(h('div', {}, pill('无需修复', 'ok'),
           h('div', { class: 'card-desc', style: { marginTop: '8px' } }, '所有文件都与基线一致。')));
@@ -2218,7 +2219,10 @@ function buildQuitButton() {
 }
 
 function buildProgramCard() {
-  const address = location.origin + '/';
+  // file:// 打开时 location.origin 是字符串 "null"，直接拼会显示 "null/"。
+  // 那种模式下也没有可点的地址，就只说"本地文件"。
+  const origin = location.origin && location.origin !== 'null' ? location.origin : '';
+  const address = origin ? origin + '/' : '（以文件方式打开，无固定地址）';
   return card(
     h('div', { class: 'card-title', html: icon('dns', 'outlined', 20) + '<span>程序</span>' }),
     h('div', { class: 'card-desc' },
@@ -2242,14 +2246,14 @@ function buildToolsCard() {
   const installBtn = button('一键安装 yt-dlp', { variant: 'tonal', iconName: 'cloud_download', onClick: async (event) => {
     const btn = event.currentTarget;
     btn.disabled = true;
-    clear(btn).append(busy('检查中'));
-    clear(info).append('正在检查 yt-dlp（安装位置是项目自带的 .deps 目录，不会改动系统环境）…');
+    mount(clear(btn), busy('检查中'));
+    mount(clear(info), '正在检查 yt-dlp（安装位置是项目自带的 .deps 目录，不会改动系统环境）…');
     try {
       const result = await api.installYtdlp();
       // 三种结果要分清楚，别都写成"安装成功"：
       // 打包版本来就内置了 yt-dlp，这时点按钮什么都不会装，得让用户看明白。
       const builtIn = String(result.tail || '').includes('已内置');
-      clear(info).append(
+      mount(clear(info), 
         h('div', { style: { marginBottom: '6px' } },
           pill(result.ok ? (builtIn ? '已经内置，无需安装' : '安装成功') : '安装失败',
                result.ok ? 'ok' : 'err'),
@@ -2258,7 +2262,7 @@ function buildToolsCard() {
         h('div', { class: 'hint', style: { opacity: '.7', marginTop: '4px' } },
           '位置：' + (result.deps_dir || '—')),
       );
-      clear(btn).append(result.ok && builtIn ? '已内置' : '重新安装');
+      mount(clear(btn), result.ok && builtIn ? '已内置' : '重新安装');
       btn.disabled = false;
       // 只刷新这一行的状态，不整页重建
       const state = await api.state();
@@ -2266,13 +2270,13 @@ function buildToolsCard() {
       const now = (state.engines || []).find((e) => e.id === 'external_tool');
       channelState.textContent = now?.available ? '可用' : '未安装';
     } catch (error) {
-      clear(info).append('安装失败：' + error.message);
+      mount(clear(info), '安装失败：' + error.message);
       btn.disabled = false;
-      clear(btn).append('一键安装 yt-dlp');
+      mount(clear(btn), '一键安装 yt-dlp');
     }
   } });
 
-  list.append(
+  mount(list, 
     h('div', { class: 'kv' }, h('span', {}, 'Python'), h('span', {}, store.config?.python || '内置运行时')),
     h('div', { class: 'kv' }, h('span', {}, 'ffmpeg'),
       h('span', {}, store.config?.ffmpeg || '未检测到（将使用内置纯 Python fMP4 合并器）')),
@@ -2313,7 +2317,7 @@ export function renderMusic(view) {
 
     buildLocalCard(),
   );
-  view.append(page);
+  mount(view, page);
 }
 
 /* ================================================================ 音乐播放 */
@@ -2336,7 +2340,7 @@ export function renderPlayer(view) {
       h('div', { class: 'player-col' },
         buildPlaylistCard())),
   );
-  view.append(page);
+  mount(view, page);
 }
 
 
@@ -2357,7 +2361,7 @@ export function renderImage(view) {
   if (bigjpgTimer) { clearInterval(bigjpgTimer); bigjpgTimer = null; }
   clear(view);
   const page = h('div', { class: 'page' });
-  page.append(
+  mount(page, 
     h('div', { class: 'page-head' },
       h('h1', { class: 'page-title' }, '图片放大'),
       h('div', { class: 'spacer' }),
@@ -2370,7 +2374,7 @@ export function renderImage(view) {
   // 卡片之间要有明确间距 —— 直接塞进裸 div 会失去 .page 里各卡片自己的外边距，
   // 三张卡片就会粘在一起。用 flex + gap 强制分开。
   const infoHolder = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
-  page.append(h('div', { style: { marginTop: '12px' } }, infoHolder));
+  mount(page, h('div', { style: { marginTop: '12px' } }, infoHolder));
 
   function paintInfo() {
     clear(infoHolder);
@@ -2383,8 +2387,8 @@ export function renderImage(view) {
           h('b', {}, t),
           h('div', { class: 'card-desc', style: { margin: '2px 0 0' } }, d)))),
     );
-    infoHolder.append(feats);
-    infoHolder.append(card(
+    mount(infoHolder, feats);
+    mount(infoHolder, card(
       h('div', { class: 'card-title', html: icon('check_circle', 'outlined', 20) + '<span>免费通道已就绪</span>' }),
       h('div', { class: 'card-desc' },
         '用的是 bigjpg 官网自己在用的接口 —— 不需要注册、不需要登录、不需要 API key。'
@@ -2428,7 +2432,7 @@ export function renderImage(view) {
         const btn = e.currentTarget;
         if (!bigjpgState.paths.length) { toast('先选择图片'); return; }
         btn.disabled = true;
-        clear(resultHolder).append(h('div', { class: 'card-desc' }, busy('正在上传并创建任务，图片会上传到 bigjpg…')));
+        mount(clear(resultHolder), h('div', { class: 'card-desc' }, busy('正在上传并创建任务，图片会上传到 bigjpg…')));
         try {
           const r = await api.bigjpgSubmit(bigjpgState.paths, styleSel.value, noiseSel.value, scaleSel.value);
           bigjpgState.results = (r.results || []).map((x) => x.ok
@@ -2437,14 +2441,14 @@ export function renderImage(view) {
           paintResults();
           if (bigjpgState.results.some((x) => x.tid)) startPolling();
         } catch (err) {
-          clear(resultHolder).append(h('div', { class: 'hint-box' },
+          mount(clear(resultHolder), h('div', { class: 'hint-box' },
             h('span', { html: icon('error_outline', 'outlined', 20) }), h('div', {}, err.message)));
         }
         btn.disabled = false;
       } })),
   );
   uploadCard.style.marginTop = '12px';
-  page.append(uploadCard, resultHolder);
+  mount(page, uploadCard, resultHolder);
 
   function paintResults() {
     clear(resultHolder);
@@ -2455,7 +2459,7 @@ export function renderImage(view) {
       h('td', {}, r.size || '—'),
       h('td', {}, r.error ? h('span', { style: { color: 'var(--md-error)' } }, r.error)
         : (r.url ? h('a', { href: r.url, target: '_blank' }, '下载结果') : '—'))));
-    resultHolder.append(card(
+    mount(resultHolder, card(
       h('div', { class: 'card-title', html: icon('image', 'outlined', 20) + '<span>任务结果</span>' }),
       h('div', { style: { overflowX: 'auto' } },
         h('table', { class: 'matrix' },
@@ -2490,7 +2494,7 @@ export function renderImage(view) {
   }
 
   if (bigjpgState.results.length) { paintResults(); if (bigjpgState.results.some((r) => r.tid)) startPolling(); }
-  view.append(page);
+  mount(view, page);
 }
 
 
@@ -2519,7 +2523,7 @@ export function renderDoc(view) {
       : ['docx', 'xlsx', 'md'];
     const results = docState.results;
 
-    return holder.append(
+    return mount(holder, 
       card(
         h('div', { class: 'card-title', html: icon('description', 'outlined', 20) + '<span>选择文档并转换</span>' }),
         h('div', { class: 'card-desc' },
@@ -2625,7 +2629,7 @@ export function renderDoc(view) {
     );
   };
 
-  view.append(h('div', { class: 'page' },
+  mount(view, h('div', { class: 'page' },
     h('div', { class: 'page-head' },
       h('h1', { class: 'page-title' }, '文档转换'),
       h('div', { class: 'spacer' }),
@@ -2659,7 +2663,7 @@ export function renderClip(view) {
     }
     const local = clipState.paths || [];
 
-    holder.append(
+    mount(holder, 
       card(
         h('div', { class: 'card-title', html: icon('videocam', 'outlined', 20) + '<span>本地视频剪辑</span>' }),
         h('div', { class: 'card-desc' },
@@ -2723,7 +2727,7 @@ export function renderClip(view) {
     );
   };
 
-  view.append(h('div', { class: 'page' },
+  mount(view, h('div', { class: 'page' },
     h('div', { class: 'page-head' },
       h('h1', { class: 'page-title' }, '视频剪辑'),
       h('div', { class: 'spacer' }),

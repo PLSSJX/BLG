@@ -29,6 +29,15 @@ export function append(parent, children) {
   return parent;
 }
 
+/** 往元素里塞子节点，**过滤 null/undefined/false**。
+ *
+ *  原生 el.append(null) 会插入文本 "null" —— 界面上真的会多出一个 null 字样。
+ *  所以凡是用 ternaries 拼子节点的地方都必须走这里，不能直接用 .append()。
+ */
+export function mount(parent, ...kids) {
+  return append(parent, kids);
+}
+
 export function clear(node) {
   while (node.firstChild) node.removeChild(node.firstChild);
   return node;

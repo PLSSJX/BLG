@@ -5,7 +5,19 @@
 
 **v3.0.0** · Windows 10/11 x64 · 全部处理都在本机完成，不上传任何文件
 
-![界面](docs/screenshots/01-home.png)
+![播放页](docs/screenshots/12-player.png)
+
+---
+
+## 界面截图
+
+**播放页** —— 左右两栏：左边歌曲列表与目录设置，右边我的歌单
+
+![播放页](docs/screenshots/12-player.png)
+
+**设置页** —— 三栏瀑布流，主题、账号、下载、通道、更新分区
+
+![设置页](docs/screenshots/11-settings.png)
 
 ---
 

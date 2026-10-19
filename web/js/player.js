@@ -1,5 +1,5 @@
 /** 应用内播放器：底部播放条 + 队列 / 乱序 / 单曲循环。 */
-import { h, clear, button, fmtDuration } from './ui.js';
+import { h, clear, button, fmtDuration, mount } from './ui.js';
 import { icon } from './icons.js';
 import { api } from './api.js';
 
@@ -150,7 +150,7 @@ export function render() {
     audio.currentTime = ((e.clientX - rect.left) / rect.width) * audio.duration;
   } }, h('i', { style: { width: pct.toFixed(2) + '%' } }));
 
-  clear(bar).append(
+  mount(clear(bar), 
     renderQueuePanel(),
     h('div', { class: 'pb-info' },
       h('div', { class: 'pb-title' }, item.name || '未命名'),
@@ -291,7 +291,7 @@ export function openVideo(path, name = '') {
     const node = document.createElement('div');
     node.id = 'videoHost';
     node.className = 'video-host';
-    document.body.append(node);
+    mount(document.body, node);
     return node;
   })();
 
@@ -391,7 +391,7 @@ export function openVideo(path, name = '') {
     }
   };
 
-  tools.append(
+  mount(tools, 
     mkBtn('取当前为起点', snap),
     t0, t1,
     btnFast,
@@ -402,7 +402,7 @@ export function openVideo(path, name = '') {
 
   const frame = document.createElement('div');
   frame.className = 'video-frame';
-  frame.append(title, close, video, tools);
-  host.append(frame);
+  mount(frame, title, close, video, tools);
+  mount(host, frame);
   video.play().catch(() => {});
 }

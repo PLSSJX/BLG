@@ -1,6 +1,6 @@
 {
- "version": "3.0.0",
- "generated": "2026-10-19 12:44:46 UTC",
+ "version": "3.0.1",
+ "generated": "2026-10-19 13:01:18 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -31,13 +31,13 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "eb31930545d3a116c839a37f4683437e32f24c6a53a4d0bdb0fdd9dc025b2064",
-   "size": 133197
+   "sha256": "bf475f6a0bcecff321b367dfecab08876dd52bf9929d72ff2c1bcb8c5746c48d",
+   "size": 133694
   },
   {
    "path": "web/js/player.js",
-   "sha256": "9c78e6be724b060c0b027a7f623d21d65a91ec5399903b5991136849b19e7cc9",
-   "size": 16317
+   "sha256": "3a5aaa0691d49e6fc85586f1e31516be10980255dd5bfbc0245a6bfb3094f832",
+   "size": 16324
   },
   {
    "path": "web/js/theme.js",
@@ -46,8 +46,8 @@
   },
   {
    "path": "web/js/ui.js",
-   "sha256": "0f6710d8dbc80fc7c1a621ee4108a0a3f4c96a9bed2b9646a225330d00915051",
-   "size": 6471
+   "sha256": "745dd3960a2cbbb845f9914eca7bc854edf89e483e8b1b44c0325737de586ae7",
+   "size": 6823
   },
   {
    "path": "web/vendor/material-color-utilities.js",
@@ -93,12 +93,12 @@
   },
   {
    "path": "README.md",
-   "sha256": "3901bbd8fb8d712f3a501a3c89795c1d48729318637efba9498340316ec26874",
-   "size": 11165
+   "sha256": "48e6d68e9496264b99e358b6203625e79868e98cee699a93b55785e425831c49",
+   "size": 11467
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "93122fef9d44ff4844addc1521fc2e71cdd3cbdb8b6798b4b096c741e9f1ab77",
+   "sha256": "01f346f8fef3850e6e3da70b0eb51ea8c02b20156599f686975fa051c5d9565b",
    "size": 398
   },
   {
@@ -376,5 +376,11 @@
    "sha256": "ae7bdcff06f2ffade10f1890d77eb853c2879e1a7b716319cbb6565636caf384",
    "size": 4632
   }
- ]
+ ],
+ "installer": {
+  "name": "MakiseToolkit-Setup-3.0.0.exe",
+  "size": 119592827,
+  "sha256": "f9ba047a684f3e3c04af418d0b5e19a7b4ce8ce365f5247e3e4b3f8800176188",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v3.0.1/MakiseToolkit-Setup-3.0.0.exe"
+ }
 }
