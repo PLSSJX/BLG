@@ -25,11 +25,12 @@ FILTER = (
 )
 
 DOC_FILTER = (
-    "文档|*.docx;*.xlsx;*.pdf;*.md"
+    "文档|*.docx;*.xlsx;*.pdf;*.md;*.doc;*.xls;*.pptx"
     "|Word 文档|*.docx"
     "|Excel 表格|*.xlsx"
     "|PDF|*.pdf"
     "|Markdown|*.md"
+    "|Office 老格式 / 演示文稿（只能转 PDF）|*.doc;*.xls;*.pptx"
     "|所有文件|*.*"
 )
 
@@ -88,7 +89,18 @@ def _run_powershell(script: str, timeout: int = 300) -> tuple[bool, str]:
         except UnicodeDecodeError:
             # 兜底：还是按系统 ANSI 代码页解一次，总比留一串替换字符强
             text = raw.decode("mbcs", "replace")
-        return True, text.strip()
+        text = text.strip()
+        if proc.returncode not in (0, None) and not text:
+            # 之前不看退出码：脚本内部报错（COM 失败、路径不存在）也返回成功，
+            # 调用方当成"用户点了取消"，于是界面毫无反应、也没有任何线索。
+            try:
+                from .log import log_error
+                err = (proc.stderr or b"").decode("utf-8", "replace").strip()
+                log_error("localfile.powershell", "退出码 %s" % proc.returncode, err[:400])
+            except Exception:
+                pass
+            return False, ""
+        return True, text
     return False, ""
 
 

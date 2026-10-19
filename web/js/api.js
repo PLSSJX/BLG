@@ -29,6 +29,10 @@ const post = (path, body) => request(path, { method: 'POST', body: JSON.stringif
 export const api = {
   state: () => get('/api/state'),
   // 自绘标题栏的三个按钮
+  docCancel: () => post('/api/doc/cancel', {}),
+  shellOpen: (path, reveal) => post('/api/shell/open', { path, reveal: !!reveal }),
+  windowReady: () => post('/api/window/ready', {}),
+  frontendError: (message, where) => post('/api/window/frontend-error', { message, where }),
   windowDrag: () => post('/api/window/drag', {}),
   windowResize: (edge) => post('/api/window/resize', { edge }),
   windowMinimize: () => post('/api/window/minimize', {}),

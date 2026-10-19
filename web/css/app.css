@@ -839,3 +839,62 @@ body.has-player .slab { padding-bottom: 74px; }
 
 body.has-titlebar { padding-top: 44px; }
 body.has-titlebar .rail, body.has-titlebar .page-wrap { top: 44px; }
+
+
+/* 不确定进度条：转换期间表示"正在跑" */
+.progress-track { height: 4px; border-radius: 2px; overflow: hidden;
+  background: var(--md-surface-container-highest); position: relative; }
+.progress-run { position: absolute; top: 0; left: 0; height: 100%; width: 35%;
+  border-radius: 2px; background: var(--md-primary);
+  animation: progress-slide 1.1s ease-in-out infinite; }
+@keyframes progress-slide {
+  0%   { left: -35%; }
+  100% { left: 100%; }
+}
+
+
+/* 边缘拖拽提示：贴在对应边上的细高光，淡入淡出 */
+#edgeHint { position: fixed; z-index: 94; pointer-events: none;
+  background: var(--md-primary); opacity: 0; border-radius: 2px;
+  transition: opacity .16s ease, transform .16s ease; transform: scale(.98); }
+#edgeHint[data-edge="left"]   { left: 0; top: 8%; width: 2px; height: 84%; }
+#edgeHint[data-edge="right"]  { right: 0; top: 8%; width: 2px; height: 84%; }
+#edgeHint[data-edge="top"]    { top: 0; left: 8%; height: 2px; width: 84%; }
+#edgeHint[data-edge="bottom"] { bottom: 0; left: 8%; height: 2px; width: 84%; }
+#edgeHint[data-edge="topleft"], #edgeHint[data-edge="topright"],
+#edgeHint[data-edge="bottomleft"], #edgeHint[data-edge="bottomright"] {
+  width: 14px; height: 14px; border-radius: 3px; }
+#edgeHint[data-edge="topleft"]     { left: 0; top: 0; }
+#edgeHint[data-edge="topright"]    { right: 0; top: 0; }
+#edgeHint[data-edge="bottomleft"]  { left: 0; bottom: 0; }
+#edgeHint[data-edge="bottomright"] { right: 0; bottom: 0; }
+#edgeHint[data-edge]:not([data-edge=""]) { opacity: .9; transform: scale(1); }
+
+
+/* 设置页的「标签 + 开关」行：第一条不要顶部分隔线 */
+.set-row:first-of-type { border-top: 0 !important; }
+.set-row-label { font-weight: 500; letter-spacing: .1px; }
+
+/* 边缘提示的方向箭头：用 ::after 画，避免额外 DOM 和字体依赖 */
+#edgeHint::after {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 0; height: 0; transform: translate(-50%, -50%);
+  border: 5px solid transparent;
+}
+#edgeHint[data-edge="left"]::after  { border-right-color: var(--md-on-primary); }
+#edgeHint[data-edge="right"]::after { border-left-color:  var(--md-on-primary); }
+#edgeHint[data-edge="top"]::after   { border-bottom-color: var(--md-on-primary); }
+#edgeHint[data-edge="bottom"]::after{ border-top-color:    var(--md-on-primary); }
+#edgeHint[data-edge="topleft"]::after,
+#edgeHint[data-edge="topright"]::after,
+#edgeHint[data-edge="bottomleft"]::after,
+#edgeHint[data-edge="bottomright"]::after {
+  border: 0; width: 6px; height: 6px;
+  border-left: 2px solid var(--md-on-primary);
+  border-top: 2px solid var(--md-on-primary);
+  border-radius: 1px;
+}
+#edgeHint[data-edge="topleft"]::after     { transform: translate(-50%, -50%) rotate(-45deg); }
+#edgeHint[data-edge="topright"]::after    { transform: translate(-50%, -50%) rotate(45deg); }
+#edgeHint[data-edge="bottomleft"]::after  { transform: translate(-50%, -50%) rotate(-135deg); }
+#edgeHint[data-edge="bottomright"]::after { transform: translate(-50%, -50%) rotate(135deg); }

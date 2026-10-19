@@ -104,12 +104,48 @@ def _run_webview(url: str, on_closed=None, ctx=None) -> bool:
             if (ctx.settings.titlebar or "").strip().lower() == "custom":
                 try:
                     from .titlebar import install as install_titlebar
+                    from .titlebar import set_background as _set_bg
                     from .window_frame import find_window
                     def _hook():
                         # 窗口刚 create 还没真正显示，等它出现再挂钩子
                         for _ in range(160):
                             hwnd = find_window(WINDOW_TITLE)
                             if hwnd and install_titlebar(hwnd):
+                                # 先给个深色底，快速拉窗口时露出来的是底色而不是白闪；
+                                # 前端随后会下发真实主题色覆盖掉。
+                                try:
+                                    _set_bg(hwnd, 0x001F1B1B)
+                                except Exception:
+                                    pass
+                                # 逃生口：8 秒内收不到前端心跳就退回原生标题栏。
+                                # 自绘模式下前端一旦没起来，窗口没有标题栏也没有
+                                # 按钮，用户关不掉、最大不了，只能杀进程。
+                                def _guard():
+                                    import time as _t3
+                                    for _ in range(32):
+                                        _t3.sleep(0.25)
+                                        if getattr(ctx, "frontend_ready", False):
+                                            return
+                                    try:
+                                        from .titlebar import uninstall as _un
+                                        from .log import log_note as _ln
+                                        _un(hwnd)
+                                        _ln("titlebar.guard",
+                                            "8 秒未收到前端心跳，已回退原生标题栏")
+                                        _win = getattr(ctx, "window", None)
+                                        if _win is not None:
+                                            _win.evaluate_js(
+                                                "document.body.classList.remove('has-titlebar');"
+                                                "var b=document.getElementById('titlebar');"
+                                                "if(b)b.remove();")
+                                    except Exception as _e:
+                                        try:
+                                            from .log import log_error as _le
+                                            _le("titlebar.guard", _e)
+                                        except Exception:
+                                            pass
+                                _th.Thread(target=_guard, daemon=True,
+                                           name="titlebar-guard").start()
                                 # 子窗口是陆续建出来的，补挂几轮
                                 from .titlebar import _hook_children
                                 import time as _t2

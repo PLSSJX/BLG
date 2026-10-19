@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 import zipfile
 import zlib
 from pathlib import Path
@@ -24,6 +25,10 @@ SUPPORTED = {
     "md": "Markdown",
     "pdf": "PDF（仅文本，无版式）",
 }
+
+# Office 97-2003 老格式：标准库读不了，只能交给 COM 打开后另存 PDF。
+# 界面上要把它们单独标出来，否则用户会以为也能转 docx。
+LEGACY_OFFICE = {"doc", "xls", "pptx"}
 
 
 class ConvertError(Exception):
@@ -398,23 +403,58 @@ def from_markdown(text: str) -> list:
 READERS = {"docx": read_docx, "xlsx": read_xlsx, "pdf": read_pdf_text}
 
 
+# 中途中止：转换是逐个文件同步跑的，每处理一个文件前检查一次这个标志。
+def _engine_plan() -> tuple[bool, bool, str]:
+    """读用户对两条通路的选择。配置读不到时退回"两条都开、Office 优先"。"""
+    try:
+        from .config import load_settings
+        s = load_settings()
+        office = bool(getattr(s, "doc_office", True))
+        browser = bool(getattr(s, "doc_browser", True))
+        prefer = (getattr(s, "doc_prefer", "office") or "office").lower()
+        return office, browser, prefer if prefer in ("office", "browser") else "office"
+    except Exception:
+        return True, True, "office"
+
+
+_CANCEL = threading.Event()
+
+
+def request_cancel() -> None:
+    _CANCEL.set()
+
+
+def clear_cancel() -> None:
+    _CANCEL.clear()
+
+
+def is_cancelled() -> bool:
+    return _CANCEL.is_set()
+
+
 def convert(src_path, out_dir, target: str) -> dict:
     """把 src_path 转成 target 格式，结果写进 out_dir，返回产物信息。"""
     src = Path(src_path)
     if not src.is_file():
         raise ConvertError("文件不存在：" + str(src))
     source = src.suffix.lower().lstrip(".")
+    legacy = source in LEGACY_OFFICE
+    # 老格式只允许"转 PDF"，其余方向没有解析器
+    if legacy and target != "pdf":
+        raise ConvertError(
+            "." + source + " 是 Office 97-2003 / 演示文稿格式，只能转成 PDF；"
+            "想转 docx 请先用 Office 另存为 .docx")
     # md 是纯文本，直接读；其余走各自解析器
-    if source != "md" and source not in READERS:
-        raise ConvertError("不支持读取 ." + source + "，目前支持：docx、xlsx、pdf、md")
+    if not legacy and source != "md" and source not in READERS:
+        raise ConvertError("不支持读取 ." + source + "，目前支持：docx、xlsx、pdf、md、doc、xls、pptx")
     if target not in ("docx", "xlsx", "md", "pdf"):
         raise ConvertError("不支持输出 ." + target + "，可选：docx、xlsx、md、pdf")
     if source == target:
         raise ConvertError("源文件和目标格式一样了")
     if target == "pdf":
         # PDF 只能由 Office 生成，源必须是 docx / xlsx
-        if source not in ("docx", "xlsx"):
-            raise ConvertError("只有 .docx 或 .xlsx 能转成 PDF；PDF 本身不能再转 PDF")
+        if source not in ("docx", "xlsx", "doc", "xls", "pptx"):
+            raise ConvertError("能转 PDF 的是 docx / xlsx / doc / xls / pptx；PDF 本身不能再转 PDF")
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / (src.stem + ".pdf")
@@ -422,24 +462,43 @@ def convert(src_path, out_dir, target: str) -> dict:
         while out_path.exists():
             out_path = out_dir / (src.stem + " (" + str(index) + ").pdf")
             index += 1
-        # 优先用 Office（版式最准），没有或失败就退回"文档→HTML→无头浏览器"
+        # 两条通路可以由用户单独关掉、也可以指定优先用哪条：
+        #   doc_office / doc_browser 是开关，doc_prefer 决定先试哪条。
+        # 两条都关掉时明确报错，而不是静默什么都不做。
+        use_office, use_browser, prefer = _engine_plan()
+        if legacy and use_browser:
+            # 浏览器通路要先读出文档内容再排版，老格式读不了，只能走 Office
+            use_browser = False
+        if not use_office and not use_browser:
+            raise ConvertError("两条转换通路都被关掉了，请到「设置」里至少打开一条。")
+
         engine = ""
-        try:
-            office_to_pdf(src, out_path)
-            engine = "office"
-        except ConvertError as office_error:
+        order = ["office", "browser"] if prefer == "office" else ["browser", "office"]
+        errors: dict[str, str] = {}
+        for name in order:
+            if name == "office" and not use_office:
+                continue
+            if name == "browser" and not use_browser:
+                continue
             try:
-                doc_to_html_pdf(src, out_path)
-                engine = "browser"
-            except ConvertError as browser_error:
-                # 两条都不通时**把两边的失败原因都说出来**。
-                # 只说 Office 的话，没装 Office 又没装 Edge 的用户会以为是
-                # "装个 Office 就行"，装完还是不行。
-                raise ConvertError(
-                    "转 PDF 两条通路都不可用：\n"
-                    "① 本机 Office：" + str(office_error)[:120] + "\n"
-                    "② 无头浏览器：" + str(browser_error)[:120] + "\n"
-                    "装 Word/Excel 或装一个 Microsoft Edge 就能转。") from None
+                if name == "office":
+                    office_to_pdf(src, out_path)
+                else:
+                    doc_to_html_pdf(src, out_path)
+                engine = name
+                break
+            except ConvertError as exc:
+                errors[name] = str(exc)[:120]
+        if not engine:
+            office_error = errors.get("office", "（已关闭）")
+            browser_error = errors.get("browser", "（已关闭）")
+            # 两条都不通时把两边的失败原因都说出来，别让用户只看到一半。
+            # 只说 Office 的话，没装 Office 又没装 Edge 的人会以为装个 Office 就行。
+            raise ConvertError(
+                "转 PDF 两条通路都不可用：\n"
+                "① 本机 Office：" + str(office_error)[:120] + "\n"
+                "② 无头浏览器：" + str(browser_error)[:120] + "\n"
+                "装 Word/Excel 或装一个 Microsoft Edge 就能转。") from None
         return {"ok": True, "source": source, "target": "pdf", "engine": engine,
                 "output": str(out_path), "size": out_path.stat().st_size}
 
@@ -515,8 +574,24 @@ try {
 '''
 
 
+def _is_pdf(path) -> bool:
+    """产物是不是一个真 PDF：文件头必须是 %PDF-，且不能太小。"""
+    try:
+        p = Path(path)
+        if not p.exists() or p.stat().st_size < 512:
+            return False
+        with open(p, "rb") as fh:
+            return fh.read(5) == b"%PDF-"
+    except OSError:
+        return False
+
+
 def _office_progid(ext: str) -> str:
-    return {"docx": "Word.Application", "xlsx": "Excel.Application"}.get(ext, "")
+    # .doc/.xls 是 Office 97-2003 老格式，纯标准库读不了，
+    # 但 Word/Excel 的 COM 接口能直接打开并另存 PDF —— 所以只支持"转 PDF"。
+    return {"docx": "Word.Application", "doc": "Word.Application",
+            "xlsx": "Excel.Application", "xls": "Excel.Application",
+            "pptx": "PowerPoint.Application"}.get(ext, "")
 
 
 def office_to_pdf(src_path, out_path) -> None:
@@ -548,6 +623,8 @@ def office_to_pdf(src_path, out_path) -> None:
             [powershell_exe(), "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
              "-WindowStyle", "Hidden", "-File", script_path],
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            # 不给 CREATE_NO_WINDOW 的话，每次转换都会弹一个黑框一闪而过
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             timeout=180)
     except (OSError, subprocess.SubprocessError) as exc:
         raise ConvertError("调用 Office 失败：" + str(exc)[:120]) from None
@@ -556,7 +633,10 @@ def office_to_pdf(src_path, out_path) -> None:
             os.unlink(script_path)
         except OSError:
             pass
-    if not Path(out_path).exists() or Path(out_path).stat().st_size < 512:
+    # 只查存在和大小不够：Word 对损坏/伪装的文件极其宽容，会把任意内容
+    # 当作文档"另存"出一个 PDF。这里再验一下文件头，确保产物真的是 PDF，
+    # 而不是 Office 吐出来的半成品。
+    if not _is_pdf(out_path):
         hint = "调用 Office 失败" if progid == "Word.Application" else "调用 Excel 失败"
         raise ConvertError(
             "转 PDF 失败（" + hint + "）。常见原因：没装 Microsoft Office、"

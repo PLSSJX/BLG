@@ -21,6 +21,7 @@ import ctypes
 import ctypes.wintypes as wt
 import os
 import sys
+import threading
 
 # ---- 消息与常量
 WM_NCCALCSIZE = 0x0083
@@ -268,6 +269,8 @@ INSET = 0   # WebView2 会自己重排子窗口，内缩留边距的做法留不
 
 WM_ERASEBKGND = 0x0014
 _bg_brush = 0
+_BRUSH_LOCK = threading.Lock()
+_RETIRED: list = []
 
 
 def set_background(hwnd: int, colorref: int) -> None:
@@ -281,10 +284,24 @@ def set_background(hwnd: int, colorref: int) -> None:
         return
     try:
         gdi = ctypes.windll.gdi32
-        if _bg_brush:
-            gdi.DeleteObject(ctypes.c_void_p(_bg_brush))
-        _bg_brush = gdi.CreateSolidBrush(ctypes.c_uint(colorref & 0xFFFFFF))
+        new_brush = gdi.CreateSolidBrush(ctypes.c_uint(colorref & 0xFFFFFF))
+        if not new_brush:
+            return
+        with _BRUSH_LOCK:
+            # 旧画笔先留着、稍后回收：WM_ERASEBKGND 跑在 UI 线程，
+            # 如果在这儿立刻 DeleteObject，那一瞬间的绘制就会用到已释放的句柄
+            # （快速切主题时会花屏）。延迟回收最简单也最安全。
+            old = _bg_brush
+            _bg_brush = new_brush
         user32.InvalidateRect(ctypes.c_void_p(hwnd), None, True)
+        if old:
+            try:
+                _RETIRED.append(old)
+                # 只留最近 8 个，避免长期累积 GDI 对象
+                while len(_RETIRED) > 8:
+                    gdi.DeleteObject(ctypes.c_void_p(_RETIRED.pop(0)))
+            except OSError:
+                pass
     except OSError:
         pass
 
@@ -328,6 +345,11 @@ def start_resize(hwnd: int, edge: str) -> bool:
     if not ht:
         return False
     try:
+        # 边框尺寸会随缩放比例变化，按下的这一刻才需要重算一次。
+        # 常驻定时重算会持续触发 WM_NCCALCSIZE，反而造成闪烁。
+        SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_FRAMECHANGED = 0x01, 0x02, 0x04, 0x20
+        user32.SetWindowPos(ctypes.c_void_p(hwnd), None, 0, 0, 0, 0,
+                            SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED)
         return bool(user32.PostMessageW(ctypes.c_void_p(hwnd), WM_START_RESIZE, ht, 0))
     except OSError:
         return False
@@ -347,6 +369,20 @@ def start_drag(hwnd: int) -> bool:
     """
     if os.name != "nt" or not hwnd:
         return False
+    # 自愈：钩子如果被卸掉（比如心跳守卫误触发），这里重新装回去，
+    # 否则消息投过去没人处理，表现就是"拖不动"。
+    if hwnd not in _installed:
+        try:
+            install(hwnd)
+        except OSError:
+            pass
+    # 只在钩子真的丢了的时候记一笔 —— 每次拖动都写日志会把 error.log 冲满
+    if hwnd not in _installed:
+        try:
+            from .log import log_note
+            log_note("titlebar.drag", "钩子缺失，已重装 hwnd=%s" % hex(hwnd))
+        except Exception:
+            pass
     try:
         # 关键：不能在 HTTP 线程里直接 SendMessage(WM_NCLBUTTONDOWN)。
         # 拖拽是一个**模态移动循环**，必须跑在窗口自己的 UI 线程上；
@@ -393,10 +429,28 @@ def _fit_children(top: int) -> None:
 
 
 def uninstall(hwnd: int) -> None:
-    info = _installed.pop(hwnd, None)
-    if not info:
-        return
+    """把窗口还原成系统原生边框。逃生口用。
+
+    自绘标题栏一旦前端没起来，窗口就既没有标题栏也没有按钮 —— 关不掉、
+    最大不了。所以启动时若收不到前端心跳，必须能干净地退回去。
+    """
+    restored = 0
+    for key, info in list(_installed.items()):
+        try:
+            user32.SetWindowLongPtrW(key, GWLP_WNDPROC, info["old"])
+            restored += 1
+        except OSError:
+            pass
+        _installed.pop(key, None)
+    if hwnd:
+        try:
+            SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_FRAMECHANGED = 0x01, 0x02, 0x04, 0x20
+            user32.SetWindowPos(ctypes.c_void_p(hwnd), None, 0, 0, 0, 0,
+                                SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED)
+        except OSError:
+            pass
     try:
-        user32.SetWindowLongPtrW(hwnd, GWLP_WNDPROC, info["old"])
-    except OSError:
+        from .log import log_note
+        log_note("titlebar.uninstall", "已还原 %d 个窗口过程" % restored)
+    except Exception:
         pass

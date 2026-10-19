@@ -173,6 +173,17 @@ async function boot() {
 
   setToken(store.config.api_token);
 
+  // 心跳：后端 8 秒内收不到就会回退原生标题栏（自绘模式下的逃生口）。
+  // 前端报错也一并送进 data/error.log，别让问题只剩"没反应"。
+  api.windowReady().catch(() => {});
+  window.addEventListener('error', (e) => {
+    api.frontendError(String(e.message || e.error || ''), String(e.filename || '') + ':' + (e.lineno || '')).catch(() => {});
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    const r = e.reason;
+    api.frontendError(String((r && r.message) || r || ''), 'unhandledrejection').catch(() => {});
+  });
+
   // 自绘标题栏：后端已经把原生标题栏整个去掉了，这里补一条 HTML 的。
   // 尺寸必须和 videograb/titlebar.py 里的常量对齐，否则右侧按钮点不动。
   if ((store.config.titlebar || 'native') === 'custom') buildTitlebar();
@@ -243,7 +254,9 @@ function buildTitlebar() {
     if (e.button !== 0) return;
     if (e.target.closest('button')) return;
     const now = Date.now();
-    if (now - lastDown < 420) {
+    // 跟随系统设置（默认 500ms），写死会和用户的系统习惯对不上
+    const gap = (store.config && store.config.dblclick_ms) || 500;
+    if (now - lastDown < gap) {
       lastDown = 0;                       // 双击：切换最大化，不再发起拖动
       api.windowMaximize().catch(() => {});
       return;
@@ -321,11 +334,16 @@ function installResizeHandles() {
   let current = '';
 
   // 用捕获阶段，避免被页面里的元素吃掉
+  // 一条贴在边上的细高光，告诉用户"这里可以拖"
+  const hint = h('div', { id: 'edgeHint' });
+  document.body.append(hint);
+
   document.addEventListener('mousemove', (e) => {
     const edge = edgeAt(e);
     if (edge !== current) {
       current = edge;
       document.body.style.cursor = edge ? EDGE_CURSOR[edge] : '';
+      hint.dataset.edge = edge || '';
     }
   }, true);
 

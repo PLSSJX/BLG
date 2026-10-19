@@ -67,6 +67,7 @@ def build_state(ctx: Context) -> dict:
         "window_mode": getattr(ctx, "window_mode", "") or "server",
         # 前端靠它决定要不要画自绘标题栏 —— 之前漏了这个字段，
         # 结果原生标题栏被去掉了、HTML 标题栏又没画，窗口一个按钮都没有。
+        "dblclick_ms": _dblclick_ms(),
         "titlebar": (
             "custom"
             if (getattr(ctx, "window_mode", "") == "webview"
@@ -76,6 +77,15 @@ def build_state(ctx: Context) -> dict:
         "frozen": is_frozen(),
         "base_dir": str(BASE_DIR),
     }
+
+
+def _dblclick_ms() -> int:
+    """系统双击间隔。前端写死 420ms 会和系统设置对不上。"""
+    try:
+        from .dpi import double_click_ms
+        return double_click_ms()
+    except Exception:
+        return 500
 
 
 def _public_settings(ctx: Context) -> dict:
@@ -348,6 +358,8 @@ class Handler(BaseHTTPRequestHandler):
             from .updater import UpdaterError
             if isinstance(exc, UpdaterError):
                 return self._error(str(exc), 400)
+            from .log import log_error as _le2
+            _le2("api:" + route, exc)
             return self._error(f"服务器内部错误：{exc}", 500)
 
     # ---------------- GET API ----------------
@@ -546,6 +558,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True,
                                "resizing": start_resize(hwnd, str(payload.get("edge") or ""))})
 
+        if route == "/api/window/ready":
+            # 前端起来了。自绘标题栏的逃生口靠它判断：收不到就别用自绘。
+            ctx.frontend_ready = True
+            return self._json({"ok": True})
+
+        if route == "/api/window/frontend-error":
+            # 前端自己遇到的异常也写进同一份日志，免得只能靠用户复述现象
+            from .log import log_error
+            log_error("frontend", str(payload.get("message") or "")[:600],
+                      str(payload.get("where") or "")[:120])
+            return self._json({"ok": True})
+
         if route == "/api/window/drag":
             # 页面按下标题栏 -> 让系统接管拖动（WebView2 跨进程，命中测试穿不过去）
             from .titlebar import start_drag
@@ -634,6 +658,41 @@ class Handler(BaseHTTPRequestHandler):
                                "download_dir": str(ctx.download_dir()),
                                "music_dir": str(ctx.music_dir())})
 
+        if route == "/api/doc/cancel":
+            from .convert import request_cancel
+            request_cancel()
+            return self._json({"ok": True})
+
+        if route == "/api/shell/open":
+            # 只允许打开"我们自己产出的目录"里的东西。
+            # 不设白名单的话，这个接口等于给页面一个任意执行文件的入口。
+            import os as _os
+            import subprocess as _sp
+            raw = str(payload.get("path") or "").strip()
+            if not raw:
+                raise ApiError("没有指定要打开的路径")
+            target = Path(raw).resolve()
+            roots = [ctx.download_dir().resolve()]
+            try:
+                roots.append((ctx.download_dir() / str(getattr(ctx.settings, "doc_dir", "documents"))).resolve())
+            except Exception:
+                pass
+            if not any(target == root or root in target.parents for root in roots):
+                raise ApiError("只能打开下载目录里的文件")
+            if not target.exists():
+                raise ApiError("文件已经不在了：" + target.name)
+            try:
+                if target.is_dir():
+                    _os.startfile(str(target))
+                else:
+                    # 文件一律用资源管理器"选中"，绝不 os.startfile。
+                    # 直接 startfile 一个 .exe/.bat/.lnk 是**执行**而不是打开，
+                    # 下载目录里恰恰什么类型的文件都可能存在。
+                    _sp.Popen(["explorer", "/select,", str(target)])
+            except OSError as exc:
+                raise ApiError("打开失败：" + str(exc)[:120]) from None
+            return self._json({"ok": True})
+
         if route == "/api/doc/convert":
             from . import convert as _cv
             paths = payload.get("paths")
@@ -644,9 +703,19 @@ class Handler(BaseHTTPRequestHandler):
             target = str(payload.get("target") or "").strip().lower()
             if target not in ("docx", "xlsx", "md", "pdf"):
                 raise ApiError("目标格式只能是 docx、xlsx、md 或 pdf")
-            dest = Path(payload.get("dest") or str(ctx.download_dir() / "文档转换"))
+            dest = Path(payload.get("dest") or
+                        str(ctx.download_dir() / str(getattr(ctx.settings, "doc_dir", "documents"))))
+            # 和 /api/video/trim 一样必须校验：dest 原本原样传给 convert，
+            # 那边直接 mkdir + 写文件，等于给了调用方一个往任意目录写文件的口子。
+            if not _inside_output_root(dest, ctx):
+                raise ApiError("输出目录只能放在下载目录或音乐目录里")
+            from .convert import clear_cancel, is_cancelled
+            clear_cancel()
             done, failed = [], []
             for raw in paths:
+                if is_cancelled():
+                    failed.append({"path": str(raw), "error": "已中止"})
+                    break
                 try:
                     done.append(_cv.convert(str(raw), dest, target))
                 except _cv.ConvertError as exc:

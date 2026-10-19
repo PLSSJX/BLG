@@ -355,13 +355,41 @@ function buildMusicLibraryCard() {
             url: 'file:///' + String(item.path).replace(/\\/g, '/'),
             cover: item.cover || '',
           });
-          toast(r.added === false
+          const already = r.added === false;
+          const count = Number(r.count || 0);
+          toast(already
             ? '这首歌已经在《' + picked.value.title + '》里了'
-            : '已加入《' + picked.value.title + '》', 4000);
+            : '已加入《' + picked.value.title + '》' + (count ? '，现在共 ' + count + ' 首' : ''),
+          already ? 4000 : 3000);
           // 必须让歌单卡片重新拉一次数据：playlistState.local 是模块级缓存，
           // 不清掉的话界面上还是旧的「N 首」，用户会以为没加进去（实测就是这样）。
           playlistState.local = null;
+          // 记住刚加进去的那首，渲染完滚过去，别让用户自己在长列表里翻
+          playlistState.locate = { title: picked.value.title, song: item.name || '' };
+          // 直接打开这个歌单的详情 —— 之前只有用户碰巧已经打开着才会跳过去，
+          // 歌单卡片那一层是看不到高亮的。
+          playlistState.detail = { id: picked.value.id, site: picked.value.site };
+          playlistState.query = null;
           renderPlayer(document.getElementById('view'));
+          // 打开的就是这个歌单时，滚动并高亮新加的那首
+          setTimeout(() => {
+            const loc = playlistState.locate;
+            if (!loc) return;
+            playlistState.locate = null;
+            const node = document.querySelector('[data-song-name="' + String(loc.song).replace(/"/g, '\\"') + '"]');
+            if (!node) return;
+            node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            // 用 outline + 负偏移：画在元素内部，不会被网格容器的
+            // overflow 裁掉（box-shadow 是画在外面的，实测被遮住）
+            node.style.transition = 'outline-color .3s ease, background .3s ease';
+            node.style.outline = '2px solid var(--md-primary)';
+            node.style.outlineOffset = '-2px';
+            node.style.background = 'var(--md-primary-container)';
+            setTimeout(() => {
+              node.style.outline = 'none';
+              node.style.background = '';
+            }, 2600);
+          }, 600);
         } catch (err) { toast('加入失败：' + err.message); }
         } catch (err) {
           // 任何意外都要让用户看见，不能静默
@@ -474,6 +502,7 @@ function buildSongGrid(pl) {
       const idx = songs.indexOf(s) + 1;
       const cover = s.cover || s.cover_url || '';
       mount(grid, h('div', {
+        'data-song-name': s.name || '',
         style: {
           display: 'flex', alignItems: 'center', gap: '10px', padding: '8px',
           borderRadius: '10px', background: 'var(--md-surface-container)',
@@ -501,6 +530,17 @@ function buildSongGrid(pl) {
           } else {
             toast('这首是平台链接，先「全部下载」到本地再播放', 4200);
           }
+        } }),
+        button('', { variant: 'text', iconName: 'playlist_add', title: '下一首播放', onClick: () => {
+          const raw = String(s.url || '');
+          if (!raw.startsWith('file:///')) {
+            toast('这首是平台链接，先下载到本地才能插进播放队列', 4200);
+            return;
+          }
+          const local = decodeURIComponent(raw.slice(8)).replace(/\//g, '\\');
+          // playNextItem 是播放器已有的能力：插到当前曲目后面
+          playNextItem({ path: local, name: s.name || '' });
+          toast('已加入播放队列：「' + (s.name || '未命名') + '」');
         } }),
         button('', { variant: 'text', iconName: 'delete', title: '从歌单移除', onClick: async () => {
           try {
@@ -1597,6 +1637,7 @@ export function renderSettings(view) {
       buildDownloadCard2(settings),
       // 视频下载和音乐下载是一对，紧挨着放，方便对照
       buildMusicDirCard(settings),
+      buildWindowCard(settings),
       buildExtrasCard(settings),
       buildBigjpgCard(settings),
       buildFfmpegCard(),
@@ -1628,6 +1669,60 @@ async function saveSetting(patch, rerender = true) {
     toast('保存失败：' + error.message);
     return false;
   }
+}
+
+/** 窗口标题栏 + 文档转 PDF 的两条通路。 */
+function buildWindowCard(settings) {
+  const custom = (settings.titlebar || 'native') === 'custom';
+  const office = settings.doc_office !== false;
+  const browser = settings.doc_browser !== false;
+  const prefer = settings.doc_prefer || 'office';
+
+  // 之前用 align-items:center，描述一行和两行时按钮位置不一样，整列看着是歪的。
+  // 改成顶部对齐：按钮和标签的第一行同基线，行数再多也不会浮到中间。
+  const toggle = (label, desc, on, onClick) => h('div', {
+    class: 'set-row',
+    style: { display: 'flex', alignItems: 'flex-start', gap: '14px',
+             padding: '10px 0', borderTop: '1px solid var(--md-outline-variant)' },
+  },
+  h('div', { style: { flex: '1', minWidth: '0' } },
+    h('div', { class: 'set-row-label', style: { fontSize: '13px', lineHeight: '22px' } }, label),
+    h('div', { class: 'card-desc', style: { marginTop: '2px' } }, desc)),
+  h('div', { style: { flex: 'none', paddingTop: '0' } },
+    button(on ? '已开启' : '已关闭', { variant: on ? 'tonal' : 'text', onClick })));
+
+  return card(
+    h('div', { class: 'card-title', html: icon('palette', 'outlined', 20) + '<span>窗口与转换</span>' }),
+    h('div', { class: 'card-desc', style: { marginBottom: '6px' } },
+      '自绘标题栏可以自定义高度和配色；如果界面出问题，切回系统标题栏能立刻恢复。'),
+    toggle('自绘标题栏', custom
+      ? '当前是自绘标题栏（左上角显示 MakiseToolkit）。'
+      : '当前用 Windows 系统标题栏。', custom,
+      async () => {
+        // 提示先弹，再保存+重渲染 —— saveSetting 会把整张卡换掉，
+        // 放在它后面的 toast 经常被新渲染覆盖掉，用户看不到。
+        toast('已保存，重启程序后生效', 5000);
+        await saveSetting({ titlebar: custom ? 'native' : 'custom' }, false);
+        renderSettings(document.getElementById('view'));
+      }),
+    // 保存的模式和正在运行的模式不一致时，明确挂一条提示
+    (store.config?.titlebar === 'custom') === custom
+      ? null
+      : h('div', { class: 'hint-box', style: { marginTop: '8px' } },
+          h('span', { html: icon('info', 'outlined', 20) }),
+          h('div', {}, '标题栏改动需要重启程序才会生效。当前运行中的是',
+            (store.config?.titlebar === 'custom') ? '自绘标题栏' : '系统标题栏', '。')),
+    h('div', { class: 'section-label', style: { marginTop: '14px' } }, 'Word / Excel 转 PDF 的通路'),
+    toggle('本机 Office', '版式最准，分页和页眉页脚都保留。第一次调用要冷启动 Word，约 5–10 秒。',
+      office, async () => { await saveSetting({ doc_office: !office }); }),
+    toggle('无头浏览器', '不需要装 Office，速度快（1–2 秒），但复杂文档排版会和 Word 原样不同。',
+      browser, async () => { await saveSetting({ doc_browser: !browser }); }),
+    h('div', { class: 'section-label', style: { marginTop: '12px' } }, '优先用哪条'),
+    h('div', { class: 'btn-row', style: { marginTop: '6px' } },
+      button('Office 优先', { variant: prefer === 'office' ? 'tonal' : 'text',
+        onClick: async () => { await saveSetting({ doc_prefer: 'office' }); } }),
+      button('浏览器优先', { variant: prefer === 'browser' ? 'tonal' : 'text',
+        onClick: async () => { await saveSetting({ doc_prefer: 'browser' }); } })));
 }
 
 function buildAppearanceCard(settings) {
@@ -2511,6 +2606,10 @@ const DOC_FORMATS = [
   ['xlsx', 'Excel 表格', '按行按列', ['docx', 'md', 'pdf']],
   ['pdf', 'PDF', '仅文本层，无版式', ['docx', 'xlsx', 'md']],
   ['md', 'Markdown', '纯文本 + 表格', ['docx', 'xlsx']],
+  // Office 97-2003 / 演示文稿：只能转 PDF（要本机装对应的 Office）
+  ['doc', 'Word 97-2003', '老格式，只能转 PDF', ['pdf']],
+  ['xls', 'Excel 97-2003', '老格式，只能转 PDF', ['pdf']],
+  ['pptx', 'PowerPoint', '需要装 PowerPoint', ['pdf']],
 ];
 
 export function renderDoc(view) {
@@ -2570,17 +2669,54 @@ export function renderDoc(view) {
                   { variant: docState.target === t ? 'tonal' : 'text',
                     onClick: () => { docState.target = t; paint(); } }))),
               h('div', { class: 'btn-row', style: { marginTop: '12px' } },
-                button('开始转换', { iconName: 'bolt', onClick: async (e) => {
-                  const btn = e.currentTarget; btn.disabled = true;
-                  try {
-                    const r = await api.convertDocs(docState.paths, docState.target);
-                    docState.results = r;
-                    if (r.done.length) toast('已转换 ' + r.done.length + ' 个文件');
-                    else if (r.failed.length) toast('转换失败：' + r.failed[0].error, 7000);
-                    paint();
-                  } catch (err) { toast('转换失败：' + err.message, 7000); }
-                  btn.disabled = false;
-                } })))
+                button(docState.busy ? '转换中…' : '开始转换', {
+                  iconName: 'bolt',
+                  variant: docState.busy ? 'text' : 'filled',
+                  onClick: async () => {
+                    if (docState.busy) return;
+                    docState.busy = true;
+                    paint();                       // 立刻切成"转换中"状态
+                    try {
+                      const r = await api.convertDocs(docState.paths, docState.target);
+                      docState.results = r;
+                      if (r.done.length) toast('已转换 ' + r.done.length + ' 个文件');
+                      else if (r.failed.length) toast('转换失败：' + r.failed[0].error, 7000);
+                      if (r.done && r.done.length) {
+                        // 转换完把结果摆出来，让用户能直接打开，而不是自己去找目录
+                        dialog({
+                          title: '转换完成',
+                          body: '已生成 ' + r.done.length + ' 个文件，放在：' + (r.dir || '下载目录'),
+                          confirm: '打开文件夹',
+                          cancel: '知道了',
+                        }).then((ok) => {
+                          if (ok) api.shellOpen(r.dir, false).catch((e) => toast(e.message, 8000));
+                        });
+                      }
+                    } catch (err) {
+                      toast('转换失败：' + err.message, 7000);
+                    } finally {
+                      // 之前这里出错会让 busy 永远为 true、按钮永久禁用，
+                      // 用户只能重启程序。paint() 失败必须兜住。
+                      docState.busy = false;
+                      try { paint(); } catch (err) {
+                        docState.busy = false;
+                        toast('界面刷新失败：' + err.message, 8000);
+                      }
+                    }
+                  },
+                })),
+              // 转换是本机同步操作，没有可靠的百分比；用不确定进度条表示"在跑"
+              docState.busy
+                ? h('div', { style: { marginTop: '12px' } },
+                    h('div', { class: 'progress-track' }, h('div', { class: 'progress-run' })),
+                    h('div', { class: 'card-desc', style: { marginTop: '6px' } },
+                      '正在转换。Word / Excel 转 PDF 第一次调用要冷启动 Office，约 5–10 秒，请稍等。'),
+                    h('div', { class: 'btn-row', style: { marginTop: '8px' } },
+                      button('中止', { variant: 'text', iconName: 'close', onClick: () => {
+                        api.docCancel().catch(() => {});
+                        toast('已请求中止，当前这个文件跑完就停');
+                      } })))
+                : null)
           : null),
       card(
         h('div', { class: 'card-title', html: icon('info', 'outlined', 20) + '<span>能做什么、不能做什么</span>' }),

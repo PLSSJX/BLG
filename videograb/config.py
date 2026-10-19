@@ -138,6 +138,12 @@ class Settings:
     music_dir: str = ""
     # "native" = 系统标题栏；"custom" = 自绘标题栏（可调高度/配色/按钮大小）
     titlebar: str = "native"
+    # 文档转 PDF 的两条通路。用户可以单独关掉某一条，也可以指定优先用哪条。
+    doc_office: bool = True
+    doc_browser: bool = True
+    doc_prefer: str = "office"          # "office" | "browser"
+    # 转换产物目录名（英文，避免脚本/命令行处理中文路径）
+    doc_dir: str = "documents"
     # 登录态：填了才能解锁 1080P 及以上
     sessdata: str = ""
     bili_jct: str = ""

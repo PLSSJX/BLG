@@ -95,12 +95,19 @@ def find_window(title: str = "") -> int:
         if not user32.IsWindowVisible(hwnd):
             return True
         if not user32.GetWindow(hwnd, 4):     # GW_OWNER：跳过对话框之类的子窗口
-            found.append(hwnd)
-            return False
+            rect = wt.RECT()
+            user32.GetWindowRect(hwnd, ctypes.byref(rect))
+            area = max(0, rect.right - rect.left) * max(0, rect.bottom - rect.top)
+            found.append((area, hwnd))
         return True
 
     user32.EnumWindows(callback_any, None)
-    return found[0] if found else 0
+    # 取面积最大的那个 —— 主窗口永远比确认框/文件对话框大，
+    # 按枚举顺序取第一个有可能抓到对话框，拖动/最大化就会作用到错的窗口上。
+    if found:
+        found.sort(reverse=True)
+        return found[0][1]
+    return 0
 
 
 WM_SETICON = 0x0080
@@ -215,8 +222,12 @@ def apply(hwnd: int, *, caption: str = "", text: str = "", border: str = "",
     """把主题色应用到窗口边框上。返回是否成功。"""
     if os.name != "nt" or not hwnd:
         return False
-    hide_titlebar_icon(hwnd)
-    clear_titlebar(hwnd)
+    # 只在**原生标题栏**模式下才动图标。
+    # 自绘模式下窗口根本没有原生标题栏，而 clear_titlebar 会把 ICON_BIG 和
+    # 窗口类图标都换成透明图标 —— 任务栏用的正是这两个，图标就消失了。
+    if not _custom_mode():
+        hide_titlebar_icon(hwnd)
+        clear_titlebar(hwnd)
     try:
         dwm = ctypes.windll.dwmapi
     except OSError:
@@ -252,6 +263,15 @@ def apply_current(title: str = "", **colors) -> bool:
     if not hwnd:
         return False
     return apply(hwnd, **colors)
+
+
+def _custom_mode() -> bool:
+    """当前是不是自绘标题栏（是的话就不用再管原生标题栏的图标/文字）。"""
+    try:
+        from .config import load_settings
+        return (getattr(load_settings(), "titlebar", "") or "").strip().lower() == "custom"
+    except Exception:
+        return False
 
 
 WATCH_SECONDS = 300.0
@@ -295,13 +315,20 @@ def apply_when_ready(title: str = "", delay: float = 0.0, attempts: int = 160,
                     time.sleep(interval)
                     continue
             apply(hwnd, **(_last or {"dark": False}))
+            if _custom_mode():
+                # 自绘模式下没有原生标题栏，图标/文字清理是纯浪费
+                return
             if titlebar_icon_cleared(hwnd):
                 clean_streak += 1
                 if clean_streak >= 2:
-                    # 别收工 —— 拖到不同缩放比例的显示器、explorer 重启、
-                    # 主题切换都可能让系统重新用 exe 图标重画标题栏。
-                    # 之后低频守着，持续 5 分钟。
-                    _watch_titlebar(hwnd)
+                    # 原来这里挂了一个 5 分钟、每 2 秒一次的守卫线程，
+                    # 每轮都调 clear_titlebar 里的 SetWindowPos(SWP_FRAMECHANGED)，
+                    # 等于每 2 秒强行让 DWM 重算一次边框 —— 在自绘标题栏模式下
+                    # 会和 WM_NCCALCSIZE 打架，造成闪烁和掉帧。
+                    #
+                    # 改成一次性：边框重算只在用户真的按下边框时做（见
+                    # titlebar.start_resize），图标清理只在原生标题栏模式下有意义，
+                    # 自绘模式根本没有标题栏可清。
                     return
             else:
                 clean_streak = 0

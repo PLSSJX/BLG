@@ -107,9 +107,15 @@ export function iconSpan(name, variant = 'filled', size = 20) {
 }
 
 /** 可感知的轻提示，替代 Flutter 的 SnackBar。 */
-export function toast(message, ms = 2600) {
+export function toast(message, ms) {
+  // 长错误（转换失败、接口报错）默认只停 2.6 秒根本看不完。
+  // 按文字长度自动延长时间，上限 12 秒，别让提示跑得比眼睛快。
+  const text = String(message == null ? '' : message);
+  if (ms == null) {
+    ms = Math.min(12000, 2600 + Math.max(0, text.length - 40) * 55);
+  }
   const host = document.getElementById('toastHost');
-  const node = h('div', { class: 'toast' }, message);
+  const node = h('div', { class: 'toast' }, text);
   host.append(node);
   setTimeout(() => {
     node.style.transition = 'opacity 200ms, transform 200ms';

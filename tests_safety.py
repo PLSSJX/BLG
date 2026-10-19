@@ -348,6 +348,59 @@ def test_extras_scope():
           "extras 使用任务目录（不写任意路径）")
 
 
+
+# ---------------------------------------------------------------- O. 隐私
+def test_privacy():
+    print("\nO. 隐私与凭据")
+    import re
+    import inspect
+    src_dir = ROOT / "videograb"
+    web_dir = ROOT / "web" / "js"
+
+    # ① 凭据不能出现在任何日志/打印语句里
+    creds = ("sessdata", "bili_jct", "music_u", "cookie", "password")
+    leaks = []
+    for path in list(src_dir.rglob("*.py")) + list(web_dir.rglob("*.js")):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        for num, line in enumerate(text.splitlines(), 1):
+            if not re.search(r"(print\(|console\.(log|error|warn)|log_error|log_note)", line):
+                continue
+            low = line.lower()
+            for cred in creds:
+                if cred in low and not re.search(r"\[:4\]|len\(|strip\(\)|bool\(|== \"\"|getattr\(|hasattr\(|redact|mask", line, re.I):
+                    leaks.append(path.name + ":" + str(num))
+    check(not leaks, "代码里没有把凭据打进日志/控制台" + ("" if not leaks else "：" + ", ".join(leaks[:3])))
+
+    # ② 不能有遗留的调试日志文件写入
+    dbg = []
+    for path in src_dir.rglob("*.py"):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for marker in ("drag.log", "titlebar.log"):
+            if marker in text and "_trace" in text:
+                dbg.append(path.name)
+    check(not dbg, "没有遗留的调试日志" + ("" if not dbg else "：" + ", ".join(set(dbg))))
+
+    # ③ 所有 POST 接口在分发前统一校验 Origin + token
+    server_src = (src_dir / "server.py").read_text(encoding="utf-8")
+    check("_check_origin()" in server_src and "_check_token()" in server_src,
+          "do_POST 同时校验 Origin 和 token")
+
+    # ④ 打开文件的接口必须有路径白名单
+    check("_inside_output_root" in server_src, "输出目录有白名单校验")
+    check("只能打开下载目录里的文件" in server_src, "打开文件接口有白名单")
+    check("explorer" in server_src and "/select," in server_src,
+          "打开文件用资源管理器选中（不直接执行）")
+
+    # ⑤ 错误日志要能自限，不能无限增长
+    import videograb.log as L
+    log_src = inspect.getsource(L)
+    check("MAX_BYTES" in log_src and "replace" in log_src,
+          "error.log 有大小上限并会轮转")
+
+
 def main():
     print("=" * 60)
     print("安全性回归测试")
@@ -356,7 +409,7 @@ def main():
                test_conflicts, test_own_directory, test_delete_task_files,
                test_safe_relative, test_remover, test_self_delete,
                test_real_install, test_transcode_unique, test_extras_scope,
-               test_api_path_guard, test_playlist_guard):
+               test_api_path_guard, test_playlist_guard, test_privacy):
         try:
             fn()
         except Exception as exc:

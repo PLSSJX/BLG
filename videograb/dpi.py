@@ -103,6 +103,18 @@ def scale_of_window(hwnd: int = 0) -> float:
         return 1.0
 
 
+def double_click_ms() -> int:
+    """系统的双击间隔。前端原来写死 420ms，和系统设置不一致时双击要么不灵要么误触。"""
+    if os.name != "nt":
+        return 500
+    try:
+        import ctypes
+        v = ctypes.windll.user32.GetDoubleClickTime()
+        return int(v) if v and 100 <= v <= 2000 else 500
+    except Exception:
+        return 500
+
+
 def scale() -> float:
     """主显示器的缩放比（100% -> 1.0，150% -> 1.5）。
 

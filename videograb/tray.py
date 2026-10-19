@@ -195,6 +195,42 @@ class Tray:
         except Exception:
             pass
 
+    def _open_dir(self, which: str) -> None:
+        """打开安装目录或下载目录。失败不弹窗，只写日志。"""
+        import os
+        try:
+            from .config import BASE_DIR, DATA_DIR, load_settings
+            if which == "install":
+                target = BASE_DIR
+            else:
+                from pathlib import Path
+                s = load_settings()
+                target = Path(s.download_dir) if s.download_dir else (BASE_DIR / "downloads")
+                target.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(target))
+        except Exception as exc:
+            try:
+                from .log import log_error
+                log_error("tray.open_dir:" + which, exc)
+            except Exception:
+                pass
+
+    def _open_log(self) -> None:
+        """打开 data/error.log。没有就先生成一个带说明的文件。"""
+        import os
+        try:
+            from .config import DATA_DIR
+            path = DATA_DIR / "error.log"
+            if not path.exists():
+                path.write_text("（目前没有记录到错误）\n", encoding="utf-8")
+            os.startfile(str(path))
+        except Exception as exc:
+            try:
+                from .log import log_error
+                log_error("tray.open_log", exc)
+            except Exception:
+                pass
+
     def _player(self, action: str, arg: str = ""):
         win = self._window()
         if not win:
@@ -221,8 +257,15 @@ class Tray:
                 user32.AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, label)
             else:
                 user32.AppendMenuW(menu, MF_STRING, cmd, label)
+        # 页面跳转单独一组，加个灰色小标题，免得和播放控制混在一起
+        user32.AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, "打开页面")
         for index, (label, _hash) in enumerate(self.PAGES):
-            user32.AppendMenuW(menu, MF_STRING, 300 + index, label)
+            user32.AppendMenuW(menu, MF_STRING, 300 + index, "　" + label)
+        user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
+        # 系统：方便出问题时自查，不用去翻安装目录
+        user32.AppendMenuW(menu, MF_STRING, 901, "打开安装目录")
+        user32.AppendMenuW(menu, MF_STRING, 902, "打开下载目录")
+        user32.AppendMenuW(menu, MF_STRING, 903, "查看错误日志")
         user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(menu, MF_STRING, 900, "退出")
         return menu
@@ -241,6 +284,12 @@ class Tray:
             self._player("setLoop", "'" + mode + "'")
         elif 300 <= cmd < 300 + len(self.PAGES):
             self._navigate(self.PAGES[cmd - 300][1])
+        elif cmd == 901:
+            self._open_dir("install")
+        elif cmd == 902:
+            self._open_dir("download")
+        elif cmd == 903:
+            self._open_log()
         elif cmd == 900:
             self.quit()
 
