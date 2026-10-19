@@ -73,7 +73,33 @@ def find_window(title: str = "") -> int:
         return False
 
     user32.EnumWindows(callback, None)
-    return found[0] if found else 0
+    if found:
+        return found[0]
+    # 标题对不上（改名、标题被程序改写、多语言）时不要直接放弃 ——
+    # 退回"本进程第一个可见且有标题的窗口"。之前 server.py 传的标题和
+    # WINDOW_TITLE 差一个空格，就导致标题栏永远上不了色。
+    if title:
+        return find_window("")
+    return 0
+
+
+WM_SETICON = 0x0080
+ICON_SMALL = 0
+
+
+def hide_titlebar_icon(hwnd: int) -> bool:
+    """去掉标题栏左边那个小图标，只留文字。
+
+    只清 ICON_SMALL（标题栏那个）；ICON_BIG 保留，任务栏和 Alt-Tab 还需要它。
+    """
+    if os.name != "nt" or not hwnd:
+        return False
+    try:
+        ctypes.windll.user32.SendMessageW(ctypes.c_void_p(hwnd), WM_SETICON,
+                                          ICON_SMALL, 0)
+        return True
+    except OSError:
+        return False
 
 
 def apply(hwnd: int, *, caption: str = "", text: str = "", border: str = "",
@@ -81,6 +107,7 @@ def apply(hwnd: int, *, caption: str = "", text: str = "", border: str = "",
     """把主题色应用到窗口边框上。返回是否成功。"""
     if os.name != "nt" or not hwnd:
         return False
+    hide_titlebar_icon(hwnd)
     try:
         dwm = ctypes.windll.dwmapi
     except OSError:

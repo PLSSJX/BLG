@@ -358,6 +358,10 @@ function buildMusicLibraryCard() {
           toast(r.added === false
             ? '这首歌已经在《' + picked.value.title + '》里了'
             : '已加入《' + picked.value.title + '》', 4000);
+          // 必须让歌单卡片重新拉一次数据：playlistState.local 是模块级缓存，
+          // 不清掉的话界面上还是旧的「N 首」，用户会以为没加进去（实测就是这样）。
+          playlistState.local = null;
+          renderPlayer(document.getElementById('view'));
         } catch (err) { toast('加入失败：' + err.message); }
         } catch (err) {
           // 任何意外都要让用户看见，不能静默

@@ -431,9 +431,15 @@ def convert(src_path, out_dir, target: str) -> dict:
             try:
                 doc_to_html_pdf(src, out_path)
                 engine = "browser"
-            except ConvertError:
-                # 两条都不通时，把 Office 的原因抛出去（信息更具体）
-                raise office_error from None
+            except ConvertError as browser_error:
+                # 两条都不通时**把两边的失败原因都说出来**。
+                # 只说 Office 的话，没装 Office 又没装 Edge 的用户会以为是
+                # "装个 Office 就行"，装完还是不行。
+                raise ConvertError(
+                    "转 PDF 两条通路都不可用：\n"
+                    "① 本机 Office：" + str(office_error)[:120] + "\n"
+                    "② 无头浏览器：" + str(browser_error)[:120] + "\n"
+                    "装 Word/Excel 或装一个 Microsoft Edge 就能转。") from None
         return {"ok": True, "source": source, "target": "pdf", "engine": engine,
                 "output": str(out_path), "size": out_path.stat().st_size}
 

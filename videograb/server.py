@@ -533,8 +533,9 @@ class Handler(BaseHTTPRequestHandler):
             # 前端拿不到 HWND，所以这件事必须由后端做。
             from .window_frame import apply_current
             payload = payload or {}
+            from .desktop import WINDOW_TITLE
             ok = apply_current(
-                title="MakiseToolkit",
+                title=WINDOW_TITLE,
                 caption=str(payload.get("caption") or ""),
                 text=str(payload.get("text") or ""),
                 border=str(payload.get("border") or ""),

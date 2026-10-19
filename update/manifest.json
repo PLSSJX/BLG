@@ -1,6 +1,6 @@
 {
- "version": "3.0.1",
- "generated": "2026-10-19 13:01:18 UTC",
+ "version": "3.0.2",
+ "generated": "2026-10-19 13:16:08 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -31,8 +31,8 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "bf475f6a0bcecff321b367dfecab08876dd52bf9929d72ff2c1bcb8c5746c48d",
-   "size": 133694
+   "sha256": "54ad7bc37952f2df582fbd1a9882eb8c17bbdd5d9ba62361ada88be1bdc38817",
+   "size": 134007
   },
   {
    "path": "web/js/player.js",
@@ -98,7 +98,7 @@
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "01f346f8fef3850e6e3da70b0eb51ea8c02b20156599f686975fa051c5d9565b",
+   "sha256": "8cac26a8970013fdc5ab7a4e4faeabdebcd6572b8b37117b1347126cf5629184",
    "size": 398
   },
   {
@@ -123,8 +123,8 @@
   },
   {
    "path": "videograb/convert.py",
-   "sha256": "d8f7c84d18397537dfa371a7ebccac1afca5b80fdc84fddccd454bcbca1240e9",
-   "size": 28260
+   "sha256": "d28ecb0e3e15eb21b2e24f579f8e5023bf3c489c0ea87d46faac4aa0fbe5eccf",
+   "size": 28719
   },
   {
    "path": "videograb/desktop.py",
@@ -273,8 +273,8 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "181cd3b192032902ee76de1e9c513d9612ac054d2ef5b6e4451ff8cb0542aa61",
-   "size": 65919
+   "sha256": "e75d662c0a3bdadea970b3ed07028b8df8544eb20985aa0a646f2f0b125b5fb0",
+   "size": 65962
   },
   {
    "path": "videograb/sites/__init__.py",
@@ -373,14 +373,14 @@
   },
   {
    "path": "videograb/window_frame.py",
-   "sha256": "ae7bdcff06f2ffade10f1890d77eb853c2879e1a7b716319cbb6565636caf384",
-   "size": 4632
+   "sha256": "1fd4fa58a94598c5fa5f283565bc56e10c1595670d8296b7cb57fd785c51002e",
+   "size": 5505
   }
  ],
  "installer": {
-  "name": "MakiseToolkit-Setup-3.0.0.exe",
-  "size": 119592827,
-  "sha256": "f9ba047a684f3e3c04af418d0b5e19a7b4ce8ce365f5247e3e4b3f8800176188",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v3.0.1/MakiseToolkit-Setup-3.0.0.exe"
+  "name": "MakiseToolkit-Setup-3.0.1.exe",
+  "size": 119592589,
+  "sha256": "cebef9111228b239e5c19762c2facc509ee86c75e0643b050b8e1906c4538284",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v3.0.2/MakiseToolkit-Setup-3.0.1.exe"
  }
 }
