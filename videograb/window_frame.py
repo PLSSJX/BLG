@@ -254,6 +254,27 @@ def apply_current(title: str = "", **colors) -> bool:
     return apply(hwnd, **colors)
 
 
+WATCH_SECONDS = 300.0
+WATCH_INTERVAL = 2.0
+
+
+def _watch_titlebar(hwnd: int) -> None:
+    """低频守着标题栏。
+
+    只在后台线程里做，只调 clear_titlebar（几条 SendMessage，开销可以忽略），
+    不动 DWM 颜色，避免反复设置导致闪烁。
+    """
+    rounds = int(WATCH_SECONDS / WATCH_INTERVAL)
+    for _ in range(rounds):
+        time.sleep(WATCH_INTERVAL)
+        try:
+            if not hwnd:
+                return
+            clear_titlebar(hwnd)
+        except OSError:
+            return
+
+
 def apply_when_ready(title: str = "", delay: float = 0.0, attempts: int = 160,
                      interval: float = 0.25) -> None:
     """后台等窗口出现，套用主题色，并在启动阶段反复清标题栏。
@@ -277,7 +298,11 @@ def apply_when_ready(title: str = "", delay: float = 0.0, attempts: int = 160,
             if titlebar_icon_cleared(hwnd):
                 clean_streak += 1
                 if clean_streak >= 2:
-                    return            # 连续两次确认干净才收工
+                    # 别收工 —— 拖到不同缩放比例的显示器、explorer 重启、
+                    # 主题切换都可能让系统重新用 exe 图标重画标题栏。
+                    # 之后低频守着，持续 5 分钟。
+                    _watch_titlebar(hwnd)
+                    return
             else:
                 clean_streak = 0
             time.sleep(interval)
