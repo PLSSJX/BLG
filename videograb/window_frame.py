@@ -76,15 +76,57 @@ def find_window(title: str = "") -> int:
     if found:
         return found[0]
     # 标题对不上（改名、标题被程序改写、多语言）时不要直接放弃 ——
-    # 退回"本进程第一个可见且有标题的窗口"。之前 server.py 传的标题和
-    # WINDOW_TITLE 差一个空格，就导致标题栏永远上不了色。
+    # 退回"本进程第一个可见且有标题的窗口"。
     if title:
-        return find_window("")
-    return 0
+        spare = find_window("")
+        if spare:
+            return spare
+    # 再退一步：标题已经被清空（我们要把标题文字去掉）时，
+    # 上面的分支会因为 GetWindowTextLengthW == 0 而跳过窗口，
+    # 这里补一次"只要是本进程的可见顶层窗口就认"。
+    found.clear()
+
+    @ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+    def callback_any(hwnd, _lparam):
+        owner = ctypes.c_ulong()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value != pid:
+            return True
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        if not user32.GetWindow(hwnd, 4):     # GW_OWNER：跳过对话框之类的子窗口
+            found.append(hwnd)
+            return False
+        return True
+
+    user32.EnumWindows(callback_any, None)
+    return found[0] if found else 0
 
 
 WM_SETICON = 0x0080
+WM_SETTEXT = 0x000C
 ICON_SMALL = 0
+
+
+def clear_titlebar(hwnd: int) -> bool:
+    """把标题栏上的图标和文字都去掉，只留右上角三个按钮。
+
+    文字用 WM_SETTEXT 清空；图标清 ICON_SMALL。清完调一次 SetWindowPos
+    带 SWP_FRAMECHANGED，让 DWM 按「无图标」重算边框 —— Windows 11 在这种
+    情况下会把标题栏按钮画成标准的大号样式。
+    """
+    if os.name != "nt" or not hwnd:
+        return False
+    try:
+        user32 = ctypes.windll.user32
+        user32.SendMessageW(ctypes.c_void_p(hwnd), WM_SETTEXT, 0, ctypes.c_wchar_p(""))
+        user32.SendMessageW(ctypes.c_void_p(hwnd), WM_SETICON, ICON_SMALL, 0)
+        SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_FRAMECHANGED = 0x01, 0x02, 0x04, 0x20
+        user32.SetWindowPos(ctypes.c_void_p(hwnd), None, 0, 0, 0, 0,
+                            SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED)
+        return True
+    except OSError:
+        return False
 
 
 def hide_titlebar_icon(hwnd: int) -> bool:
@@ -108,6 +150,7 @@ def apply(hwnd: int, *, caption: str = "", text: str = "", border: str = "",
     if os.name != "nt" or not hwnd:
         return False
     hide_titlebar_icon(hwnd)
+    clear_titlebar(hwnd)
     try:
         dwm = ctypes.windll.dwmapi
     except OSError:
