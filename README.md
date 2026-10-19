@@ -11,13 +11,57 @@
 
 ## 界面截图
 
-**播放页** —— 左右两栏：左边歌曲列表与目录设置，右边我的歌单
+> 以下截图来自 **3.4.0（人性化更新）** 的实际运行窗口。
 
-![播放页](docs/screenshots/12-player.png)
+### 解析
 
-**设置页** —— 三栏瀑布流，主题、账号、下载、通道、更新分区
+粘贴视频链接或分享文案即可；下面是「通道体检」，实测这台机器上哪几条抓取通道真的能用。
 
-![设置页](docs/screenshots/11-settings.png)
+![解析页](docs/screenshots/01-parse.png)
+
+### 音乐
+
+搜歌、选音质、下歌单；加密格式（ncm / qmc / mflac / mgg / kgm / vpr / kwm）在这里解密转码。
+
+![音乐页](docs/screenshots/02-music.png)
+
+### 播放器
+
+应用内播放，支持乱序与循环；每首歌可以「加入歌单」或「下一首播放」。
+加进歌单后会自动跳到那个歌单并高亮刚加的那首。
+
+![播放器页](docs/screenshots/03-player.png)
+
+### 剪辑
+
+裁剪（快速 / 精确）、分离音轨、分离画面。
+
+![剪辑页](docs/screenshots/04-clip.png)
+
+### 文档
+
+Word / Excel / Markdown / PDF 互转，也能读 `.doc` / `.xls` / `.pptx` 转 PDF。
+转换中可中止，转完可以直接打开所在文件夹。
+
+![文档页](docs/screenshots/05-doc.png)
+
+### 图片放大
+
+bigjpg 免费通道，无需登录。
+
+![图片放大页](docs/screenshots/06-image.png)
+
+### 历史记录
+
+下载任务按状态分组，可折叠。
+
+![历史记录页](docs/screenshots/07-tasks.png)
+
+### 设置
+
+三栏瀑布流：主题、账号、下载、通道、窗口与转换、更新与自检。
+
+![设置页](docs/screenshots/08-settings.png)
 
 ---
 

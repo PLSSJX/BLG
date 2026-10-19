@@ -1,6 +1,6 @@
 {
  "version": "3.4.0",
- "generated": "2026-10-19 16:12:12 UTC",
+ "generated": "2026-10-19 16:13:46 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -388,9 +388,9 @@
   }
  ],
  "installer": {
-  "name": "MakiseToolkit-Setup-3.1.2.exe",
-  "size": 119615027,
-  "sha256": "b8a06037c75394df7d359175bfd80963aed49e3b686cbc9f5df6a9c40825435c",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v3.4.0/MakiseToolkit-Setup-3.1.2.exe"
+  "name": "MakiseToolkit-Setup-3.4.0.exe",
+  "size": 119626976,
+  "sha256": "9759e330af6333236c9428a76a2c6a23f8e7563c407334ee8999943b03118b1f",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v3.4.0/MakiseToolkit-Setup-3.4.0.exe"
  }
 }
