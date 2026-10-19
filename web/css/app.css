@@ -586,7 +586,10 @@ body.mode-oled {
 .swatch span { font-size: 11.5px; color: var(--md-on-surface-variant); }
 
 /* ---------------------------------------------------------- 提示 / 弹窗 */
-.toast-host { position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%); z-index: 90; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+/* 层级从低到高：fab 40 < 播放条 60 < 视频覆盖层 90 < 弹窗 95 < 轻提示 100。
+   轻提示必须比一切都高（它是唯一的反馈出口，被盖住就等于没提示）；
+   弹窗必须高于视频覆盖层，否则覆盖层上开出来的确认框会被整块盖死、点不到。 */
+.toast-host { position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%); z-index: 100; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
 .toast {
   background: var(--md-inverse-surface); color: var(--md-inverse-on-surface);
   padding: 12px 20px; border-radius: 8px; font-size: 13.5px;
@@ -595,7 +598,7 @@ body.mode-oled {
 }
 @keyframes toast-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
-.dialog-host { position: fixed; inset: 0; z-index: 80; display: none; align-items: center; justify-content: center; background: color-mix(in srgb, var(--md-scrim) 42%, transparent); }
+.dialog-host { position: fixed; inset: 0; z-index: 95; display: none; align-items: center; justify-content: center; background: color-mix(in srgb, var(--md-scrim) 42%, transparent); }
 .dialog-host.open { display: flex; }
 .dialog {
   background: var(--md-surface-container-high); color: var(--md-on-surface);
@@ -714,3 +717,50 @@ body.mode-oled {
   .fab { right: 16px; bottom: 84px; }
   .dialog { border-radius: 20px; padding: 18px; }
 }
+
+
+/* ---------------------------------------------------------- 底部播放条 */
+.player-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 18px;
+  background: var(--md-surface-container-high);
+  border-top: 1px solid var(--md-outline-variant);
+  box-shadow: 0 -4px 18px color-mix(in srgb, var(--md-scrim) 22%, transparent);
+}
+.player-bar[hidden] { display: none; }
+.player-bar .pb-info { min-width: 0; flex: 1; }
+.player-bar .pb-title { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-bar .pb-sub { font-size: 12px; opacity: .7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.player-bar .pb-time { font-size: 12px; opacity: .75; font-variant-numeric: tabular-nums; }
+.player-bar .pb-progress { flex: 2; height: 4px; border-radius: 2px; background: var(--md-outline-variant); cursor: pointer; position: relative; }
+.player-bar .pb-progress > i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--md-primary); border-radius: 2px; }
+.player-bar .pb-buttons { display: flex; align-items: center; gap: 2px; }
+.player-bar .pb-buttons .btn { min-width: 36px; padding: 6px; }
+.player-bar .btn.active { color: var(--md-primary); }
+body.has-player .slab { padding-bottom: 74px; }
+
+
+/* ---------------------------------------------------------- 视频覆盖层 */
+.video-host { position: fixed; inset: 0; z-index: 90; display: none;
+  background: color-mix(in srgb, var(--md-scrim) 82%, transparent);
+  align-items: center; justify-content: center; padding: 24px; }
+.video-host.open { display: flex; }
+.video-frame { position: relative; width: min(1200px, 96vw); max-height: 92vh;
+  background: var(--md-surface-container-high); border-radius: 16px; overflow: hidden;
+  display: flex; flex-direction: column; box-shadow: var(--elev-3); }
+/* 不能叫 .video-title：解析页那张卡的标题也用这个名字，两套字号/内边距会互相污染 */
+.video-overlay-title { padding: 10px 52px 10px 16px; font-size: 13.5px; font-weight: 600;
+  flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.video-close { position: absolute; top: 6px; right: 8px; min-width: 36px; padding: 6px; }
+/* 标题和剪辑工具栏都 flex:none，让"富余空间不够时只压视频"：
+   原来只给视频留了 44px 的余量（标题+工具栏实际要 100px），
+   于是标题被 flex 压成 0 行高（overflow:hidden 让自动最小尺寸变成 0，文字直接被裁没），
+   工具栏则被 .video-frame 的 overflow:hidden 切掉一截。 */
+.video-player { display: block; width: 100%; flex: 0 1 auto; min-height: 0;
+  max-height: none; object-fit: contain; background: #000; }
+
+.video-tools { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  border-top: 1px solid var(--md-outline-variant); flex-wrap: wrap; flex: none; }
+.trim-input { width: 110px; padding: 5px 8px; font-size: 12.5px; }
+.trim-note { font-size: 12px; opacity: .8; }

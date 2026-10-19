@@ -137,7 +137,12 @@ def test_own_directory():
     fresh = sb / "新视频"
     got2 = _own_directory(fresh)
     check(got2 == fresh and (fresh / DIR_MARKER).is_file(), "全新目录建好并打标记")
-    check(_own_directory(fresh) == fresh, "自己的目录可复用（断点续传）")
+    # 复用要先把目录"还回去"——生产侧在任务结束时调 _release_directory（tasks.py:445），
+    # 测试里也要照做，否则第二次拿到的必然是 "x (2)"（这是并发保护，不是回归）
+    from videograb.tasks import _release_directory
+    check(_own_directory(fresh) != fresh, "任务未结束时不会把同一目录给第二个任务")
+    _release_directory(fresh)                      # 模拟任务结束
+    check(_own_directory(fresh) == fresh, "任务结束后自己的目录可复用（断点续传）")
 
     got3 = _own_directory(user)
     check(got3 != user and got3.name.endswith(")"), "再次遇到用户目录继续换序号")
@@ -260,6 +265,65 @@ def test_transcode_unique():
     check(n1 != n2, "连续调用不会给出同一个名字")
 
 
+# ---------------------------------------------------------------- M. 接口路径收敛
+def test_api_path_guard():
+    print("\nM. 接口输出目录收敛 / 请求体类型校验")
+    from videograb import server as S
+    from videograb.config import Context, Settings
+
+    sb = sandbox("apiguard")
+    downloads = sb / "downloads"
+    music = downloads / "音乐"
+    music.mkdir(parents=True, exist_ok=True)
+    ctx = Context(Settings(download_dir=str(downloads), music_dir=str(music)))
+
+    src = touch(downloads / "素材" / "video.mp4")
+    check(S._inside_output_root(downloads / "out", ctx, src) is True,
+          "下载目录里的子目录：放行")
+    check(S._inside_output_root(music, ctx, src) is True, "音乐目录：放行")
+    check(S._inside_output_root(src.parent, ctx, src) is True, "视频自己所在的目录：放行")
+    for bad in ("C:\\Windows", "C:\\Users\\Public", str(sb / ".."), "..\\..\\..\\escape"):
+        check(S._inside_output_root(bad, ctx, src) is False, "拒绝 " + repr(bad))
+    check(S._inside_output_root(downloads / ".." / "..", ctx, src) is False,
+          "拒绝：从允许目录里用 .. 爬出去")
+
+    try:
+        S._as_str_list({"paths": 123}, "paths", "视频路径")
+        got = None
+    except S.ApiError as exc:
+        got = exc
+    check(isinstance(got, S.ApiError), "paths 传整数 -> ApiError(400)，不是 TypeError(500)")
+    check(S._as_str_list({"paths": ["a", "b"]}, "paths", "路径") == ["a", "b"], "正常数组照常返回")
+    check(S._as_str_list({"paths": "abc"}, "paths", "路径") == ["abc"],
+          "单个字符串当成一项，不会被拆成 a/b/c")
+
+
+# ---------------------------------------------------------------- N. 歌单落盘校验
+def test_playlist_guard():
+    print("\nN. 空歌单不再写进 playlists.json")
+    from videograb import playlist as P
+
+    sb = sandbox("playlist")
+    old_path, old_dir = P.PLAYLISTS_PATH, P.DATA_DIR
+    P.PLAYLISTS_PATH, P.DATA_DIR = sb / "playlists.json", sb
+    try:
+        for bad in (None, {}, {"id": "1"}, {"site": "wangyi"},
+                    {"id": "1", "site": "wangyi", "songs": "不是数组"}):
+            try:
+                P.add_local(bad)
+                rejected = False
+            except ValueError:
+                rejected = True
+            check(rejected, "拒绝非法歌单：" + repr(bad)[:60])
+        entry = P.add_local({"id": "42", "site": "wangyi", "title": "测试",
+                             "songs": [{"name": "a"}]})
+        check(entry["id"] == "42" and len(P.load_local()) == 1, "合法歌单正常保存")
+        check(P.remove_local("wangyi", "42") is True and P.load_local() == [],
+              "按 id+site 正常删除")
+    finally:
+        P.PLAYLISTS_PATH, P.DATA_DIR = old_path, old_dir
+
+
 # ---------------------------------------------------------------- L. 附加文件作用域
 def test_extras_scope():
     print("\nL. 封面/弹幕等附加文件写在任务目录内")
@@ -277,7 +341,8 @@ def main():
     for fn in (test_resolve_target, test_drive_root, test_uninstall_existing,
                test_conflicts, test_own_directory, test_delete_task_files,
                test_safe_relative, test_remover, test_self_delete,
-               test_real_install, test_transcode_unique, test_extras_scope):
+               test_real_install, test_transcode_unique, test_extras_scope,
+               test_api_path_guard, test_playlist_guard):
         try:
             fn()
         except Exception as exc:

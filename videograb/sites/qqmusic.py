@@ -318,14 +318,14 @@ class QQMusicSite(SiteAdapter):
                 f"QQ音乐没有给匿名身份下发播放地址（{detail}）。"
                 + ("这首歌是付费 / 会员歌曲（pay_play=1），免登录连 128K 都不下发；"
                    if pay else "这首歌当前没有可用的免费档；")
-                + "请在「我的」→「QQ音乐」填 qqmusic_cookie 后重试。")
+                + "请在「设置 → 平台登录」→「QQ音乐」填 qqmusic_cookie 后重试。")
 
         if want and want not in got:
             available = "、".join(_TIERS[t][2] for t in sorted(got))
             raise SiteUnavailable(
                 f"QQ音乐没有下发「{_TIERS[want][2]}」（免登录只有免费歌曲的 128K；"
                 f"320K / 无损 / Hi-Res 需要登录且要有对应会员），当前只能拿到：{available}。"
-                "请在「我的」→「QQ音乐」填 qqmusic_cookie。")
+                "请在「设置 → 平台登录」→「QQ音乐」填 qqmusic_cookie。")
 
         chosen = want or max(got)
         tier_qn, url, size, ext = got[chosen]

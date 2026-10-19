@@ -270,7 +270,7 @@ class NeteaseSite(SiteAdapter):
 
         if want in _LOGIN_TIERS and not cookie:
             raise SiteUnavailable(
-                f"网易云的「{_TIERS[want][1]}」需要登录后才会下发：请在「我的」→「网易云音乐」里"
+                f"网易云的「{_TIERS[want][1]}」需要登录后才会下发：请在「设置 → 平台登录」→「网易云音乐」里"
                 f"填 MUSIC_U Cookie。免登录实测最高只能拿到「{_TIERS[2][1]}」。")
 
         # 候选档位：匿名只有前两档，带 Cookie 才去试无损 / Hi-Res
@@ -288,7 +288,7 @@ class NeteaseSite(SiteAdapter):
                     f"这首歌是网易云会员歌曲（fee=1），{who}拿不到播放地址"
                     "（接口回 code=-110、url 为空）。"
                     + ("请换一个有会员的 MUSIC_U Cookie。"
-                       if cookie else "请在「我的」→「网易云音乐」填 MUSIC_U Cookie 后重试。"))
+                       if cookie else "请在「设置 → 平台登录」→「网易云音乐」填 MUSIC_U Cookie 后重试。"))
             raise SiteUnavailable(
                 f"网易云没有给{who}下发任何可用的播放地址（接口 code 非 200 或 url 为空）。"
                 "多半是版权下架或地区限制；有 MUSIC_U Cookie 的话填上再试。")

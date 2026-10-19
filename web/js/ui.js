@@ -34,10 +34,15 @@ export function clear(node) {
   return node;
 }
 
-/** 带图标的按钮。 */
-export function button(label, { variant = '', iconName = '', onClick, title, disabled } = {}) {
+/** 带图标的按钮。
+ *
+ *  class 里的额外类会被合并进来 —— 播放条要用 'active' 高亮乱序/循环状态，
+ *  以前这个字段被无声丢掉，导致按钮永远是默认色。
+ */
+export function button(label, { variant = '', iconName = '', onClick, title, disabled, class: extra = '' } = {}) {
+  const classes = [...new Set(('btn ' + variant + ' ' + extra).split(/\s+/).filter(Boolean))].join(' ');
   return h('button', {
-    class: 'btn ' + variant,
+    class: classes,
     title,
     disabled: disabled || false,
     onclick: onClick,

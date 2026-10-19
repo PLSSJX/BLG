@@ -1,5 +1,6 @@
 /** 四个主页面，导航结构对齐 Kazumi 的 推荐 / 时间表 / 追番 / 我的。 */
 import { api } from './api.js';
+import { playQueue, playFile, player, openVideo } from './player.js';
 import { icon } from './icons.js';
 import {
   h, clear, card, button, chip, switchRow, field, pill, toast, dialog,
@@ -42,9 +43,8 @@ export function renderHome(view) {
         store.config.logged_in ? 'ok' : 'mute') : null,
       buildQuitButton()),
     h('p', { class: 'page-sub' },
-      '粘贴链接或 App 分享文案即可。支持 B站 / 抖音 / 小红书 / 芒果TV / 腾讯视频 / 优酷 / 爱奇艺，' +
-      '以及网易云音乐 / QQ音乐 / 酷狗音乐 / 酷我音乐（音乐可选音质与格式）。' +
-      '程序会自动识别平台，并列出真实可下载的档位。'),
+      '粘贴视频链接或 App 分享文案即可。程序会自动识别平台，并列出真实可下载的档位。'
+      + '音乐平台请到左边的「音乐」页处理。'),
     buildSearchCard(),
   );
 
@@ -56,8 +56,11 @@ export function renderHome(view) {
     page.append(h('div', { style: { marginTop: '12px' } },
       emptyState('search', '还没有解析任何视频',
         '在上面的输入框里粘贴一个视频链接或分享文案，然后点「解析」。')));
-    page.append(buildLocalCard());
   }
+
+  // 通道体检并进解析页了 —— 它本来就是"这个视频能用哪些通道"，和最上面那张卡片是一回事
+  const probe = buildProbeSection();
+  if (probe) page.append(probe);
 
   view.append(page);
 }
@@ -66,6 +69,344 @@ export function renderHome(view) {
 
 /** 把音乐平台的加密文件解密、再转成用户选的通用格式。
     浏览器拿不到真实路径，所以走系统文件对话框，整条链路都留在本机。 */
+function buildMusicSearchCard() {
+  // 用多行输入：一行一个地址，可以一次贴一整张歌单的所有歌曲链接
+  const input = h('textarea', {
+    class: 'input',
+    rows: 3,
+    style: { resize: 'vertical', minHeight: '72px', fontFamily: 'inherit' },
+    placeholder: '一行一个音乐链接，例如：\nmusic.163.com/song?id=xxx\ny.qq.com/n/ryqq/songDetail/xxx',
+    oninput: (e) => { store.musicInput = e.target.value; },
+  });
+  input.value = store.musicInput || '';
+
+  const lines = () => (store.musicInput || '').split('\n').map((s) => s.trim()).filter(Boolean);
+
+  const status = h('div', { class: 'card-desc', style: { marginTop: '8px' } });
+  const paint = () => {
+    const n = lines().length;
+    clear(status).append(n > 1 ? ('共 ' + n + ' 个地址，可以一次全部下载') : '');
+  };
+  input.addEventListener('input', paint);
+  paint();
+
+  return card(
+    h('div', { class: 'card-title', html: icon('headphones', 'outlined', 20) + '<span>音乐地址</span>' }),
+    h('div', { class: 'card-desc' },
+      '支持：' + ((store.config?.sites || []).filter((s) => s.media === 'music').map((s) => s.name).join(' · ')
+        || '网易云音乐 · QQ音乐 · 酷狗音乐 · 酷我音乐')),
+    h('div', { style: { marginTop: '10px' } }, input),
+    // 歌单支持情况说明：放在真正点「解析歌单」的地方
+    h('div', { class: 'hint-box', style: { marginTop: '10px' } },
+      h('span', { html: icon('info', 'outlined', 20) }),
+      h('div', {},
+        h('b', {}, '歌单支持情况：'),
+        h('div', {}, '✅ 网易云、QQ音乐 —— 可直接解析整张歌单'),
+        h('div', {}, '❌ 酷我 —— 老接口只剩元数据（能读出歌单名和曲目数），歌曲列表已被移除；新接口有反爬'),
+        h('div', {}, '❌ 酷狗 —— 接口需要 md5 签名，未接入'),
+        h('div', {}, '❌ Spotify —— API 需要 OAuth，且本身不提供音频流，可用下面的「换源搜索」'),
+        h('div', { style: { marginTop: '6px', opacity: '.85' } },
+          '上面三家单曲链接仍可尝试直接解析下载，只是「整张歌单」用不了。'))),
+    h('div', { class: 'btn-row', style: { marginTop: '10px' } },
+      button('解析第一个', { variant: 'tonal', iconName: 'search', onClick: () => {
+        const first = lines()[0];
+        if (!first) { toast('请先粘贴音乐链接'); return; }
+        store.musicInput = first;           // 只解析第一条
+        runMusicParse();
+      } }),
+      button('解析歌单', { variant: 'tonal', iconName: 'music_note', onClick: async (e) => {
+        const raw = (store.musicInput || '').trim().split('\n').map((s) => s.trim()).filter(Boolean)[0] || '';
+        if (!raw) { toast('请先粘贴歌单链接'); return; }
+        const btn = e.currentTarget; btn.disabled = true;
+        clear(status).append(busy('正在解析歌单…'));
+        try {
+          const pl = await api.playlistFetch(raw);
+          playlistState.data = pl;
+          clear(status).append(
+            pill('《' + pl.title + '》' + pl.count + ' 首', 'ok'),
+            '(' + (pl.songs || []).slice(0, 3).map((s) => s.name).join('、') + '…)');
+          renderMusic(document.getElementById('view'));
+          setTimeout(() => {
+            const host = document.getElementById('view');
+            const box = host?.querySelector('#playlistResult');
+            if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 120);
+        } catch (err) {
+          clear(status).append(h('div', { class: 'hint-box' },
+            h('span', { html: icon('error_outline', 'outlined', 20) }), h('div', {}, err.message)));
+        }
+        btn.disabled = false;
+      } }),
+      button('全部下载', { iconName: 'download', onClick: async (e) => {
+        const items = lines();
+        if (!items.length) { toast('请先粘贴音乐链接'); return; }
+        const btn = e.currentTarget; btn.disabled = true;
+        clear(status).append(busy('正在批量创建下载任务…'));
+        let ok = 0, bad = 0;
+        for (const item of items) {
+          try {
+            await api.submit({ input: item, engine: 'auto', qn: 0, mode: 'auto' });
+            ok += 1;
+          } catch (err) {
+            bad += 1;
+          }
+        }
+        btn.disabled = false;
+        clear(status).append(pill('已创建 ' + ok + ' 个任务' + (bad ? '，' + bad + ' 个失败' : ''), bad ? 'warn' : 'ok'));
+        document.dispatchEvent(new CustomEvent('tasks-changed'));
+      } })),
+    status,
+    (playlistState.data ? h('div', { id: 'playlistResult', style: { marginTop: '14px' } },
+      pill('《' + playlistState.data.title + '》' + playlistState.data.count + ' 首', 'ok'),
+      h('div', { class: 'btn-row', style: { marginTop: '10px' } },
+        button('全部加入下载', { iconName: 'download', onClick: async (e) => {
+          const btn = e.currentTarget; btn.disabled = true;
+          let ok = 0, bad = 0;
+          for (const s of (playlistState.data.songs || [])) {
+            try { await api.submit({ input: s.url, engine: 'auto', qn: 0, mode: 'auto' }); ok += 1; }
+            catch (err) { bad += 1; }
+          }
+          btn.disabled = false;
+          toast('已创建 ' + ok + ' 个任务' + (bad ? '，' + bad + ' 个失败' : ''), 5000);
+          document.dispatchEvent(new CustomEvent('tasks-changed'));
+        } }),
+        button('保存为本地歌单', { variant: 'tonal', iconName: 'save', onClick: async () => {
+          try {
+            await api.playlistSave(playlistState.data);
+            playlistState.local = null;
+            toast('已保存到本地歌单');
+            renderMusic(document.getElementById('view'));
+          } catch (err) { toast('保存失败：' + err.message); }
+        } })),
+      h('div', { style: { maxHeight: '200px', overflow: 'auto', marginTop: '10px' } },
+        ...(playlistState.data.songs || []).map((s, i) => h('div', {
+          style: { padding: '3px 0', borderBottom: '1px solid var(--md-outline-variant)', fontSize: '13px' },
+        }, (i + 1) + '. ' + s.name + ' — ' + s.artist)))
+    ) : null),
+  );
+}
+
+async function runMusicParse() {
+  const raw = (store.musicInput || '').trim();
+  if (!raw) { toast('请先粘贴音乐链接'); return; }
+  // 复用解析页那套流程：它会把结果按媒体类型渲染回音乐页
+  store.input = raw;
+  const view = document.getElementById('view');
+  const btn = view.querySelector('.search-field .btn');
+  const original = btn?.innerHTML;
+  if (btn) { btn.disabled = true; btn.innerHTML = ''; btn.append(busy('解析中')); }
+  try {
+    store.parsed = await api.parse(raw, 'auto');
+    if (!store.parsed?.info) throw new Error('接口没有返回信息');
+    if (store.parsed.info.media !== 'music') toast('这个链接不是音乐平台的内容，已按视频处理');
+    store.page = 1; store.selectedPages = new Set([1]); store.qn = 0; store.play = null;
+    (store.parsed.info.media === 'music' ? renderMusic : renderHome)(view);
+    loadStreams();
+  } catch (error) {
+    toast('解析失败：' + error.message.split('\n')[0], 5200);
+    if (btn && original) { btn.disabled = false; btn.innerHTML = original; }
+  }
+}
+
+const swapState = { items: null, q: '' };
+
+/** 换源搜索：Spotify 这类只给元数据、不给音频流的平台，靠"按名字去别家找"来落地。 */
+function buildSourceSwapCard() {
+  const input = h('input', {
+    class: 'input',
+    placeholder: '歌名 + 歌手，例如：First Love 宇多田',
+    value: swapState.q,
+    oninput: (e) => { swapState.q = e.target.value; },
+    onkeydown: (e) => { if (e.key === 'Enter') runSearch(); },
+  });
+  const holder = h('div', { style: { marginTop: '10px' } });
+
+  async function runSearch() {
+    const q = (swapState.q || '').trim();
+    if (!q) { toast('请输入歌名'); return; }
+    clear(holder).append(h('div', { class: 'card-desc' }, busy('正在搜索…')));
+    try {
+      const r = await api.musicSearch(q, 10);
+      swapState.items = r.items || [];
+    } catch (err) {
+      clear(holder).append(h('div', { class: 'hint-box' },
+        h('span', { html: icon('error_outline', 'outlined', 20) }), h('div', {}, err.message)));
+      return;
+    }
+    paintResults();
+  }
+
+  function paintResults() {
+    clear(holder);
+    const items = swapState.items || [];
+    if (!items.length) { holder.append(h('div', { class: 'card-desc' }, '没有搜到。换个「歌名 歌手」试试。')); return; }
+    holder.append(h('div', { class: 'btn-row', style: { marginBottom: '8px' } },
+      button('全部加入下载', { iconName: 'download', onClick: async (e) => {
+        const btn = e.currentTarget; btn.disabled = true;
+        let ok = 0;
+        for (const s of items) {
+          try { await api.submit({ input: s.url, engine: 'auto', qn: 0, mode: 'auto' }); ok += 1; } catch (err) {}
+        }
+        btn.disabled = false;
+        toast('已创建 ' + ok + ' 个任务');
+        document.dispatchEvent(new CustomEvent('tasks-changed'));
+      } })),
+      ...items.map((s, i) => h('div', {
+        style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0', borderBottom: '1px solid var(--md-outline-variant)' },
+      },
+        h('div', { style: { flex: '1', minWidth: '0' } },
+          h('div', { style: { fontSize: '13.5px' } }, (i + 1) + '. ' + s.name),
+          h('div', { class: 'card-desc', style: { margin: '2px 0 0' } }, s.artist)),
+        // 标出这条结果来自哪个平台 —— 换源搜索的意义就在于跨平台找
+        pill(s.site_name || (s.site === 'qqmusic' ? 'QQ音乐' : s.site === 'wangyi' ? '网易云音乐' : (s.site || '未知')),
+          s.site === 'wangyi' ? 'ok' : 'mute'),
+        button('下载', { variant: 'text', iconName: 'download', onClick: async () => {
+          try {
+            await api.submit({ input: s.url, engine: 'auto', qn: 0, mode: 'auto' });
+            toast('已加入下载队列');
+            document.dispatchEvent(new CustomEvent('tasks-changed'));
+          } catch (err) { toast('提交失败：' + err.message); }
+        } }))));
+  }
+  if (swapState.items) paintResults();
+
+  return card(
+    h('div', { class: 'card-title', html: icon('sync', 'outlined', 20) + '<span>换源搜索（Spotify 等）</span>' }),
+    h('div', { class: 'card-desc' },
+      'Spotify 的接口只提供歌曲信息、**不提供音频流**，所以没法直接下载。'
+      + '这里的做法是：按「歌名 + 歌手」去网易云搜同名歌曲，再从那边下载。'),
+    h('div', { class: 'hint-box', style: { marginTop: '8px' } },
+      h('span', { html: icon('info', 'outlined', 20) }),
+      h('div', {},
+        '当前这台机器访问 open.spotify.com 会超时，所以连 Spotify 的歌名也读不到。'
+        + '要支持「粘贴 Spotify 链接自动换源」，需要能连通 Spotify 的网络环境。')),
+    h('div', { class: 'search-field', style: { marginTop: '10px' } }, input,
+      button('搜索', { iconName: 'search', onClick: runSearch })),
+    holder,
+  );
+}
+
+const libraryState = { items: null, dir: '' };
+
+function buildMusicLibraryCard() {
+  const holder = h('div', {});
+  const paint = () => {
+    clear(holder);
+    if (!libraryState.items) {
+      api.musicList().then((r) => { libraryState.items = r.items || []; libraryState.dir = r.dir || ''; paint(); })
+        .catch(() => { libraryState.items = []; paint(); });
+      holder.append(h('div', { class: 'card-desc' }, busy('正在扫描音乐目录…')));
+      return;
+    }
+    if (!libraryState.items.length) {
+      holder.append(emptyState('music_note', '音乐目录里还没有文件',
+        '下载、转码或从视频提取的音轨会出现在这里，也可以直接导入本地歌曲。'),
+        h('div', { class: 'btn-row', style: { justifyContent: 'center', marginTop: '10px' } },
+          button('导入本地歌曲', { variant: 'tonal', iconName: 'upload', onClick: async () => {
+            try {
+              const picked = await api.pickLocalFiles();
+              if (picked.cancelled) return;
+              const r = await api.importMusic(picked.paths || []);
+              toast(r.done.length ? '已导入 ' + r.done.length + ' 首' : '导入失败', 4000);
+              libraryState.items = null;
+              paint();
+            } catch (err) { toast('导入失败：' + err.message); }
+          } })));
+      return;
+    }
+    const list = libraryState.items.map((item, i) => h('div', {
+      style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0', borderBottom: '1px solid var(--md-outline-variant)' },
+    },
+      h('div', { style: { flex: '1', minWidth: '0' } },
+        h('div', { style: { fontSize: '13.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, item.name),
+        h('div', { class: 'card-desc', style: { margin: '2px 0 0' } }, fmtSize(item.size))),
+      button('播放', { variant: 'text', iconName: 'play_arrow', onClick: () => {
+        playQueue(libraryState.items.map((x) => ({ path: x.path, name: x.name })), i);
+      } })));
+    holder.append(
+      h('div', { class: 'btn-row', style: { marginBottom: '8px' } },
+        button('全部播放', { variant: 'tonal', iconName: 'play_arrow', onClick: () => {
+          playQueue(libraryState.items.map((x) => ({ path: x.path, name: x.name })), 0);
+        } }),
+        button('乱序播放', { variant: 'tonal', iconName: 'refresh', onClick: () => {
+          // 必须先置位再 playQueue：只有 playQueue 内部会按 shuffle 重排队列，
+          // 反过来写队列原样不动，按钮只是把标志翻了一下。
+          player.shuffle = true;
+          playQueue(libraryState.items.map((x) => ({ path: x.path, name: x.name })), 0);
+        } }),
+        button('导入本地歌曲', { variant: 'tonal', iconName: 'upload', onClick: async () => {
+          try {
+            const picked = await api.pickLocalFiles();
+            if (picked.cancelled) return;
+            const r = await api.importMusic(picked.paths || []);
+            toast(r.done.length
+              ? '已导入 ' + r.done.length + ' 首' + (r.failed.length ? '，' + r.failed.length + ' 个失败' : '')
+              : '导入失败：' + ((r.failed[0] || {}).error || '没有可导入的文件'), 5000);
+            libraryState.items = null;
+            paint();
+          } catch (err) { toast('导入失败：' + err.message); }
+        } }),
+        button('刷新', { variant: 'text', iconName: 'refresh', onClick: () => {
+          libraryState.items = null; paint();
+        } })),
+      h('div', { style: { maxHeight: '320px', overflow: 'auto' } }, ...list));
+  };
+  paint();
+  return card(
+    h('div', { class: 'card-title', html: icon('music_note', 'outlined', 20) + '<span>歌曲列表</span>' }),
+    h('div', { class: 'card-desc' }, '扫自音乐下载目录，点「播放」即可在应用内听，支持乱序与循环。'),
+    h('div', { style: { marginTop: '10px' } }, holder),
+  );
+}
+
+const playlistState = { data: null, local: null };
+
+function buildPlaylistCard() {
+  const holder = h('div', {});
+  const paint = () => {
+    clear(holder);
+    if (!playlistState.local) {
+      api.playlistList().then((r) => { playlistState.local = r.playlists || []; paint(); }).catch(() => { playlistState.local = []; paint(); });
+      holder.append(h('div', { class: 'card-desc' }, busy('正在读取本地歌单…')));
+      return;
+    }
+    if (!playlistState.local.length) {
+      holder.append(emptyState('music_note', '还没有本地歌单',
+        '在上面粘贴歌单链接，点「解析歌单」，然后保存到本地。'));
+      return;
+    }
+    for (const pl of playlistState.local) {
+      holder.append(h('div', { style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid var(--md-outline-variant)' } },
+        h('div', { style: { flex: '1' } },
+          h('b', {}, pl.title),
+          h('div', { class: 'card-desc', style: { margin: '2px 0 0' } }, (pl.songs || []).length + ' 首')),
+        button('全部下载', { variant: 'text', iconName: 'download', onClick: async (e) => {
+          const btn = e.currentTarget; btn.disabled = true;
+          let ok = 0;
+          for (const s of (pl.songs || [])) {
+            try { await api.submit({ input: s.url, engine: 'auto', qn: 0, mode: 'auto' }); ok += 1; } catch (err) {}
+          }
+          btn.disabled = false;
+          toast('已创建 ' + ok + ' 个下载任务');
+          document.dispatchEvent(new CustomEvent('tasks-changed'));
+        } }),
+        button('移除', { variant: 'text', iconName: 'delete', onClick: async () => {
+          await api.playlistRemove(pl.site, pl.id);
+          playlistState.local = (playlistState.local || []).filter((x) => x !== pl);
+          paint();
+        } })));
+    }
+  };
+  paint();
+
+  return card(
+    h('div', { class: 'card-title', html: icon('music_note', 'outlined', 20) + '<span>我的歌单</span>' }),
+    h('div', { class: 'card-desc' }, '解析过的歌单保存在本机 data/playlists.json，随时可以整体重新下载。'),
+
+    h('div', { style: { marginTop: '10px' } }, holder),
+  );
+}
+
 function buildLocalCard() {
   store.localFiles = store.localFiles || [];
   const list = h('div', { class: 'local-list' });
@@ -184,9 +525,10 @@ function buildSearchCard() {
     h('div', { style: { marginTop: '14px', display: 'flex', gap: '12px', alignItems: 'flex-end', flexWrap: 'wrap' } },
       h('div', { style: { minWidth: '260px', flex: '1' } },
         field('抓取通道', h('div', { class: 'select-wrap' }, engineSelect))),
+      // 体检区现在就在本页下方，直接把结果跑出来就行，不用再跳页面
       button('全部通道体检', { variant: 'outlined', iconName: 'science', onClick: () => {
         store.probeInput = store.input;
-        document.dispatchEvent(new CustomEvent('navigate', { detail: 'matrix' }));
+        runProbe();
       } })),
   );
   return card1;
@@ -196,7 +538,9 @@ function buildSearchCard() {
 function platformHintText() {
   const sites = store.config?.sites || [];
   if (!sites.length) return '正在加载支持的平台…';
-  return '支持：' + sites.map((s) => s.name).join(' · ');
+  // 音乐平台有自己的页面，这里只列视频平台，免得两处重复
+  const video = sites.filter((s) => s.media !== 'music');
+  return '支持：' + (video.length ? video : sites).map((s) => s.name).join(' · ');
 }
 
 function siteOf(id) {
@@ -230,7 +574,14 @@ async function runParse() {
     store.selectedPages = new Set([1]);
     store.qn = 0;
     store.play = null;
-    renderHome(view);
+    // 音乐结果回音乐页，视频结果回解析页 —— 两个页面都能发起解析
+    const backToMusic = store.parsed.info.media === 'music';
+    if (backToMusic) {
+      // 在解析页粘了音乐链接：把这条链接原样带到音乐页，别让用户再粘一次
+      store.musicInput = input;
+      toast('这是音乐平台的链接，已跳到「音乐」页', 3600);
+    }
+    (backToMusic ? renderMusic : renderHome)(view);
     // 元数据先出来，再去取流，两段式让界面不至于长时间空白
     loadStreams();
   } catch (error) {
@@ -525,7 +876,12 @@ function buildDownloadCard() {
     streamHost,
     h('div', { class: 'btn-row', style: { marginTop: '16px' } },
       startBtn,
-      button('打开下载目录', { variant: 'text', iconName: 'folder_open', onClick: () => api.open() })),
+      button(store.parsed?.info?.media === 'music' ? '打开音乐目录' : '打开下载目录',
+        { variant: 'text', iconName: 'folder_open', onClick: () => {
+          // 音乐和视频分开放，这里要打开对应的那个
+          const music = store.parsed?.info?.media === 'music';
+          api.open(music ? (store.config?.settings?.music_dir || '') : '');
+        } })),
   );
 }
 
@@ -657,57 +1013,37 @@ export function isBilibili() {
   return currentSite() === 'bilibili';
 }
 
-export function renderMatrix(view) {
-  clear(view);
-  const page = h('div', { class: 'page' });
+/** 通道体检区。合并进解析页之后，非 B 站直接不显示（那 10 条通道是 B 站专属）。 */
+function buildProbeSection() {
   const input = h('input', {
     class: 'input', placeholder: 'B 站 BV 号或视频链接', value: store.probeInput || store.input || '',
     oninput: (e) => { store.probeInput = e.target.value; },
     onkeydown: (e) => { if (e.key === 'Enter') runProbe(); },
   });
 
-  const onBili = isBilibili();
-  const siteInfo = (store.config?.sites || []).find((s) => s.id === currentSite());
+  // 合并进解析页之后，只有 B 站才显示这块 —— 那 10 条通道是 B 站专属的
+  if (!isBilibili()) return null;
 
-  page.append(h('div', { class: 'page-head' }, h('h1', { class: 'page-title' }, '通道体检')));
-
-  if (!onBili) {
-    // 这 10 条通道是 B 站专属的，其它平台看到它们只会困惑
-    page.append(
-      h('p', { class: 'page-sub' },
-        '「通道体检」只对哔哩哔哩有意义 —— 那 10 条通道是 B 站的不同取流接口。'
-        + (siteInfo ? '当前是「' + siteInfo.name + '」，走的是单一的官方接口，没有可比较的备用通道。' : '')),
-      card(
-        h('div', { class: 'card-title', html: icon('hub', 'outlined', 20) + '<span>'
-          + (siteInfo ? siteInfo.name : '当前平台') + ' 的取流路径</span>' }),
-        h('div', { class: 'card-desc' },
-          (siteInfo?.note || '直接使用该平台自己的官方接口解析，拿到地址后交给同一个下载内核。')
-          + ' 想对比 B 站的多通道情况，请在上面解析一个 B 站视频后再回到这里。'),
-      ));
-    view.append(page);
-    return;
-  }
-
-  page.append(
-    h('p', { class: 'page-sub' },
-      '把同一个 B 站视频同时交给全部抓取通道，逐条报告真实结果。B 站的风控和接口策略经常变，' +
-      '这里显示的是「此刻这台机器上」的实测可用性，而不是写死的宣传。'),
+  const wrap = h('div', { style: { marginTop: '16px' } },
+    h('div', { class: 'section-label' }, '通道体检'),
     card(
-      h('div', { class: 'card-title', html: icon('science', 'outlined', 20) + '<span>通道体检</span>' }),
-      h('div', { class: 'card-desc' }, '体检会并发请求所有通道，大约需要 10～30 秒。'),
-      h('div', { class: 'search-field' }, input, button('开始体检', { iconName: 'bolt', onClick: () => runProbe() })),
-    ),
-  );
+      h('div', { class: 'card-title', html: icon('science', 'outlined', 20) + '<span>这个视频能用哪些通道</span>' }),
+      h('div', { class: 'card-desc' },
+        '把同一个视频同时交给全部抓取通道，逐条报告真实结果。B 站的风控和接口策略经常变，' +
+        '这里显示的是「此刻这台机器上」的实测可用性。体检会并发请求，约需 10～30 秒。'),
+      h('div', { class: 'search-field' }, input,
+        button('开始体检', { iconName: 'bolt', onClick: () => runProbe() })),
+    ));
 
-  if (store.probe) page.append(buildProbeResult());
-  view.append(page);
+  if (store.probe) wrap.append(buildProbeResult());
+  return wrap;
 }
 
 async function runProbe() {
   const input = (store.probeInput || store.input || '').trim();
   if (!input) { toast('请先填写 B 站视频地址或 BV 号'); return; }
   const view = document.getElementById('view');
-  renderMatrix(view);
+  renderHome(view);
   const host = view.querySelector('.page');
   const holder = h('div', { class: 'card', style: { marginTop: '8px' } },
     h('div', { class: 'card-desc' }, busy('正在把所有通道跑一遍，请稍候…')));
@@ -720,7 +1056,7 @@ async function runProbe() {
       h('div', {}, '体检失败：' + error.message)));
     return;
   }
-  renderMatrix(document.getElementById('view'));
+  renderHome(document.getElementById('view'));
 }
 
 function buildProbeResult() {
@@ -840,6 +1176,22 @@ function buildTaskCard(task) {
     actions.append(button('打开目录', { variant: 'text', iconName: 'folder_open', onClick: () => {
       api.open(task.directory);
     } }));
+    // 视频任务抽出音轨存成音乐，之后就能在「播放」页听
+    const vids = (task.files || []).filter((f) => f.kind === 'video' && /\.(mp4|mkv|webm|flv|ts|m4v)$/i.test(f.path || ''));
+    if (vids.length) {
+      actions.append(button('提取音轨', { variant: 'text', iconName: 'music_note', onClick: async (e) => {
+        const btn = e.currentTarget; btn.disabled = true;
+        try {
+          const r = await api.extractAudio(vids.map((v) => v.path), 'mp3');
+          toast(r.done.length
+            ? '已提取 ' + r.done.length + ' 个音轨到音乐目录，可在「播放」页收听'
+            : '提取失败：' + ((r.failed[0] || {}).error || '未知原因'), 5000);
+        } catch (err) {
+          toast('提取失败：' + err.message, 5000);
+        }
+        btn.disabled = false;
+      } }));
+    }
     // 删除分两种，都要先把"会不会删文件、删哪些"说清楚
     actions.append(button('移出列表', { variant: 'text', iconName: 'delete', onClick: async () => {
       const yes = await dialog({
@@ -849,7 +1201,7 @@ function buildTaskCard(task) {
       });
       if (yes) { await api.removeTask(task.id, false); refreshTasks(); }
     } }));
-    actions.append(button('删除并清理文件', { variant: 'text', iconName: 'delete_forever', onClick: async () => {
+    actions.append(button('删除并清理文件', { variant: 'text', iconName: 'delete', onClick: async () => {
       // 先把真正会被删掉的路径逐条列出来，用户确认后才动手
       let preview = { items: [], total: 0 };
       try { preview = await api.previewRemove(task.id); } catch (error) { toast('读取失败：' + error.message); return; }
@@ -884,8 +1236,13 @@ function buildTaskCard(task) {
   const files = (task.files || []).length
     ? h('div', { class: 'files' }, ...task.files.map((file) => h('button', {
         class: 'file-chip',
-        title: file.path,
-        onclick: () => window.open(api.mediaUrl(file.path), '_blank'),
+        title: file.path + '（点击在应用内播放）',
+        onclick: () => {
+          // 视频走覆盖层播放，音频走底部播放条 —— 都不再弹系统浏览器
+          const isVideo = file.kind === 'video' || /\.(mp4|mkv|webm|flv|ts|m4v)$/i.test(file.path || '');
+          if (isVideo) openVideo(file.path, file.name);
+          else playFile(file.path, file.name);
+        },
       }, h('span', { html: icon(
           file.kind === 'video' ? 'movie' : file.kind === 'audio' ? 'audiotrack'
           : file.kind === 'cover' ? 'image' : file.kind === 'nfo' ? 'description'
@@ -942,6 +1299,9 @@ export function renderSettings(view) {
       buildCredentialsCard(),
       buildDownloadCard2(settings),
       buildExtrasCard(settings),
+      buildBigjpgCard(settings),
+      buildMusicDirCard(settings),
+      buildFfmpegCard(),
       buildEnginesCard(),
       buildToolsCard(),
       buildSitesCard(),
@@ -1144,7 +1504,7 @@ function buildDownloadCard2(settings) {
     h('div', { class: 'card-title', html: icon('download', 'outlined', 20) + '<span>下载</span>' }),
     h('div', { class: 'card-desc' }, '多线程分块下载，支持断点续传；中断后重新下载会自动跳过已完成的块。'),
     field('下载目录', h('div', { class: 'search-field' }, dir,
-      button('选择…', { variant: 'tonal', iconName: 'folder', onClick: async () => {
+      button('选择…', { variant: 'tonal', iconName: 'folder_open', onClick: async () => {
         // 用系统文件夹选择框，避免手打路径出错
         try {
           const picked = await api.pickDownloadDir();
@@ -1175,6 +1535,93 @@ function buildDownloadCard2(settings) {
       }, false) })),
     switchRow('合并后保留原始分离流', '默认合并成功就删掉 .m4s / .m4a，打开后会保留在 _streams 目录',
       settings.keep_streams === true, (value) => saveSetting({ keep_streams: value }, false)),
+  );
+}
+
+function buildMusicDirCard(settings) {
+  const input = h('input', {
+    class: 'input', value: settings.music_dir || '',
+    placeholder: '留空 = 下载目录下的「音乐」子文件夹',
+  });
+  return card(
+    h('div', { class: 'card-title', html: icon('headphones', 'outlined', 20) + '<span>音乐下载目录</span>' }),
+    h('div', { class: 'card-desc' },
+      '音乐和视频分开放，避免混在一个文件夹里。留空则自动用「下载目录/音乐」。'),
+    h('div', { class: 'search-field', style: { marginTop: '10px' } }, input,
+      button('选择…', { variant: 'tonal', iconName: 'folder_open', onClick: async () => {
+        try {
+          const r = await api.pickMusicDir();
+          if (r.cancelled) return;
+          input.value = r.music_dir || input.value;
+          store.config.settings.music_dir = r.music_dir;
+          toast('音乐目录已改为：' + r.music_dir);
+        } catch (error) { toast('选择失败：' + error.message); }
+      } }),
+      button('打开', { variant: 'tonal', iconName: 'folder_open', onClick: () => api.open(input.value) })),
+    h('div', { class: 'btn-row', style: { marginTop: '10px' } },
+      button('保存', { onClick: () => saveSetting({ music_dir: input.value.trim() }, false) })),
+  );
+}
+
+function buildFfmpegCard() {
+  const holder = h('div', { class: 'card-desc' }, busy('正在检查…'));
+  const actions = h('div', { class: 'btn-row', style: { marginTop: '10px' } });
+
+  const refresh = async () => {
+    clear(holder); clear(actions);
+    let info = {};
+    try { info = await api.ffmpegStatus(); } catch (e) { clear(holder).append('检查失败：' + e.message); return; }
+    if (info.found) {
+      holder.append(h('div', {}, pill('已就绪', 'ok')),
+        h('div', { class: 'hint', style: { marginTop: '6px' } }, info.path));
+      actions.append(button('重新检查', { variant: 'text', iconName: 'refresh', onClick: refresh }));
+    } else {
+      holder.append('还没有 ffmpeg。转码、剪辑、音轨提取都需要它，第一次用到时再来这里下载即可。',
+        h('div', { class: 'hint', style: { marginTop: '6px' } },
+          '会下载到：' + (info.bin_dir || 'bin/') + '　·　来源：' + ((info.sources || []).join(' / ') || 'gyan.dev')));
+      actions.append(button('下载 ffmpeg', { iconName: 'download', onClick: async (e) => {
+        const btn = e.currentTarget; btn.disabled = true;
+        clear(holder).append(busy('正在下载并解压（约 115 MB，慢的话要几分钟），请稍候…'));
+        try {
+          const r = await api.ffmpegInstall();
+          toast('ffmpeg 已就绪' + (r.source ? '（' + r.source + '）' : ''));
+        } catch (err) {
+          toast('下载失败：' + err.message, 6000);
+        }
+        btn.disabled = false;
+        refresh();
+      } }));
+    }
+  };
+  refresh();
+
+  return card(
+    h('div', { class: 'card-title', html: icon('movie', 'outlined', 20) + '<span>ffmpeg（按需下载）</span>' }),
+    h('div', { class: 'card-desc' },
+      '安装包里不内置 ffmpeg（内置会让安装包大 100 MB 以上）。需要转码或剪辑时在这里下载一次即可，'
+      + '之后一直可用；也可以自己把别的版本丢进 bin/ 覆盖。'),
+    h('div', { style: { marginTop: '10px' } }, holder),
+    actions,
+  );
+}
+
+function buildBigjpgCard(settings) {
+  const key = h('input', {
+    class: 'input', type: 'password',
+    value: settings.bigjpg_key || '',
+    placeholder: '可选：bigjpg 的 X-API-KEY（留空就走免费通道）',
+  });
+  return card(
+    h('div', { class: 'card-title', html: icon('image', 'outlined', 20) + '<span>图片放大（bigjpg）</span>' }),
+    h('div', { class: 'card-desc' },
+      '默认走 bigjpg 网页版的免费通道，**不需要任何凭据**。下面的 API key 是可选的付费通道，'
+      + '一般用不上，留空即可。'),
+    h('div', { class: 'hint-box', style: { marginTop: '10px' } },
+      h('span', { html: icon('warning_amber', 'outlined', 20) }),
+      h('div', {}, '使用「图片」页时，你选择的图片会被上传到 bigjpg 的服务器处理。'
+        + '这是本程序唯一会把文件发到外部的地方。')),
+    h('div', { class: 'search-field', style: { marginTop: '12px' } }, key,
+      button('保存', { onClick: () => saveSetting({ bigjpg_key: key.value.trim() }, false) })),
   );
 }
 
@@ -1548,4 +1995,201 @@ function buildToolsCard() {
     h('div', { class: 'btn-row', style: { marginTop: '12px' } }, installBtn),
     h('div', { style: { marginTop: '10px' } }, info),
   );
+}
+
+/* ================================================================ 音乐 */
+
+export function renderMusic(view) {
+  clear(view);
+  const page = h('div', { class: 'page' },
+    h('div', { class: 'page-head' },
+      h('h1', { class: 'page-title' }, '音乐'),
+      h('div', { class: 'spacer' })),
+    h('p', { class: 'page-sub' },
+      '粘贴网易云 / QQ音乐 / 酷狗 / 酷我 的链接或分享文案即可下载；'
+      + '也可以把视频的音轨提取成音乐、把平台加密格式解密成通用音频，并在应用内播放、自建歌单。'),
+
+    buildMusicSearchCard(),
+    buildSourceSwapCard(),
+
+    // 解析出音乐后，复用解析页那两张卡（音质/格式选择 + 下载）
+    (store.parsed?.info?.media === 'music')
+      ? h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' } },
+          buildVideoCard(), buildDownloadCard())
+      : null,
+
+    buildLocalCard(),
+  );
+  view.append(page);
+}
+
+/* ================================================================ 音乐播放 */
+
+export function renderPlayer(view) {
+  clear(view);
+  const page = h('div', { class: 'page' },
+    h('div', { class: 'page-head' },
+      h('h1', { class: 'page-title' }, '播放'),
+      h('div', { class: 'spacer' }),
+      pill('应用内播放 · 支持乱序与循环', 'mute')),
+    h('p', { class: 'page-sub' },
+      '这里只管播放：歌曲来自音乐下载目录和保存过的歌单。下载、转码请到左侧「音乐」页。'),
+    buildMusicLibraryCard(),
+    buildPlaylistCard(),
+  );
+  view.append(page);
+}
+
+
+/* ================================================================ 图片（bigjpg） */
+
+const BIGJPG_FEATURES = [
+  ['最高 16 倍放大', '2x / 4x / 8x / 16x（免费账号只有 2x / 4x）'],
+  ['降噪强度五档', '无 / 低 / 中 / 高 / 最高 —— 越高越干净，但也更容易糊掉细节'],
+  ['照片与插画两种模式', '照片模式保留质感，卡通插画模式强化线条'],
+  ['批量处理', '一次提交多张，并发上传后逐张建任务'],
+  ['失败重试', '任务失败可以直接重试，不用重新上传'],
+];
+
+let bigjpgTimer = null;
+const bigjpgState = { paths: [], results: [], info: null };
+
+export function renderImage(view) {
+  if (bigjpgTimer) { clearInterval(bigjpgTimer); bigjpgTimer = null; }
+  clear(view);
+  const page = h('div', { class: 'page' });
+  page.append(
+    h('div', { class: 'page-head' },
+      h('h1', { class: 'page-title' }, '图片放大'),
+      h('div', { class: 'spacer' }),
+      pill('该页面使用 bigjpg', 'warn')),
+    h('p', { class: 'page-sub' },
+      '图片放大由第三方服务 bigjpg 提供。使用本页意味着你的图片会被上传到 bigjpg.cn 的服务器处理 —— '
+      + '这是本程序里唯一会把文件发到外部的地方，请自行判断是否接受。'),
+  );
+
+  // 卡片之间要有明确间距 —— 直接塞进裸 div 会失去 .page 里各卡片自己的外边距，
+  // 三张卡片就会粘在一起。用 flex + gap 强制分开。
+  const infoHolder = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
+  page.append(h('div', { style: { marginTop: '12px' } }, infoHolder));
+
+  function paintInfo() {
+    clear(infoHolder);
+    const info = bigjpgState.info;
+    const feats = card(
+      h('div', { class: 'card-title', html: icon('image', 'outlined', 20) + '<span>bigjpg 提供的功能</span>' }),
+      h('div', { class: 'card-desc' }, '以下能力来自 bigjpg 官方接口，不是本程序自研的算法。'),
+      h('div', { style: { marginTop: '10px' } },
+        ...BIGJPG_FEATURES.map(([t, d]) => h('div', { style: { marginBottom: '8px' } },
+          h('b', {}, t),
+          h('div', { class: 'card-desc', style: { margin: '2px 0 0' } }, d)))),
+    );
+    infoHolder.append(feats);
+    infoHolder.append(card(
+      h('div', { class: 'card-title', html: icon('check_circle', 'outlined', 20) + '<span>免费通道已就绪</span>' }),
+      h('div', { class: 'card-desc' },
+        '用的是 bigjpg 官网自己在用的接口 —— 不需要注册、不需要登录、不需要 API key。'
+        + '免费额度用完时 bigjpg 会返回 requires_vip，界面会如实显示。'),
+    ));
+  }
+
+  if (bigjpgState.info) paintInfo();
+  else api.bigjpgInfo().then((d) => { bigjpgState.info = d; paintInfo(); }).catch(() => paintInfo());
+
+  // ---- 选择图片 + 参数 ----
+  const pickLabel = h('div', { class: 'card-desc' },
+    bigjpgState.paths.length ? ('已选择 ' + bigjpgState.paths.length + ' 张：' + bigjpgState.paths.map((p) => p.split(/[\\/]/).pop()).join('、'))
+      : '支持 jpg / png / bmp / webp，单张不超过 20 MB。');
+  const styleSel = h('select', { class: 'input' },
+    Object.entries(bigjpgState.info?.styles || { art: '卡通插画', photo: '照片' })
+      .map(([v, t]) => h('option', { value: v }, t)));
+  const noiseSel = h('select', { class: 'input' },
+    Object.entries(bigjpgState.info?.noises || { '-1': '无', 0: '低', 1: '中', 2: '高', 3: '最高' })
+      .map(([v, t]) => h('option', { value: v, selected: v === '1' }, t)));
+  const scaleSel = h('select', { class: 'input' },
+    Object.entries(bigjpgState.info?.scales || { 1: '2 倍', 2: '4 倍', 3: '8 倍', 4: '16 倍' })
+      .map(([v, t]) => h('option', { value: v }, t)));
+
+  const resultHolder = h('div', { style: { marginTop: '12px' } });
+
+  const uploadCard = card(
+    h('div', { class: 'card-title', html: icon('upload', 'outlined', 20) + '<span>选择图片并放大</span>' }),
+    pickLabel,
+    h('div', { class: 'btn-row', style: { marginTop: '10px' } },
+      button('选择图片', { variant: 'tonal', iconName: 'folder_open', onClick: async () => {
+        try {
+          const r = await api.pickLocalFiles();
+          if (!r.cancelled) { bigjpgState.paths = r.paths || []; renderImage(document.getElementById('view')); }
+        } catch (e) { toast('选择失败：' + e.message); }
+      } })),
+    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '12px', marginTop: '14px' } },
+      field('图片类型', styleSel), field('降噪', noiseSel), field('放大倍数', scaleSel)),
+    h('div', { class: 'btn-row', style: { marginTop: '14px' } },
+      button('开始放大', { iconName: 'bolt', onClick: async (e) => {
+        const btn = e.currentTarget;
+        if (!bigjpgState.paths.length) { toast('先选择图片'); return; }
+        btn.disabled = true;
+        clear(resultHolder).append(h('div', { class: 'card-desc' }, busy('正在上传并创建任务，图片会上传到 bigjpg…')));
+        try {
+          const r = await api.bigjpgSubmit(bigjpgState.paths, styleSel.value, noiseSel.value, scaleSel.value);
+          bigjpgState.results = (r.results || []).map((x) => x.ok
+            ? { file: x.file, tid: x.tid, status: 'new', status_text: '排队中', url: '', size: '' }
+            : { file: x.file, error: x.error });
+          paintResults();
+          if (bigjpgState.results.some((x) => x.tid)) startPolling();
+        } catch (err) {
+          clear(resultHolder).append(h('div', { class: 'hint-box' },
+            h('span', { html: icon('error_outline', 'outlined', 20) }), h('div', {}, err.message)));
+        }
+        btn.disabled = false;
+      } })),
+  );
+  uploadCard.style.marginTop = '12px';
+  page.append(uploadCard, resultHolder);
+
+  function paintResults() {
+    clear(resultHolder);
+    if (!bigjpgState.results.length) return;
+    const rows = bigjpgState.results.map((r) => h('tr', {},
+      h('td', {}, r.file),
+      h('td', {}, r.error ? pill('失败', 'err') : pill(r.status_text || r.status, r.status === 'success' ? 'ok' : (r.status === 'error' ? 'err' : 'mute'))),
+      h('td', {}, r.size || '—'),
+      h('td', {}, r.error ? h('span', { style: { color: 'var(--md-error)' } }, r.error)
+        : (r.url ? h('a', { href: r.url, target: '_blank' }, '下载结果') : '—'))));
+    resultHolder.append(card(
+      h('div', { class: 'card-title', html: icon('image', 'outlined', 20) + '<span>任务结果</span>' }),
+      h('div', { style: { overflowX: 'auto' } },
+        h('table', { class: 'matrix' },
+          h('thead', {}, h('tr', {}, h('th', {}, '文件'), h('th', {}, '状态'), h('th', {}, '尺寸'), h('th', {}, '结果'))),
+          h('tbody', {}, ...rows))),
+      h('div', { class: 'btn-row', style: { marginTop: '10px' } },
+        button('刷新状态', { variant: 'text', iconName: 'refresh', onClick: () => { pollOnce(); } })),
+    ));
+  }
+
+  async function pollOnce() {
+    const tids = bigjpgState.results.filter((r) => r.tid).map((r) => r.tid);
+    if (!tids.length) return;
+    try {
+      const r = await api.bigjpgQuery(tids);
+      const map = {};
+      for (const it of r.items || []) map[it.tid] = it;
+      bigjpgState.results = bigjpgState.results.map((x) => (x.tid && map[x.tid])
+        ? { ...x, status: map[x.tid].status, status_text: map[x.tid].status_text, url: map[x.tid].url, size: map[x.tid].size }
+        : x);
+      paintResults();
+    } catch (e) { /* 轮询失败不打扰用户 */ }
+  }
+
+  function startPolling() {
+    if (bigjpgTimer) clearInterval(bigjpgTimer);
+    bigjpgTimer = setInterval(async () => {
+      await pollOnce();
+      const pending = bigjpgState.results.some((r) => r.tid && (r.status === 'new' || r.status === 'process'));
+      if (!pending && bigjpgTimer) { clearInterval(bigjpgTimer); bigjpgTimer = null; }
+    }, 4000);
+  }
+
+  if (bigjpgState.results.length) { paintResults(); if (bigjpgState.results.some((r) => r.tid)) startPolling(); }
+  view.append(page);
 }

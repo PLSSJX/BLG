@@ -6,6 +6,7 @@ import mimetypes
 import os
 import re
 import secrets
+import stat
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -76,6 +77,10 @@ def _public_settings(ctx: Context) -> dict:
     actual = str(ctx.download_dir())
     # 配置里留空表示"用默认位置"，界面要显示解析后的真实路径
     data["download_dir"] = actual
+    try:
+        data["music_dir"] = str(ctx.music_dir())
+    except Exception:
+        data["music_dir"] = ""
     # 配置了却没用上（盘符不存在、路径非法等）时必须让界面知道 ——
     # 以前是静默回落到默认目录，用户看到"保存成功"但文件跑去了别处。
     import os as _os
@@ -217,24 +222,57 @@ class Handler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
-    def _json(self, payload, status: int = 200) -> None:
+    def _json(self, payload, status: int = 200, extra: dict | None = None) -> None:
         body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
-        self._send(status, body)
+        self._send(status, body, extra=extra)
 
-    def _error(self, message: str, status: int = 400) -> None:
-        self._json({"ok": False, "error": message}, status=status)
+    def _error(self, message: str, status: int = 400, close: bool = False) -> None:
+        """回一个 {"ok": false, "error": ...}。
+
+        close=True 表示"这次拒绝发生在读请求体之前"，必须顺手断开连接：
+        否则 socket 里剩下的 JSON body 会被 http.server 当成下一个请求的
+        起始行，客户端收到的是一条 501 的 **HTML** 错误页
+        （实测：501 Unsupported method ('{"paths":[]}POST')），
+        既不是结构化错误，也让同一条 keep-alive 连接上的后续请求全废。
+        """
+        if close:
+            self.close_connection = True
+        self._json({"ok": False, "error": message}, status=status,
+                   extra={"Connection": "close"} if self.close_connection else None)
 
     def _body(self) -> dict:
-        length = int(self.headers.get("Content-Length") or 0)
+        raw_length = self.headers.get("Content-Length") or "0"
+        try:
+            length = int(raw_length)
+        except ValueError:
+            # 长度都不知道，没法把这个连接对齐到下一个请求，只能断开
+            self.close_connection = True
+            raise ApiError("Content-Length 不合法") from None
         if length <= 0:
             return {}
         if length > MAX_BODY:
+            # 超限的 body 不能当成正常输入，但也不能"不读就回错然后断开"：
+            # 客户端还在往外写，早关 socket 会变成 RST，413 这条 JSON 直接丢失。
+            # 两倍上限以内的先收下再回错，连接仍然可用；更大的就直接断。
+            if length <= MAX_BODY * 2:
+                try:
+                    self.rfile.read(length)
+                except OSError:
+                    self.close_connection = True
+                raise ApiError("请求体过大", 413)
+            self.close_connection = True
             raise ApiError("请求体过大", 413)
         raw = self.rfile.read(length)
         try:
-            return json.loads(raw.decode("utf-8"))
+            data = json.loads(raw.decode("utf-8"))
         except ValueError:
             raise ApiError("请求体不是合法 JSON") from None
+        # 顶层必须是对象。以前这里直接 return，所有调用方都当成 dict 用：
+        # body=[] / null / "abc" 会在 payload.get(...) 处抛 AttributeError，
+        # 变成 "服务器内部错误：'list' object has no attribute 'get'" 这样的 500。
+        if not isinstance(data, dict):
+            raise ApiError("请求体必须是一个 JSON 对象")
+        return data
 
     def _query(self) -> dict:
         parsed = urlparse(self.path)
@@ -287,10 +325,10 @@ class Handler(BaseHTTPRequestHandler):
         route = urlparse(self.path).path
         try:
             if not self._check_origin():
-                return self._error("拒绝跨站请求", 403)
+                return self._error("拒绝跨站请求", 403, close=True)
             # 自定义请求头无法用 no-cors 伪造，等价于一道 CSRF 防线
             if not self._check_token():
-                return self._error("令牌无效或已过期，请刷新页面", 403)
+                return self._error("令牌无效或已过期，请刷新页面", 403, close=True)
             return self._api_post(route)
         except ApiError as exc:
             return self._error(exc.message, exc.status)
@@ -514,13 +552,278 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/local/pickdir":
             from .localfile import pick_folder
             from .config import BASE_DIR
-            current = str(ctx.download_dir())
+            # field 决定选完之后写哪个设置项：视频目录还是音乐目录
+            field = str(payload.get("field") or "download_dir")
+            if field not in ("download_dir", "music_dir"):
+                raise ApiError("不支持设置 " + field)
+            current = str(ctx.music_dir() if field == "music_dir" else ctx.download_dir())
             chosen = pick_folder(ctx, current)
             if chosen:
-                ctx.update({"download_dir": chosen})
-            return self._json({"ok": True, "path": chosen or "",
+                ctx.update({field: chosen})
+            return self._json({"ok": True, "path": chosen or "", "field": field,
                                "cancelled": not chosen,
-                               "download_dir": str(ctx.download_dir())})
+                               "download_dir": str(ctx.download_dir()),
+                               "music_dir": str(ctx.music_dir())})
+
+        if route == "/api/video/trim":
+            from .music.transcode import trim_video
+            src = str(payload.get("path") or "").strip()
+            if not src:
+                raise ApiError("请先选择要裁剪的视频文件")
+            src_path = Path(src)
+            if not src_path.is_file():
+                raise ApiError("找不到这个视频文件")
+            # dest 只允许落在受管目录里，或者就是视频自己所在的目录。
+            # 不传 dest 时保持原来的行为：输出到视频旁边。
+            dest = src_path.parent
+            raw_dest = str(payload.get("dest") or "").strip()
+            if raw_dest:
+                candidate = Path(raw_dest)
+                if not _inside_output_root(candidate, ctx, src_path):
+                    raise ApiError("输出目录只能放在下载目录或音乐目录里：" + raw_dest)
+                if candidate.exists() and not candidate.is_dir():
+                    raise ApiError("输出位置是个文件，不是目录：" + raw_dest)
+                dest = candidate
+            try:
+                result = trim_video(src_path, dest, payload.get("start") or "0",
+                                    payload.get("end") or "",
+                                    precise=bool(payload.get("precise")))
+            except Exception as exc:
+                raise ApiError(str(exc)) from None
+            return self._json({"ok": True, **result})
+
+        if route == "/api/video/extract-audio":
+            from .music.transcode import EXTRACT_FORMATS, extract_audio
+            paths = _as_str_list(payload, "paths", "视频路径")
+            if not paths:
+                raise ApiError("没有选择视频")
+            target = str(payload.get("target") or "mp3").strip().lower()
+            if target not in EXTRACT_FORMATS:
+                raise ApiError("不支持的音频格式：" + target +
+                               "（可选：" + "、".join(EXTRACT_FORMATS) + "）")
+            done, failed = [], []
+            for p in paths:
+                try:
+                    done.append(extract_audio(p, ctx.music_dir(), target))
+                except Exception as exc:
+                    failed.append({"path": p, "error": str(exc)[:140]})
+            return self._json({"ok": True, "done": done, "failed": failed})
+
+        if route == "/api/music/search":
+            # 换源搜索：同时查网易云和 QQ 音乐，每条结果都带来源平台
+            from . import playlist as _pl
+            keyword = str(payload.get("q") or "").strip()
+            if not keyword:
+                raise ApiError("请输入歌名或「歌名 歌手」")
+            try:
+                limit = int(payload.get("limit") or 10)
+            except (TypeError, ValueError):
+                raise ApiError("limit 必须是数字") from None
+            # 夹到 1–50：这个值会原样拼进上游接口的查询串里，不能让调用方随便放大
+            limit = max(1, min(50, limit))
+            items = _pl.search(keyword, limit)
+            # errors：某个平台搜挂了会把原因一起带回去，不再"静默少一半结果"
+            return self._json({"ok": True, "items": items,
+                               "errors": _pl.last_search_errors()})
+
+        if route == "/api/music/import":
+            # 把用户选的音频文件复制进音乐目录，之后就出现在「播放」页的歌曲列表里
+            import shutil as _sh
+            from pathlib import Path as _P2
+            paths = _as_str_list(payload, "paths", "文件路径")
+            if not paths:
+                raise ApiError("还没有选择文件")
+            root = ctx.music_dir()
+            root.mkdir(parents=True, exist_ok=True)
+            done, failed = [], []
+            audio_ext = {".mp3", ".flac", ".m4a", ".wav", ".ogg", ".opus", ".aac", ".wma"}
+            for raw in paths:
+                src = _P2(raw)
+                try:
+                    if src.is_dir():
+                        raise OSError("这是一个目录，不是音频文件")
+                    if not src.is_file():
+                        raise OSError("文件不存在")
+                    if src.suffix.lower() not in audio_ext:
+                        raise OSError("不是音频格式：" + src.suffix)
+                    dest = root / src.name
+                    index = 2
+                    while dest.exists() and dest.resolve() != src.resolve():
+                        dest = root / (src.stem + " (" + str(index) + ")" + src.suffix)
+                        index += 1
+                    if dest.resolve() != src.resolve():
+                        _sh.copy2(src, dest)
+                    done.append({"name": dest.name, "path": str(dest),
+                                 "size": dest.stat().st_size})
+                except OSError as exc:
+                    failed.append({"path": raw, "error": str(exc)[:120]})
+            return self._json({"ok": True, "done": done, "failed": failed,
+                               "dir": str(root)})
+
+        if route == "/api/music/list":
+            # 扫音乐目录，把能播的文件列出来。
+            # 这里必须限量：目录是用户的，可能塞进几万个文件，也可能挂着 junction。
+            import os as _os
+            root = ctx.music_dir()
+            want = {".mp3", ".flac", ".m4a", ".wav", ".ogg", ".opus", ".aac", ".wma",
+                    ".mp4", ".mkv", ".webm"}
+            max_return = 2000         # 界面最多显示这么多
+            max_collect = 4000        # 先多收一点，排序之后再截断，结果才稳定
+            max_scan = 20000          # 最多看这么多目录项（5000 个文件实测 ~40ms）
+            items = []
+            scanned = 0
+            truncated = False
+            for base, dirs, files in _os.walk(str(root)):
+                # 跳过 junction / 符号链接：os.walk 的 followlinks=False 只管符号链接，
+                # 实测在音乐目录里放一个指向 C:\Windows 的 junction，这个接口会跑 24 秒，
+                # 还会把系统自带的 wav 当成本地歌曲列出来。
+                dirs[:] = [d for d in dirs
+                           if not _is_reparse_point(_os.path.join(base, d))]
+                scanned += len(dirs)
+                for name in files:
+                    scanned += 1
+                    if scanned > max_scan:
+                        truncated = True
+                        break
+                    ext = _os.path.splitext(name)[1].lower()
+                    if ext not in want:
+                        continue
+                    full = _os.path.join(base, name)
+                    try:
+                        items.append({"name": name,
+                                      "path": full,
+                                      "size": _os.path.getsize(full),
+                                      "music": ext not in (".mp4", ".mkv", ".webm")})
+                    except OSError:
+                        continue
+                    if len(items) >= max_collect:
+                        truncated = True
+                        break
+                if truncated:
+                    break
+            items.sort(key=lambda x: x["name"].lower())
+            if len(items) > max_return:
+                truncated = True
+            # truncated=True 表示列表被截断了，界面可以提示"只显示了前 N 首"
+            return self._json({"ok": True, "dir": str(root),
+                               "items": items[:max_return],
+                               "truncated": truncated, "scanned": scanned})
+
+        if route == "/api/playlist/fetch":
+            from . import playlist as _pl
+            try:
+                return self._json({"ok": True, **_pl.fetch(str(payload.get("input") or ""))})
+            except _pl.PlaylistError as exc:
+                raise ApiError(str(exc)) from None
+
+        if route == "/api/playlist/save":
+            from . import playlist as _pl
+            try:
+                entry = _pl.add_local(payload.get("playlist"))
+            except (OSError, ValueError, _pl.PlaylistError) as exc:
+                # PlaylistError：本地 playlists.json 读不出来（被占用/拒绝访问），
+                # 为了不覆盖已有收藏而主动放弃这次保存。
+                raise ApiError("保存失败：" + str(exc)[:100]) from None
+            return self._json({"ok": True, "playlist": entry})
+
+        if route == "/api/playlist/list":
+            from . import playlist as _pl
+            return self._json({"ok": True, "playlists": _pl.load_local()})
+
+        if route == "/api/playlist/remove":
+            from . import playlist as _pl
+            site = str(payload.get("site") or "").strip()
+            pid = str(payload.get("id") or "").strip()
+            if not site or not pid:
+                raise ApiError("缺少歌单标识：site 和 id 都不能为空")
+            # 已经不在本地列表里也算完成（幂等）：以前这里回 {"ok": false}（没有 error），
+            # 前端 api.js 会把它当成失败抛出 "请求失败：HTTP 200"，按钮就卡住了。
+            try:
+                removed = _pl.remove_local(site, pid)
+            except (OSError, ValueError, _pl.PlaylistError) as exc:
+                raise ApiError("删除失败：" + str(exc)[:140]) from None
+            return self._json({"ok": True, "removed": removed})
+
+        if route == "/api/ffmpeg/status":
+            from . import ffmpeg_setup as _fs
+            return self._json({"ok": True, **_fs.status(),
+                               "sources": [s[0] for s in _fs.SOURCES]})
+
+        if route == "/api/ffmpeg/install":
+            from . import ffmpeg_setup as _fs
+            try:
+                result = _fs.install()
+            except _fs.FfmpegError as exc:
+                raise ApiError(str(exc)) from None
+            return self._json({"ok": True, **result})
+
+        # ---------------- bigjpg 图片放大 ----------------
+        if route == "/api/bigjpg/info":
+            from . import bigjpg as _bj
+            # 免费通道不需要任何凭据，所以 configured 恒为 True
+            return self._json({"ok": True, "configured": True, "free": True,
+                               **{k: v for k, v in _bj.describe().items() if k != "max_bytes"},
+                               "max_mb": _bj.MAX_BYTES // 1048576})
+
+        if route == "/api/bigjpg/submit":
+            from . import bigjpg as _bj
+            from pathlib import Path as _P
+
+            paths = [str(_P(p)) for p in _as_str_list(payload, "paths", "图片路径")]
+            if not paths:
+                raise ApiError("还没有选择图片")
+            style = str(payload.get("style") or "photo")
+            noise = str(payload.get("noise") or "0")
+            x2 = str(payload.get("x2") or "1")
+            # 参数先校验再上传：以前 style 写错也会先把图片传到 bigjpg 的服务器，
+            # 然后才在 create_task 里报"style 只能是 art 或 photo"。
+            if style not in _bj.STYLES:
+                raise ApiError("放大模式只能是 art（卡通插画）或 photo（照片）")
+            if noise not in _bj.NOISES:
+                raise ApiError("降噪档位只能是 -1、0、1、2、3")
+            if x2 not in _bj.SCALES:
+                raise ApiError("放大倍数只能是 1、2、3、4")
+            results = []
+            for path in paths:
+                try:
+                    upload = _bj.upload_image(ctx.settings.bigjpg_key, _P(path))
+                    info = _bj.create_task(ctx.settings.bigjpg_key, style=style, noise=noise,
+                                           x2=x2, upload=upload)
+                    results.append({"ok": True, "file": _P(path).name, "tid": info["tid"],
+                                    "minute": info.get("minute")})
+                except _bj.BigjpgError as exc:
+                    results.append({"ok": False, "file": _P(path).name, "error": str(exc)})
+            return self._json({"ok": True, "results": results})
+
+        if route == "/api/bigjpg/query":
+            from . import bigjpg as _bj
+            tids = _as_str_list(payload, "tids", "任务号")
+            if not tids:
+                raise ApiError("没有要查询的任务")
+            try:
+                raw = _bj.query_tasks(tids)
+            except _bj.BigjpgError as exc:
+                raise ApiError(str(exc)) from None
+            items = []
+            for tid in tids:
+                info = raw.get(tid) or {}
+                status = str(info.get("status") or "new")
+                items.append({"tid": tid, "status": status,
+                              "status_text": _bj.STATUS_TEXT.get(status, status or "未知"),
+                              "url": info.get("url") or "",
+                              "size": info.get("size") or ""})
+            return self._json({"ok": True, "items": items})
+
+        if route == "/api/bigjpg/retry":
+            from . import bigjpg as _bj
+            tids = _as_str_list(payload, "tids", "任务号")
+            if not tids:
+                raise ApiError("没有要重试的任务")
+            try:
+                _bj.retry_tasks(tids)
+            except _bj.BigjpgError as exc:
+                raise ApiError(str(exc)) from None
+            return self._json({"ok": True})
 
         if route == "/api/local/decryptable":
             from .localfile import scan_paths
@@ -703,6 +1006,8 @@ class Handler(BaseHTTPRequestHandler):
     # 所以统一由后端带上正确的 Referer 转发一次。
     # 各平台图床的防盗链要求不一样：除了放行域名，还得带上对应平台的 Referer。
     IMAGE_HOST_REFERER = {
+        # 网易云的封面走 music.126.net（p1/p2/… 前缀）；缺了它任务卡封面全裂
+        "126.net": "https://music.163.com/",
         "hdslb.com": "https://www.bilibili.com/",
         "bilibili.com": "https://www.bilibili.com/",
         "bilivideo.com": "https://www.bilibili.com/",
@@ -847,7 +1152,13 @@ def _prepare_ref(ctx: Context, raw: str):
 
 def _inside_allowed(target: Path, ctx: Context) -> bool:
     """判断路径是否落在允许对外播放的目录内。"""
+    # 音乐目录必须放行：默认它在 <下载目录>/音乐 之下，一旦用户在设置里
+    # 指定了别的音乐目录，产物就不在下载目录里了，「播放」页/任务卡片点开会 403。
     allowed = [ctx.download_dir(), DATA_DIR]
+    try:
+        allowed.append(ctx.music_dir())
+    except Exception:
+        pass
     for root in allowed:
         try:
             target.relative_to(root.resolve())
@@ -855,6 +1166,87 @@ def _inside_allowed(target: Path, ctx: Context) -> bool:
         except (ValueError, OSError):
             continue
     return False
+
+
+def _normal_path(value) -> str:
+    r"""把路径化成可以互相比较的形式：绝对、展开 ..、解析 junction/软链接、忽略大小写。
+
+    只做 abspath 是不够的：用户可以在 downloads\音乐 里放一个指向 C:\ 的 junction，
+    abspath 看不出来，realpath 会把它展开成真实位置。
+    """
+    text = str(value)
+    try:
+        return os.path.normcase(os.path.realpath(text))
+    except (OSError, ValueError):
+        return os.path.normcase(os.path.abspath(text))
+
+
+def _inside_output_root(target, ctx: Context, src: Path | None = None) -> bool:
+    r"""输出目录只允许落在下载目录 / 音乐目录里，或者视频文件自己所在的目录。
+
+    背景：/api/video/trim 的 dest 原本原样传给 transcode.trim_video，而那边直接
+    out_dir.mkdir(parents=True) + ffmpeg -y。也就是说任何能带上令牌调用本机接口的
+    进程（本机任何程序）都能让服务端往任意目录写视频文件：dest="C:\Windows"
+    会真的去走 C:\Windows\xxx.part-<pid>.mp4 这条路径（只是被 NTFS 权限拦下），
+    dest="C:\Users\Public\x" 这种可写目录则会直接成功。裁剪结果没有任何理由
+    离开这两个受管目录。
+    """
+    want = _normal_path(target)
+    if src is not None:
+        try:
+            if want == _normal_path(src.parent):
+                return True
+        except OSError:
+            pass
+    for root in (ctx.download_dir(), ctx.music_dir()):
+        base = _normal_path(root)
+        if want == base or want.startswith(base + os.sep):
+            return True
+    return False
+
+
+def _as_str_list(payload: dict, key: str, what: str) -> list:
+    """从请求体里取一组字符串（一组路径 / 一组任务号）。
+
+    以前这里写的是 [str(x) for x in (payload.get(key) or [])]：
+      · 传整数 -> "TypeError: 'int' object is not iterable"，也就是 500；
+      · 传字符串 "abc" -> 被拆成 a、b、c 三项，静默按三个路径处理。
+    两种都不该发生，所以统一在这里收敛成 400。
+    """
+    value = payload.get(key)
+    if value is None or value == "":
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if not isinstance(value, (list, tuple)):
+        raise ApiError(f"{what}格式不对：应该是一组{what}")
+    items = []
+    for index, item in enumerate(value, 1):
+        if isinstance(item, bool) or item is None or isinstance(item, (dict, list, tuple)):
+            raise ApiError(f"{what}格式不对：第 {index} 项不是字符串")
+        item = str(item) if isinstance(item, (int, float)) else item
+        if not isinstance(item, str):
+            raise ApiError(f"{what}格式不对：第 {index} 项不是字符串")
+        if item.strip():
+            items.append(item)
+    return items
+
+
+def _is_reparse_point(path: str) -> bool:
+    """目录是不是 junction / 符号链接。
+
+    os.walk(followlinks=False) 只跳符号链接；Windows 的 junction 在 Python 里
+    os.path.islink() 为 False、os.path.isjunction() 为 True，照样会被走进去。
+    """
+    try:
+        st = os.lstat(path)
+    except OSError:
+        return True
+    if os.path.islink(path):
+        return True
+    attrs = getattr(st, "st_file_attributes", 0)
+    flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return bool(attrs and flag and (attrs & flag))
 
 
 def _python_version() -> str:

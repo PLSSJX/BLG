@@ -403,7 +403,7 @@ class KugouSite(SiteAdapter):
             hint = ("这首歌在酷狗是付费 / 会员资源，接口直接拒绝下发任何档位"
                     f"（fail_process={info.get('fail_process')}）。")
             if not cookie:
-                hint += "可以在「我的」→「酷狗音乐」填上登录（最好是会员）账号的 Cookie 再试。"
+                hint += "可以在「设置 → 平台登录」→「酷狗音乐」填上登录（最好是会员）账号的 Cookie 再试。"
             else:
                 hint += "已带 Cookie 仍被拒绝，说明当前账号没有这首歌的下载权限。"
             raise SiteUnavailable(hint)

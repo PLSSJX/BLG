@@ -1053,3 +1053,146 @@ def describe(path) -> dict:
     except (OSError, struct.error, ValueError, IndexError):
         pass
     return info
+
+
+# ---------------------------------------------------------------- 从视频里抽出音轨
+
+EXTRACT_FORMATS = {
+    "mp3":  {"ext": ".mp3",  "label": "MP3",  "args": ["-vn", "-c:a", "libmp3lame", "-q:a", "2"]},
+    "m4a":  {"ext": ".m4a",  "label": "M4A（AAC）", "args": ["-vn", "-c:a", "aac", "-b:a", "256k"]},
+    "flac": {"ext": ".flac", "label": "FLAC（无损，体积大）", "args": ["-vn", "-c:a", "flac"]},
+    "copy": {"ext": None,    "label": "直接复制原音轨（不重新编码）", "args": ["-vn", "-c:a", "copy"]},
+}
+
+
+def extract_audio(src_path, dest_dir, target: str = "mp3", progress=None) -> dict:
+    """把视频里的音轨抽出来存成音频文件，放进音乐目录。
+
+    视频本身就带音轨，抽出后就是一首歌。默认转 mp3（兼容性最好），
+    也可以无损复制（copy，前提是原本就是 aac/mp3 这类容器能装的格式）。
+    """
+    src_path = Path(src_path)
+    if src_path.is_dir():
+        raise ValueError("这是一个目录，不是视频文件：" + str(src_path))
+    if not src_path.is_file():
+        raise ValueError("文件不存在：" + str(src_path))
+    spec = EXTRACT_FORMATS.get(target)
+    if not spec:
+        raise ValueError("不支持的目标格式：" + str(target))
+
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        raise ValueError("没有 ffmpeg。请到「设置 → ffmpeg」里下载，或手动把 ffmpeg.exe 放进 bin/。")
+
+    out_dir = Path(dest_dir)
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ValueError("输出目录不可用：" + str(out_dir) + "（" + str(exc)[:80] + "）") from None
+    ext = spec["ext"] or src_path.suffix
+    out_path = out_dir / (src_path.stem + ext)
+    if out_path.exists():
+        out_path = _unique_path(out_path)
+
+    tmp = _tmp_path(out_path)
+    cmd = [ffmpeg, "-y", "-i", str(src_path), *spec["args"], *(["-f", "mp3"] if target == "mp3" else []), str(tmp)]
+    try:
+        _run_ffmpeg(cmd, 0, progress)
+    except _FFmpegError as exc:
+        _remove(tmp)
+        # 只回最后一行：ffmpeg 的完整 stderr 有 1.5KB 的版本信息 + 全部流信息，
+        # 以前整段塞进 error 字段，界面弹窗里全是一屏看不懂的东西。
+        raise ValueError("抽取音频失败：" + _last_line(exc.detail)) from None
+    except Exception:
+        _remove(tmp)
+        raise
+    if not tmp.exists() or tmp.stat().st_size < 1024:
+        _remove(tmp)
+        raise ValueError("抽取出来的音频异常偏小，可能这个视频没有音轨")
+    os.replace(tmp, out_path)
+    return {"ok": True, "output": str(out_path), "format": target, "size": out_path.stat().st_size}
+
+
+# ---------------------------------------------------------------- 视频裁剪
+
+def _hms_to_seconds(value) -> float:
+    """把 '12'、'1:05'、'0:01:30' 这几种写法都转成秒。"""
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("时间不能为空")
+    parts = text.split(":")
+    if len(parts) > 3:
+        raise ValueError("时间格式不对：" + text)
+    total = 0.0
+    for part in parts:
+        if not part.strip():
+            raise ValueError("时间格式不对：" + text)
+        try:
+            total = total * 60 + float(part)
+        except ValueError:
+            # 不把 float() 的英文原文（could not convert string to float）甩给用户
+            raise ValueError("时间格式不对：" + text) from None
+    return total
+
+
+def trim_video(src_path, dest_dir, start, end, *, precise: bool = False,
+               progress=None) -> dict:
+    """裁剪视频的一段。
+
+    precise=False：用 -c copy 直接切（几秒出结果），但切口会对齐到关键帧，
+                  起止可能差一两秒。
+    precise=True ：重新编码，切口精确到帧，但慢，而且画质会掉一点点。
+    """
+    src_path = Path(src_path)
+    if src_path.is_dir():
+        raise ValueError("这是一个目录，不是视频文件：" + str(src_path))
+    if not src_path.is_file():
+        raise ValueError("文件不存在：" + str(src_path))
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        raise ValueError("没有 ffmpeg。请到「设置 → ffmpeg」里下载，或手动把 ffmpeg.exe 放进 bin/。")
+
+    begin = _hms_to_seconds(start)
+    finish = _hms_to_seconds(end) if str(end or "").strip() else 0.0
+    if begin < 0:
+        raise ValueError("开始时间不能是负数")
+    if finish and finish <= begin:
+        raise ValueError("结束时间必须晚于开始时间")
+
+    out_dir = Path(dest_dir)
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise ValueError("输出目录不可用：" + str(out_dir) + "（" + str(exc)[:80] + "）") from None
+    tag = "裁剪" if not precise else "精确裁剪"
+    name = src_path.stem + " [" + tag + " " + str(round(begin, 1)) + "-" + str(round(finish, 1)) + "]" + src_path.suffix
+    out_path = _unique_path(out_dir / name)
+
+    tmp = _tmp_path(out_path)
+    cmd = [ffmpeg, "-y"]
+    # 输入定位放前面速度快，但对 copy 模式下更依赖关键帧；精确模式放到 -i 之后
+    if not precise:
+        cmd += ["-ss", str(begin), "-to", str(finish)] if finish else ["-ss", str(begin)]
+        cmd += ["-i", str(src_path)]
+        cmd += ["-c", "copy", "-avoid_negative_ts", "make_zero"]
+    else:
+        cmd += ["-i", str(src_path), "-ss", str(begin)]
+        if finish:
+            cmd += ["-to", str(finish)]
+        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                "-c:a", "aac", "-b:a", "192k"]
+    cmd += [str(tmp)]
+    try:
+        _run_ffmpeg(cmd, 0, progress)
+    except _FFmpegError as exc:
+        _remove(tmp)
+        raise ValueError("裁剪失败：" + _last_line(exc.detail)) from None
+    except Exception:
+        _remove(tmp)
+        raise
+    if not tmp.exists() or tmp.stat().st_size < 1024:
+        _remove(tmp)
+        raise ValueError("裁剪结果异常偏小，起止时间可能超出视频长度")
+    os.replace(tmp, out_path)
+    return {"ok": True, "output": str(out_path), "start": begin, "end": finish,
+            "precise": precise, "size": out_path.stat().st_size}

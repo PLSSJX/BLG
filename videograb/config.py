@@ -95,10 +95,14 @@ DEFAULT_ENABLED = [e for e in ALL_ENGINES if e not in DEFAULT_DISABLED]
 @dataclass
 class Settings:
     download_dir: str = ""          # 留空 = exe 同级的 downloads 目录
+    # 音乐单独放一个目录，别和视频混在一起。留空 = <download_dir>/音乐
+    music_dir: str = ""
     # 登录态：填了才能解锁 1080P 及以上
     sessdata: str = ""
     bili_jct: str = ""
     # 音乐平台的登录凭据。填了就解锁更高音质，不填也能下标准档。
+    # bigjpg 图片放大（唯一会把文件发到外部的地方，默认留空 = 不启用）
+    bigjpg_key: str = ""
     ncm_cookie: str = ""       # 网易云音乐
     qqmusic_cookie: str = ""   # QQ音乐
     kugou_cookie: str = ""     # 酷狗音乐
@@ -210,6 +214,26 @@ class Context:
                 return candidate
         DEFAULT_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
         return DEFAULT_DOWNLOAD_DIR
+
+    def music_dir(self) -> Path:
+        """音乐下载目录。留空就跟着下载目录走 <download_dir>/音乐，
+        这样视频和音乐会自然分开放，不会混在同一个文件夹里。"""
+        configured = (self.settings.music_dir or "").strip()
+        if configured:
+            candidate = Path(configured)
+            # 相对路径不能按进程 CWD 解析 —— 打包成 exe 后 CWD 不确定，
+            # 音乐可能落在一个谁也想不到的地方。统一按 exe 目录算。
+            if not candidate.is_absolute():
+                candidate = BASE_DIR / candidate
+            try:
+                if candidate.exists() or candidate.parent.exists():
+                    candidate.mkdir(parents=True, exist_ok=True)
+                    return candidate
+            except OSError:
+                pass
+        target = self.download_dir() / "音乐"
+        target.mkdir(parents=True, exist_ok=True)
+        return target
 
 
 # 数值型配置的合法区间。写坏一个值（手改 config.json、接口传字符串/列表）

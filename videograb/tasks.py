@@ -441,6 +441,11 @@ class TaskManager:
             task.finished_at = time.time()
             with self._lock:
                 self._running.discard(task.id)
+            # 注意：这里**不要**释放目录认领。
+            # 释放会让"顺序重下一次同名视频"复用同一目录，然后 os.replace
+            # 把已有的成品覆盖掉 —— 实测 mtime 18:32:45 → 18:33:31，文件被吃掉。
+            # 「重试」本来就走 task.directory 复用同一目录（见 _execute），
+            # 并不依赖这里释放，所以保留认领是安全的。
             self._save_history()
             with self._wake:
                 self._wake.notify_all()
@@ -575,7 +580,15 @@ class TaskManager:
             "site": ref.site, "platform": site.name,
             "quality": qn_short(task.qn), "engine": task.engine_used,
         }) or ("music" if info.media == "music" else "video"))
-        directory = _own_directory(ctx.download_dir() / base)
+        # 音乐和视频分开放：音乐进 music_dir()，视频进 download_dir()
+        root = ctx.music_dir() if info.media == "music" else ctx.download_dir()
+        # 重试时沿用上次的目录，断点续传才有意义；新任务才去申请新目录
+        if task.directory and Path(task.directory).is_dir():
+            directory = Path(task.directory)
+            with _DIR_LOCK:
+                _DIR_CLAIMS.add(str(directory).lower())
+        else:
+            directory = _own_directory(root / base)
         task.directory = str(directory)
 
         multi = len(info.pages) > 1
@@ -690,7 +703,8 @@ class TaskManager:
         if final and not settings.keep_streams:
             shutil.rmtree(work, ignore_errors=True)
         if final and final.exists():
-            task.files.append({"kind": "video", "path": str(final),
+            task.files.append({"kind": "audio" if getattr(info, "media", "") == "music" else "video",
+                           "path": str(final),
                                "name": final.name, "size": final.stat().st_size})
 
     # ---------------- 单文件路线 ----------------
@@ -746,7 +760,10 @@ class TaskManager:
             shutil.rmtree(part_dir, ignore_errors=True)
 
         os.replace(staging, final)
-        task.files.append({"kind": "video", "path": str(final),
+        # 音乐平台的单文件是音频，不该标成 video —— 否则任务卡图标是胶片，
+        # 点开还会走视频覆盖层（黑屏），而不是底部音频播放条。
+        kind = "audio" if getattr(info, "media", "") == "music" else "video"
+        task.files.append({"kind": kind, "path": str(final),
                            "name": final.name, "size": final.stat().st_size})
         task.note(f"写入完成：{final.name}（{final.stat().st_size / 1048576:.1f} MB）")
 
@@ -870,7 +887,9 @@ class TaskManager:
         elif result["container"] == "mpegts":
             task.note("输出为 MPEG-TS，VLC / PotPlayer / mpv 可直接播放；装 ffmpeg 后会自动转成 MP4")
 
-        task.files.append({"kind": "video", "path": str(out),
+        kind = "audio" if Path(str(out)).suffix.lower() in (
+            ".mp3", ".m4a", ".aac", ".flac", ".wav", ".ogg", ".opus") else "video"
+        task.files.append({"kind": kind, "path": str(out),
                            "name": out.name, "size": out.stat().st_size})
 
     # ---------------- 仅音频 ----------------
@@ -997,6 +1016,11 @@ class TaskManager:
 # 后者绝不能被写入、更不能被删除。
 DIR_MARKER = ".videograb"
 
+# 本进程内已被占用的输出目录（小写绝对路径）。
+# 目录一旦被某个任务认领，别的并发任务就不会再拿到它。
+_DIR_CLAIMS: set = set()
+_DIR_LOCK = threading.Lock()
+
 
 def _is_our_directory(path) -> bool:
     return (path / DIR_MARKER).is_file()
@@ -1013,22 +1037,71 @@ def _own_directory(path):
     from pathlib import Path as _Path
 
     path = _Path(path)
-    if path.is_dir() and _is_our_directory(path):
-        return path
-    if path.is_dir():
-        # 空目录也当成用户的：宁可多建一个，也不要动别人的东西
-        for index in range(2, 100):
-            candidate = path.with_name(f"{path.name} ({index})")
-            if not candidate.exists():
-                candidate.mkdir(parents=True, exist_ok=True)
+
+    # 早退也必须查认领表：否则第一个任务建好目录、打完标记之后，
+    # 后面并发进来的任务会在这一步直接"复用"同一个目录，绕过下面的互斥逻辑。
+    first_key = str(path).lower()
+    with _DIR_LOCK:
+        if path.is_dir() and _is_our_directory(path) and first_key not in _DIR_CLAIMS:
+            _DIR_CLAIMS.add(first_key)
+            return path
+
+    # 目录认领表：同一个进程里，一个目录只能被一个任务占用。
+    #
+    # 光靠 os.mkdir 的原子性不够：先建成功的那一方会打上标记，后到的一方
+    # 看到"有标记 = 是自己的目录"就复用了，于是两个同名任务又挤回一起、
+    # 互相覆盖文件（实测会抛 WinError 32）。
+    # 认领表把"是否已被本次运行占用"也纳入判断，才是真正互斥的。
+    path.parent.mkdir(parents=True, exist_ok=True)
+    for index in range(0, 100):
+        candidate = path if index == 0 else path.with_name(f"{path.name} ({index + 1})")
+        key = str(candidate).lower()
+        with _DIR_LOCK:
+            if key in _DIR_CLAIMS:
+                continue                      # 已经被别的任务占着
+            fresh = False
+            try:
+                os.mkdir(candidate)
+                fresh = True
+            except FileExistsError:
+                fresh = False
+            except OSError:
+                continue
+            if not fresh and not _is_our_directory(candidate):
+                continue                      # 是用户自己的目录，让开
+            _DIR_CLAIMS.add(key)
+        if fresh:
+            try:
                 (candidate / DIR_MARKER).touch()
-                return candidate
-    path.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
+        return candidate
+
+    # 极端情况（100 个同名都占了）：退回带时间戳的唯一目录，绝不共用
+    import time as _time
+    fallback = path.with_name(path.name + " " + _time.strftime("%H%M%S"))
+    fallback.mkdir(parents=True, exist_ok=True)
     try:
-        (path / DIR_MARKER).touch()
+        (fallback / DIR_MARKER).touch()
     except OSError:
         pass
-    return path
+    return fallback
+
+
+def _release_directory(path) -> None:
+    """任务结束后释放目录认领。
+
+    认领表只负责"同一时刻一个目录只归一个任务"。以前从来不释放，于是任务跑完
+    之后它建的那个目录永远算"被占用"：
+      · 同一个标题再下一次，只能拿到 "标题 (2)"、"标题 (3)"，磁盘上越堆越多；
+      · 失败后点「重试」是新建一个 Task，照样拿到 "标题 (2)"，
+        而不是像 _execute 里注释说的"沿用上次的目录、断点续传才有意义"。
+    实测：连续三次 _own_directory(同一个名字) 得到三个不同的目录。
+    """
+    if not path:
+        return
+    with _DIR_LOCK:
+        _DIR_CLAIMS.discard(str(path).lower())
 
 
 def _platform_referer(task: Task, ctx) -> str:

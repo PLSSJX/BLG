@@ -3,14 +3,18 @@ import { api, setToken } from './api.js';
 import { icon } from './icons.js';
 import { h, clear, toast, dialog, button } from './ui.js';
 import { applyTheme, prefersDark } from './theme.js';
+import { initPlayer } from './player.js';
 import {
-  store, renderHome, renderMatrix, renderTasks, renderSettings, refreshTasks,
+  store, renderHome, renderMusic, renderPlayer, renderImage, renderTasks, renderSettings, refreshTasks,
 } from './pages.js';
 
-// 导航项按实际功能命名：解析 / 通道 / 历史记录 / 设置
+// 通道体检已经并进解析页，所以这里不再有独立的「通道」入口
 const ROUTES = [
   { id: 'home', label: '解析', icon: 'search', render: renderHome },
-  { id: 'matrix', label: '通道', icon: 'hub', render: renderMatrix },
+  // 图标名必须是 icons.js 里真实存在的：queue_music 没有，之前整条入口渲染成空白
+  { id: 'music', label: '音乐', icon: 'music_note', render: renderMusic },
+  { id: 'player', label: '播放', icon: 'headphones', render: renderPlayer },
+  { id: 'image', label: '图片', icon: 'image', render: renderImage },
   { id: 'tasks', label: '历史记录', icon: 'history', render: renderTasks },
   { id: 'settings', label: '设置', icon: 'settings', render: renderSettings },
 ];
@@ -150,6 +154,7 @@ async function openQuickSearch() {
 /* ------------------------------------------------------------ 启动 */
 async function boot() {
   buildNavigation();
+  initPlayer();     // 底部播放条，先建好，之后任何页面都能直接播
 
   try {
     store.config = await api.state();
