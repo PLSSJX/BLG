@@ -82,6 +82,9 @@ def _ps_quote(text: str) -> str:
 
 def _run_powershell(script: str) -> tuple[bool, str]:
     """用 -EncodedCommand 传脚本：中文路径在任何代码页下都不会乱码。"""
+    # 输出编码钉死 UTF-8，否则中文路径按 GBK 回来会被解成乱码
+    script = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+              "$OutputEncoding = [Text.Encoding]::UTF8; ") + script
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     for shell in ("powershell", "pwsh"):
         try:

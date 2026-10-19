@@ -67,7 +67,12 @@ def _run_powershell(script: str, timeout: int = 300) -> tuple[bool, str]:
     进程正常退出但没有输出（用户点了取消）说明对话框已经弹过了，
     再换 pwsh 跑一遍就会第二次弹窗 —— 装了 PowerShell 7 的机器上点取消必现。
     """
-    encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
+    # Windows PowerShell 的 stdout 默认用**控制台 OEM 代码页**（中文系统是 GBK），
+    # 不是 UTF-8。中文文件名按 UTF-8 解码就变成 ����——这就是"选了文件却乱码、
+    # 转换时报找不到文件"的原因。这里先把输出编码钉死成 UTF-8，再解码。
+    preamble = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+                "$OutputEncoding = [Text.Encoding]::UTF8; ")
+    encoded = base64.b64encode((preamble + script).encode("utf-16-le")).decode("ascii")
     for shell in ("powershell", "pwsh"):
         try:
             proc = subprocess.run(
@@ -77,7 +82,13 @@ def _run_powershell(script: str, timeout: int = 300) -> tuple[bool, str]:
             )
         except (OSError, subprocess.SubprocessError):
             continue        # 这个 shell 不可用，换下一个
-        return True, (proc.stdout or b"").decode("utf-8", "replace").strip()
+        raw = proc.stdout or b""
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            # 兜底：还是按系统 ANSI 代码页解一次，总比留一串替换字符强
+            text = raw.decode("mbcs", "replace")
+        return True, text.strip()
     return False, ""
 
 

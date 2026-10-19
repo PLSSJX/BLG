@@ -101,6 +101,10 @@ def _shell_candidates() -> list:
 
 
 def run_powershell(script: str) -> tuple[bool, str]:
+    # PowerShell 默认按控制台 OEM 代码页输出（中文系统是 GBK），
+    # 中文安装路径直接按 UTF-8 解就是乱码。先钉死输出编码。
+    script = ("[Console]::OutputEncoding = [Text.Encoding]::UTF8; "
+              "$OutputEncoding = [Text.Encoding]::UTF8; ") + script
     encoded = base64.b64encode(script.encode("utf-16-le")).decode("ascii")
     for shell in _shell_candidates():
         try:
