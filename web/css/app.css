@@ -795,3 +795,8 @@ body.has-player .slab { padding-bottom: 74px; }
   background: var(--md-surface-container-high); border: 1px solid var(--md-outline-variant);
   border-radius: 12px 12px 0 0; padding: 10px 12px; box-shadow: var(--elev-2); }
 .player-bar { position: fixed; }
+
+
+/* 中止/失败的任务：进度条定格，不转圈、不推进 */
+.progress.stopped > i { background: var(--md-error); transition: none; }
+.progress.stopped { opacity: .75; }

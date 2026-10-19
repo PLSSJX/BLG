@@ -364,11 +364,24 @@ export function openVideo(path, name = '') {
     }
   };
 
+  const doDemux = async (mode) => {
+    note.textContent = mode === 'audio' ? '分离音轨中…' : '分离画面中…';
+    try {
+      const r = await api.demuxVideo(path, mode, mode === 'audio' ? 'mp3' : 'copy');
+      note.textContent = (mode === 'audio' ? '音轨已分离：' : '画面已分离：')
+        + r.output.split(/[\\/]/).pop() + '（' + (r.size / 1048576).toFixed(1) + ' MB）';
+    } catch (err) {
+      note.textContent = '分离失败：' + err.message;
+    }
+  };
+
   tools.append(
     mkBtn('取当前为起点', snap),
     t0, t1,
     btnFast,
     btnPrecise,
+    mkBtn('分离音轨', () => doDemux('audio'), ''),
+    mkBtn('分离画面', () => doDemux('video'), ''),
     note);
 
   const frame = document.createElement('div');

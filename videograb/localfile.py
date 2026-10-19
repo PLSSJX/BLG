@@ -55,9 +55,20 @@ if ($dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
 """
 
 
-def pick_files(ctx=None) -> list:
-    """弹出系统文件对话框，返回用户选中的绝对路径。取消则返回空列表。"""
-    script = PICK_SCRIPT.replace("{filter}", FILTER.replace("'", "''"))
+VIDEO_FILTER = (
+    "视频文件|*.mp4;*.mkv;*.webm;*.flv;*.ts;*.m4v;*.mov;*.avi;*.wmv;*.mpg;*.mpeg"
+    "|所有文件|*.*"
+)
+
+
+def pick_files(ctx=None, kind: str = "music") -> list:
+    """弹出系统文件对话框，返回用户选中的绝对路径。取消则返回空列表。
+
+    kind 决定对话框里默认能看到什么：music（音频与加密格式）还是 video。
+    剪辑页要选视频，用音乐筛选器根本看不到 .mp4。
+    """
+    chosen = VIDEO_FILTER if kind == "video" else FILTER
+    script = PICK_SCRIPT.replace("{filter}", chosen.replace("'", "''"))
     ok, output = _run_powershell(script)
     if not ok or not output:
         return []

@@ -544,7 +544,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if route == "/api/local/pick":
             from .localfile import pick_files
-            paths = pick_files(self.ctx)
+            paths = pick_files(self.ctx, kind=str(payload.get("kind") or "music"))
+            _remember_picked(paths)          # 选过就允许播放，剪辑页要用
             return self._json({"ok": True, "paths": paths, "count": len(paths)})
 
         # 注意：请求体在 _api_post 开头已经读过一次了（rfile 是一次性的），
@@ -564,6 +565,27 @@ class Handler(BaseHTTPRequestHandler):
                                "cancelled": not chosen,
                                "download_dir": str(ctx.download_dir()),
                                "music_dir": str(ctx.music_dir())})
+
+        if route == "/api/doc/convert":
+            from . import convert as _cv
+            paths = payload.get("paths")
+            if not isinstance(paths, list):
+                raise ApiError("文件路径格式不对：应该是一组文件路径")
+            if not paths:
+                raise ApiError("还没有选择文件")
+            target = str(payload.get("target") or "").strip().lower()
+            if target not in ("docx", "xlsx", "md"):
+                raise ApiError("目标格式只能是 docx、xlsx 或 md")
+            dest = Path(payload.get("dest") or str(ctx.download_dir() / "文档转换"))
+            done, failed = [], []
+            for raw in paths:
+                try:
+                    done.append(_cv.convert(str(raw), dest, target))
+                except _cv.ConvertError as exc:
+                    failed.append({"path": str(raw), "error": str(exc)})
+                except (OSError, ValueError) as exc:
+                    failed.append({"path": str(raw), "error": str(exc)[:140]})
+            return self._json({"ok": True, "done": done, "failed": failed, "dir": str(dest)})
 
         if route == "/api/video/trim":
             from .music.transcode import trim_video
@@ -591,6 +613,26 @@ class Handler(BaseHTTPRequestHandler):
             except Exception as exc:
                 raise ApiError(str(exc)) from None
             return self._json({"ok": True, **result})
+
+        if route == "/api/video/demux":
+            from .music.transcode import extract_audio, extract_video
+            from pathlib import Path as _P4
+            src = str(payload.get("path") or "")
+            if not src or not _P4(src).is_file():
+                raise ApiError("找不到这个视频文件")
+            mode = str(payload.get("mode") or "audio")
+            if mode not in ("audio", "video"):
+                raise ApiError("mode 只能是 audio 或 video")
+            target = str(payload.get("target") or ("mp3" if mode == "audio" else "copy"))
+            dest = _P4(src).parent
+            try:
+                if mode == "audio":
+                    result = extract_audio(src, dest, target)
+                else:
+                    result = extract_video(src, dest, target)
+            except Exception as exc:
+                raise ApiError(str(exc)) from None
+            return self._json({"ok": True, "mode": mode, **result})
 
         if route == "/api/video/extract-audio":
             from .music.transcode import EXTRACT_FORMATS, extract_audio
@@ -1197,6 +1239,24 @@ def _prepare_ref(ctx: Context, raw: str):
         raise ApiError(str(exc)) from None
 
 
+# 用户在系统文件对话框里**亲手选过**的路径。这些文件允许经 /media 播放 ——
+# 剪辑本地视频的前提就是能放它，而把它们全塞进下载目录不现实。
+_PICKED: set = set()
+_PICKED_LOCK = __import__("threading").Lock()
+
+
+def _remember_picked(paths) -> None:
+    with _PICKED_LOCK:
+        for raw in paths or []:
+            try:
+                _PICKED.add(_normal_path(raw))
+            except (OSError, ValueError):
+                continue
+        # 只留最近的 500 个，别无限增长
+        while len(_PICKED) > 500:
+            _PICKED.pop()
+
+
 def _inside_allowed(target: Path, ctx: Context) -> bool:
     """判断路径是否落在允许对外播放的目录内。"""
     # 音乐目录必须放行：默认它在 <下载目录>/音乐 之下，一旦用户在设置里
@@ -1209,6 +1269,10 @@ def _inside_allowed(target: Path, ctx: Context) -> bool:
         allowed.append(ctx.music_dir())
     except Exception:
         pass
+    # 用户自己选过的文件也放行
+    with _PICKED_LOCK:
+        if _normal_path(target) in _PICKED:
+            return True
     for root in allowed:
         try:
             target.relative_to(root.resolve())

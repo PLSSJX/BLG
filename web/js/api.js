@@ -50,7 +50,7 @@ export const api = {
   setWindowFrame: (frame) => post('/api/window/frame', frame),
 
   // 本地音乐文件：选择 / 预检 / 转换
-  pickLocalFiles: () => post('/api/local/pick', {}),
+  pickLocalFiles: (kind = 'music') => post('/api/local/pick', { kind }),
   pickDownloadDir: () => post('/api/local/pickdir', {}),
   pickMusicDir: () => post('/api/local/pickdir', { field: 'music_dir' }),
   musicList: () => post('/api/music/list', {}),
@@ -58,6 +58,8 @@ export const api = {
   extractAudio: (paths, target = 'mp3') => post('/api/video/extract-audio', { paths, target }),
   importMusic: (paths) => post('/api/music/import', { paths }),
   trimVideo: (path, start, end, precise = false) => post('/api/video/trim', { path, start, end, precise }),
+  convertDocs: (paths, target) => post('/api/doc/convert', { paths, target }),
+  demuxVideo: (path, mode, target) => post('/api/video/demux', { path, mode, target }),
   playlistFetch: (input) => post('/api/playlist/fetch', { input }),
   playlistSave: (playlist) => post('/api/playlist/save', { playlist }),
   playlistList: () => post('/api/playlist/list', {}),

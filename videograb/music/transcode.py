@@ -1225,3 +1225,64 @@ def trim_video(src_path, dest_dir, start, end, *, precise: bool = False,
     os.replace(tmp, out_path)
     return {"ok": True, "output": str(out_path), "start": begin, "end": finish,
             "precise": precise, "size": out_path.stat().st_size}
+
+
+# ---------------------------------------------------------------- 分离视频轨
+
+VIDEO_FORMATS = {
+    "copy": {"ext": None, "label": "直接复制原视频轨（不重新编码）",
+             "args": ["-an", "-c:v", "copy"]},
+    "mp4":  {"ext": ".mp4", "label": "MP4（H.264，兼容性最好）",
+             "args": ["-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]},
+    "mkv":  {"ext": ".mkv", "label": "MKV（H.264，封装更宽松）",
+             "args": ["-an", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]},
+}
+
+
+def extract_video(src_path, dest_dir, target: str = "copy", progress=None) -> dict:
+    """把视频轨单独抽出来（去掉音轨），和 extract_audio 正好是一对。"""
+    src_path = Path(src_path)
+    if not src_path.is_file():
+        raise ValueError("文件不存在：" + str(src_path))
+    spec = VIDEO_FORMATS.get(target)
+    if not spec:
+        raise ValueError("不支持的目标格式：" + str(target))
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        raise ValueError("没有 ffmpeg。请到「设置 → ffmpeg」里下载，或手动把 ffmpeg.exe 放进 bin/。")
+
+    out_dir = Path(dest_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    ext = spec["ext"] or src_path.suffix
+    out_path = _unique_path(out_dir / (src_path.stem + " [仅画面]" + ext))
+    tmp = _tmp_path(out_path)
+
+    cmd = [ffmpeg, "-y", "-i", str(src_path), *spec["args"]]
+    if target == "copy":
+        # 原封装装不下这个视频编码时（比如 vp9 塞进 mp4），copy 会失败，退回重编码
+        cmd += ["-map", "0:v:0", str(tmp)]
+        try:
+            _run_ffmpeg(cmd, 0, progress)
+        except Exception:
+            _remove(tmp)
+            cmd = [ffmpeg, "-y", "-i", str(src_path), "-an", "-c:v", "libx264",
+                   "-preset", "veryfast", "-crf", "20", "-map", "0:v:0", str(tmp)]
+            try:
+                _run_ffmpeg(cmd, 0, progress)
+            except Exception:
+                _remove(tmp)
+                raise
+    else:
+        cmd += ["-map", "0:v:0", str(tmp)]
+        try:
+            _run_ffmpeg(cmd, 0, progress)
+        except Exception:
+            _remove(tmp)
+            raise
+
+    if not tmp.exists() or tmp.stat().st_size < 1024:
+        _remove(tmp)
+        raise ValueError("抽出来的画面异常偏小，可能这个视频本身没有画面轨")
+    os.replace(tmp, out_path)
+    return {"ok": True, "output": str(out_path), "format": target,
+            "size": out_path.stat().st_size}

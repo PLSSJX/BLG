@@ -5,7 +5,9 @@ import { h, clear, toast, dialog, button } from './ui.js';
 import { applyTheme, prefersDark } from './theme.js';
 import { initPlayer } from './player.js';
 import {
-  store, renderHome, renderMusic, renderPlayer, renderImage, renderTasks, renderSettings, refreshTasks,
+  store, renderHome, renderMusic, renderPlayer, renderImage, renderDoc, renderClip,
+  renderTasks, renderSettings,
+  refreshTasks,
 } from './pages.js';
 
 // 通道体检已经并进解析页，所以这里不再有独立的「通道」入口
@@ -14,6 +16,8 @@ const ROUTES = [
   // 图标名必须是 icons.js 里真实存在的：queue_music 没有，之前整条入口渲染成空白
   { id: 'music', label: '音乐', icon: 'music_note', render: renderMusic },
   { id: 'player', label: '播放', icon: 'headphones', render: renderPlayer },
+  { id: 'clip', label: '剪辑', icon: 'videocam', render: renderClip },
+  { id: 'doc', label: '文档', icon: 'description', render: renderDoc },
   { id: 'image', label: '图片', icon: 'image', render: renderImage },
   { id: 'tasks', label: '历史记录', icon: 'history', render: renderTasks },
   { id: 'settings', label: '设置', icon: 'settings', render: renderSettings },

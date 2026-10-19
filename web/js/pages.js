@@ -1373,8 +1373,20 @@ export function renderTasks(view) {
       '在「解析」页解析一个视频，然后点「开始下载」，任务就会出现在这里。'));
   } else {
     // 歌曲和视频分开列，各自折叠：默认只展开最近 2 条，其余点「显示全部」再看
-    const isMusic = (t) => MUSIC_SITE_IDS.has(t.site)
-      || (t.files || []).some((f) => f.kind === "audio");
+    // 分类以**产物的真实后缀**为准，站点只作兜底。
+    // 之前只看 site，于是从音乐站下的视频（或被旧版本标成 audio 的记录）会串到「歌曲」里。
+    const VIDEO_EXT = /\.(mp4|mkv|webm|flv|ts|m4v|mov|avi|wmv)$/i;
+    const AUDIO_EXT = /\.(mp3|flac|m4a|aac|wav|ogg|opus|wma)$/i;
+    const isMusic = (t) => {
+      const files = (t.files || []).map((f) => String(f.path || ""));
+      if (files.some((p) => VIDEO_EXT.test(p))) return false;      // 有视频产物就是视频
+      if (files.some((p) => AUDIO_EXT.test(p))) return true;       // 全是音频才是音乐
+      // 没有产物（失败/取消/排队中）：退一步看输入本身
+      const src = String(t.raw_input || t.input || "").split("?")[0];
+      if (VIDEO_EXT.test(src)) return false;
+      if (AUDIO_EXT.test(src)) return true;
+      return MUSIC_SITE_IDS.has(t.site);
+    };
     page.append(buildTaskGroup('歌曲', tasks.filter(isMusic), 'music'));
     page.append(buildTaskGroup('视频', tasks.filter((t) => !isMusic(t)), 'video'));
   }
@@ -1427,12 +1439,19 @@ function buildTaskCard(task) {
 
   // 元数据类任务没有字节总数；已经跑完的就直接给满格，不要再转圈
   const finished = task.status === 'done';
-  const determinate = task.has_total || finished;
-  const progress = h('div', { class: 'progress' + (determinate ? '' : ' indeterminate') },
-    h('i', { style: { width: (finished ? 100 : task.has_total ? percent : 35) + '%' } }));
+  // 失败/取消的任务进度条没有意义，别再让它动
+  const stopped = task.status === 'error' || task.status === 'cancelled';
+  const determinate = task.has_total || finished || stopped;
+  const progress = stopped
+    ? h('div', { class: 'progress stopped' },
+        h('i', { style: { width: (task.status === 'error' ? (task.has_total ? percent : 100) : (task.has_total ? percent : 0)) + '%' } }))
+    : h('div', { class: 'progress' + (determinate ? '' : ' indeterminate') },
+        h('i', { style: { width: (finished ? 100 : task.has_total ? percent : 35) + '%' } }));
 
   const foot = h('div', { class: 'task-foot' },
-    task.has_total ? h('span', {}, percent.toFixed(1) + '%') : h('span', {}, task.progress?.phase || '准备中'),
+    stopped
+      ? h('span', {}, task.status === 'error' ? '已中止' : '已取消')
+      : (task.has_total ? h('span', {}, percent.toFixed(1) + '%') : h('span', {}, task.progress?.phase || '准备中')),
     task.has_total ? h('span', {}, task.size_text + ' / ' + task.total_text) : null,
     h('span', {}, task.speed_text || '-'),
     active && task.has_total ? h('span', {}, '剩余 ' + (task.eta_text || '-')) : null,
@@ -2473,3 +2492,234 @@ export function renderImage(view) {
   if (bigjpgState.results.length) { paintResults(); if (bigjpgState.results.some((r) => r.tid)) startPolling(); }
   view.append(page);
 }
+
+
+/* ================================================================ 文档转换 */
+
+const docState = { paths: [], target: 'docx', results: null };
+
+const DOC_FORMATS = [
+  ['docx', 'Word 文档', '段落 + 表格', ['xlsx', 'md']],
+  ['xlsx', 'Excel 表格', '按行按列', ['docx', 'md']],
+  ['pdf', 'PDF', '仅文本层，无版式', ['docx', 'xlsx', 'md']],
+  ['md', 'Markdown', '纯文本 + 表格', ['docx', 'xlsx']],
+];
+
+export function renderDoc(view) {
+  clear(view);
+  const holder = h('div', {});
+  const nameOf = (p) => String(p).split(/[\\/]/).pop();
+
+  const paint = () => {
+    clear(holder);
+    const picked = docState.paths || [];
+    const kinds = [...new Set(picked.map((p) => String(p).split('.').pop().toLowerCase()))];
+    const targets = kinds.length === 1
+      ? ((DOC_FORMATS.find((f) => f[0] === kinds[0]) || [0, 0, 0, ['docx', 'xlsx', 'md']])[3])
+      : ['docx', 'xlsx', 'md'];
+    const results = docState.results;
+
+    return holder.append(
+      card(
+        h('div', { class: 'card-title', html: icon('description', 'outlined', 20) + '<span>选择文档并转换</span>' }),
+        h('div', { class: 'card-desc' },
+          '支持 Word(.docx) / Excel(.xlsx) / PDF / Markdown 互转。全部在本机完成，文件不会上传到任何地方。'),
+        h('div', { class: 'btn-row', style: { marginTop: '10px' } },
+          button('选择文件', { variant: 'tonal', iconName: 'folder_open', onClick: async () => {
+            try {
+              const r = await api.pickLocalFiles();
+              if (r.cancelled) return;
+              docState.paths = r.paths || [];
+              docState.results = null;
+              const ks = [...new Set(docState.paths.map((p) => String(p).split('.').pop().toLowerCase()))];
+              if (ks.length === 1) {
+                const allowed = (DOC_FORMATS.find((f) => f[0] === ks[0]) || [0, 0, 0, ['docx']])[3];
+                if (!allowed.includes(docState.target)) docState.target = allowed[0];
+              }
+              paint();
+            } catch (err) { toast('选择失败：' + err.message); }
+          } }),
+          picked.length
+            ? button('清空', { variant: 'text', iconName: 'close', onClick: () => {
+                docState.paths = []; docState.results = null; paint();
+              } })
+            : null),
+        picked.length
+          ? h('div', { style: { marginTop: '10px' } },
+              h('div', { class: 'card-desc' }, '已选 ' + picked.length + ' 个文件：'),
+              h('div', { class: 'song-scroll', style: { maxHeight: '150px', marginTop: '6px' } },
+                ...picked.map((p) => h('div', {
+                  style: { fontSize: '12.5px', padding: '3px 0', whiteSpace: 'nowrap',
+                           overflow: 'hidden', textOverflow: 'ellipsis' },
+                }, nameOf(p)))))
+          : h('div', { class: 'card-desc', style: { marginTop: '10px' } }, '还没有选择文件。'),
+        picked.length
+          ? h('div', { style: { marginTop: '12px' } },
+              h('div', { class: 'card-desc' }, '输出格式'),
+              h('div', { class: 'btn-row', style: { marginTop: '6px' } },
+                ...targets.map((t) => button(
+                  (DOC_FORMATS.find((f) => f[0] === t) || [t, t])[1],
+                  { variant: docState.target === t ? 'tonal' : 'text',
+                    onClick: () => { docState.target = t; paint(); } }))),
+              h('div', { class: 'btn-row', style: { marginTop: '12px' } },
+                button('开始转换', { iconName: 'bolt', onClick: async (e) => {
+                  const btn = e.currentTarget; btn.disabled = true;
+                  try {
+                    const r = await api.convertDocs(docState.paths, docState.target);
+                    docState.results = r;
+                    if (r.done.length) toast('已转换 ' + r.done.length + ' 个文件');
+                    else if (r.failed.length) toast('转换失败：' + r.failed[0].error, 7000);
+                    paint();
+                  } catch (err) { toast('转换失败：' + err.message, 7000); }
+                  btn.disabled = false;
+                } })))
+          : null),
+      card(
+        h('div', { class: 'card-title', html: icon('info', 'outlined', 20) + '<span>能做什么、不能做什么</span>' }),
+        h('div', { class: 'card-desc' }, 'Word / Excel / Markdown 之间是完整读写，表格会保留成真表格。'),
+        h('div', { class: 'hint-box', style: { marginTop: '8px' } },
+          h('span', { html: icon('warning_amber', 'outlined', 20) }),
+          h('div', {},
+            h('b', {}, 'PDF 只抽文本，不还原版式：'),
+            h('div', {}, '· 扫描件、图片型 PDF 没有文字层，抽不出来'),
+            h('div', {}, '· 用 CID 子集字体嵌入的中文 PDF，抽出来可能是乱码'),
+            h('div', {}, '· 版面、图片、页眉页脚都不会保留'))),
+        h('div', { style: { marginTop: '10px' } },
+          ...DOC_FORMATS.map(([ext, name, note, outs]) => h('div', {
+            style: { fontSize: '12.5px', padding: '4px 0', borderBottom: '1px solid var(--md-outline-variant)' },
+          }, h('b', {}, '.' + ext), ' ' + name + ' → ' + outs.map((o) => '.' + o).join(' / '),
+            h('span', { class: 'card-desc', style: { margin: '0 0 0 6px' } }, note))))),
+      (results && results.done && results.done.length)
+        ? card(
+            h('div', { class: 'card-title', html: icon('check_circle', 'outlined', 20) + '<span>转换结果</span>' }),
+            h('div', { class: 'song-scroll', style: { maxHeight: '240px', marginTop: '8px' } },
+              ...results.done.map((d) => h('div', {
+                style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 0',
+                         borderBottom: '1px solid var(--md-outline-variant)' },
+              },
+                h('div', { style: { flex: '1', minWidth: '0' } },
+                  h('div', { style: { fontSize: '12.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+                    nameOf(d.output)),
+                  h('div', { style: { fontSize: '11px', opacity: '.6' } },
+                    '.' + d.source + ' → .' + d.target + ' · ' + fmtSize(d.size))),
+                button('定位', { variant: 'text', iconName: 'folder_open',
+                  onClick: () => api.reveal(d.output) })))),
+            (results.failed && results.failed.length)
+              ? h('div', { class: 'hint-box', style: { marginTop: '10px' } },
+                  h('span', { html: icon('error_outline', 'outlined', 20) }),
+                  h('div', {}, ...results.failed.map((f) => h('div', {}, nameOf(f.path) + '：' + f.error))))
+              : null)
+        : h('span'),
+    );
+  };
+
+  view.append(h('div', { class: 'page' },
+    h('div', { class: 'page-head' },
+      h('h1', { class: 'page-title' }, '文档转换'),
+      h('div', { class: 'spacer' }),
+      pill('PDF / Word / Excel / Markdown 互转', 'mute')),
+    h('p', { class: 'page-sub' },
+      '把 PDF 转成 Word 或 Excel，也能在 Word、Excel、Markdown 之间互相转换，输出格式自己选。'),
+    holder));
+  paint();
+}
+
+
+/* ================================================================ 视频剪辑 */
+
+const VIDEO_EXT_RE = /\.(mp4|mkv|webm|flv|ts|m4v|mov|avi|wmv|mpg|mpeg)$/i;
+
+export function renderClip(view) {
+  clear(view);
+  const holder = h('div', {});
+  const nameOf = (p) => String(p).split(/[\\/]/).pop();
+
+  const paint = () => {
+    clear(holder);
+    // 已下载的视频：从任务记录里捞
+    const downloaded = [];
+    for (const t of (store.tasks || [])) {
+      for (const f of (t.files || [])) {
+        if (f.kind === 'video' && VIDEO_EXT_RE.test(String(f.path || ''))) {
+          downloaded.push({ path: f.path, name: f.name || nameOf(f.path), title: t.title || '' });
+        }
+      }
+    }
+    const local = clipState.paths || [];
+
+    holder.append(
+      card(
+        h('div', { class: 'card-title', html: icon('videocam', 'outlined', 20) + '<span>本地视频剪辑</span>' }),
+        h('div', { class: 'card-desc' },
+          '选一个本地视频，在播放器里拖进度条、填起止时间就能裁一段。裁完直接存在原文件旁边。'),
+        h('div', { class: 'btn-row', style: { marginTop: '10px' } },
+          button('选择本地视频', { variant: 'tonal', iconName: 'folder_open', onClick: async () => {
+            try {
+              const r = await api.pickLocalFiles('video');
+              if (r.cancelled || !r.paths?.length) return;
+              clipState.paths = r.paths.filter((p) => VIDEO_EXT_RE.test(p));
+              if (!clipState.paths.length) { toast('选的文件不是视频格式'); return; }
+              paint();
+              openVideo(clipState.paths[0], nameOf(clipState.paths[0]));
+            } catch (err) { toast('选择失败：' + err.message); }
+          } })),
+        local.length
+          ? h('div', { style: { marginTop: '10px' } },
+              ...local.map((p) => h('div', {
+                style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0',
+                         borderBottom: '1px solid var(--md-outline-variant)' },
+              },
+                h('div', { style: { flex: '1', minWidth: '0', fontSize: '12.5px',
+                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+                  nameOf(p)),
+                button('剪辑', { variant: 'text', iconName: 'play_arrow',
+                  onClick: () => openVideo(p, nameOf(p)) }),
+                button('定位', { variant: 'text', iconName: 'folder_open',
+                  onClick: () => api.reveal(p) }))))
+          : h('div', { class: 'card-desc', style: { marginTop: '10px' } }, '还没有选择本地视频。')),
+      card(
+        h('div', { class: 'card-title', html: icon('movie', 'outlined', 20) + '<span>已下载的视频</span>' }),
+        h('div', { class: 'card-desc' }, '点「剪辑」直接在播放器里打开，不用再去历史记录里翻。'),
+        downloaded.length
+          ? h('div', { class: 'song-scroll', style: { maxHeight: '260px', marginTop: '8px' } },
+              ...downloaded.slice(0, 50).map((f) => h('div', {
+                style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0',
+                         borderBottom: '1px solid var(--md-outline-variant)' },
+              },
+                h('div', { style: { flex: '1', minWidth: '0' } },
+                  h('div', { style: { fontSize: '12.5px', whiteSpace: 'nowrap', overflow: 'hidden',
+                                      textOverflow: 'ellipsis' } }, f.name),
+                  f.title ? h('div', { style: { fontSize: '11px', opacity: '.6', whiteSpace: 'nowrap',
+                                               overflow: 'hidden', textOverflow: 'ellipsis' } }, f.title) : null),
+                button('剪辑', { variant: 'text', iconName: 'play_arrow',
+                  onClick: () => openVideo(f.path, f.name) }),
+                button('定位', { variant: 'text', iconName: 'folder_open',
+                  onClick: () => api.reveal(f.path) }))))
+          : h('div', { class: 'card-desc', style: { marginTop: '10px' } },
+              '还没有下载过视频。到「解析」页下一个，或者用上面的本地视频剪辑。')),
+      card(
+        h('div', { class: 'card-title', html: icon('info', 'outlined', 20) + '<span>怎么用</span>' }),
+        h('div', { class: 'card-desc' }, '打开视频后，播放器下方有一条工具栏：'),
+        h('div', { style: { marginTop: '8px', fontSize: '12.5px', lineHeight: '1.9' } },
+          h('div', {}, '1. 播放到想要的起点，点「取当前为起点」'),
+          h('div', {}, '2. 在「起点 / 终点」框里填时间，格式可以是 0:05、1:05、0:01:30'),
+          h('div', {}, '3. 「快速裁剪」几秒出结果但对齐关键帧；「精确裁剪」逐帧准确但慢一些'),
+          h('div', {}, '4. 裁完会在原文件旁边生成一个新文件，界面上会提示文件名')),
+        h('div', { class: 'hint-box', style: { marginTop: '10px' } },
+          h('span', { html: icon('warning_amber', 'outlined', 20) }),
+          h('div', {}, '起止时间超出视频长度会直接报错，不会产出半个文件。'))),
+    );
+  };
+
+  view.append(h('div', { class: 'page' },
+    h('div', { class: 'page-head' },
+      h('h1', { class: 'page-title' }, '视频剪辑'),
+      h('div', { class: 'spacer' }),
+      pill('快速 / 精确裁剪', 'mute')),
+    h('p', { class: 'page-sub' },
+      '本地视频和已下载的视频都能裁。裁出来的新文件保存在原视频旁边。'),
+    holder));
+  paint();
+}
+
+const clipState = { paths: [] };
