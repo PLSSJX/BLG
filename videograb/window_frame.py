@@ -104,8 +104,10 @@ def find_window(title: str = "") -> int:
 
 
 WM_SETICON = 0x0080
+WM_GETICON = 0x007F
 WM_SETTEXT = 0x000C
 ICON_SMALL = 0
+ICON_BIG = 1
 
 
 def clear_titlebar(hwnd: int) -> bool:
@@ -120,11 +122,26 @@ def clear_titlebar(hwnd: int) -> bool:
     try:
         user32 = ctypes.windll.user32
         user32.SendMessageW(ctypes.c_void_p(hwnd), WM_SETTEXT, 0, ctypes.c_wchar_p(""))
+        # 两个尺寸都要清：只清 SMALL，有些窗口会把 BIG 缩下来当标题栏图标用
         user32.SendMessageW(ctypes.c_void_p(hwnd), WM_SETICON, ICON_SMALL, 0)
+        user32.SendMessageW(ctypes.c_void_p(hwnd), WM_SETICON, ICON_BIG, 0)
         SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_FRAMECHANGED = 0x01, 0x02, 0x04, 0x20
         user32.SetWindowPos(ctypes.c_void_p(hwnd), None, 0, 0, 0, 0,
                             SWP_NOSIZE | SWP_NOMOVE | SWP_NOZORDER | SWP_FRAMECHANGED)
         return True
+    except OSError:
+        return False
+
+
+def titlebar_icon_cleared(hwnd: int) -> bool:
+    """查一下标题栏图标到底还在不在（WM_GETICON 返回 0 表示没有了）。"""
+    if os.name != "nt" or not hwnd:
+        return False
+    try:
+        user32 = ctypes.windll.user32
+        small = user32.SendMessageW(ctypes.c_void_p(hwnd), WM_GETICON, ICON_SMALL, 0)
+        big = user32.SendMessageW(ctypes.c_void_p(hwnd), WM_GETICON, ICON_BIG, 0)
+        return not small and not big
     except OSError:
         return False
 
@@ -188,17 +205,32 @@ def apply_current(title: str = "", **colors) -> bool:
     return apply(hwnd, **colors)
 
 
-def apply_when_ready(title: str = "", delay: float = 0.0, attempts: int = 40,
+def apply_when_ready(title: str = "", delay: float = 0.0, attempts: int = 160,
                      interval: float = 0.25) -> None:
-    """后台等窗口出现，然后把最近一次下发的主题色应用上去。"""
+    """后台等窗口出现，套用主题色，并在启动阶段反复清标题栏。
+
+    为什么要反复清：WebView2 冷启动可能十几秒，窗口在这个过程中会重建，
+    图标会被重新设回去。所以找到窗口后不立刻收工，继续清若干轮，
+    直到 WM_GETICON 连续两次返回 0 为止。
+    """
     def worker():
         if delay:
             time.sleep(delay)
+        hwnd = 0
+        clean_streak = 0
         for _ in range(attempts):
-            hwnd = find_window(title)
-            if hwnd:
-                apply(hwnd, **(_last or {"dark": False}))
-                return
+            if not hwnd:
+                hwnd = find_window(title)
+                if not hwnd:
+                    time.sleep(interval)
+                    continue
+            apply(hwnd, **(_last or {"dark": False}))
+            if titlebar_icon_cleared(hwnd):
+                clean_streak += 1
+                if clean_streak >= 2:
+                    return            # 连续两次确认干净才收工
+            else:
+                clean_streak = 0
             time.sleep(interval)
 
     threading.Thread(target=worker, daemon=True, name="window-frame").start()
