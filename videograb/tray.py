@@ -362,8 +362,38 @@ class Tray:
             return
         if self._thread is not None:
             return
+        # 深色菜单要在建菜单之前就设好，否则第一版菜单还是白的
+        enable_dark_menus()
         self._thread = threading.Thread(target=self._run, daemon=True, name="tray")
         self._thread.start()
+
+
+def enable_dark_menus() -> bool:
+    """让系统弹出菜单跟着用深色，和主界面的深色主题一致。
+
+    原生托盘菜单是 Windows 自己画的，**没法**套成 Material 3（不能改颜色、
+    圆角、字体）。能做的只有这一件：通过未文档化的 SetPreferredAppMode
+    让系统把菜单画成深色，至少不再是一片刺眼的白。
+
+    这两个导出只有序号没有名字，只能用 GetProcAddress 拿地址；
+    序号在不同 Windows 版本上可能变，所以全部包在 try 里，失败就当没这回事。
+    """
+    try:
+        uxtheme = ctypes.WinDLL("uxtheme", use_last_error=True)
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.GetProcAddress.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+        k32.GetProcAddress.restype = ctypes.c_void_p
+        module = ctypes.c_void_p(uxtheme._handle)
+        addr = k32.GetProcAddress(module, ctypes.c_void_p(135))   # SetPreferredAppMode
+        if not addr:
+            return False
+        ctypes.WINFUNCTYPE(ctypes.c_int, ctypes.c_int)(addr)(2)  # 2 = ForceDark
+        flush = k32.GetProcAddress(module, ctypes.c_void_p(136))  # FlushMenuThemes
+        if flush:
+            ctypes.WINFUNCTYPE(None)(flush)()
+        return True
+    except Exception:
+        return False
 
 
 def app_icon_path() -> str:
