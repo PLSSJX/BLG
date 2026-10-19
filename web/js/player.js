@@ -187,6 +187,13 @@ export function render() {
 
 export function initPlayer() {
   if (player.audio) return;
+  // 托盘菜单通过它控制播放（evaluate_js 只能摸到 window 上的东西）
+  window.__vgTray = {
+    toggle: () => toggle(),
+    next: () => next(false),
+    prev: () => prev(),
+    isPlaying: () => !!(player.audio && !player.audio.paused),
+  };
   const audio = new Audio();
   audio.preload = 'metadata';
   audio.addEventListener('ended', () => next(true));

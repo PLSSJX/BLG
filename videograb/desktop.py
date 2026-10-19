@@ -101,6 +101,18 @@ def _run_webview(url: str, on_closed=None, ctx=None) -> bool:
             apply_when_ready(WINDOW_TITLE)
         except Exception as exc:
             print("  窗口边框上色失败（不影响使用）：" + str(exc)[:100])
+        # 托盘必须在 webview.start() 之前起：它会一直阻塞到窗口关闭，
+        # 之后再起就没有主线程活路了。托盘自己开后台线程跑消息循环。
+        try:
+            from .tray import Tray, app_icon_path
+            tray = Tray(
+                window_getter=lambda: window,
+                icon_path=app_icon_path(),
+                on_quit=(ctx.on_quit if ctx is not None else None),
+            )
+            tray.start()
+        except Exception as exc:
+            print("  托盘图标不可用（不影响主程序）：" + str(exc)[:120])
         # 显式指定 EdgeChromium：Windows 上其它后端要么是 IE，要么要额外运行库
         webview.start(gui="edgechromium", private_mode=False, storage_path=str(_storage_dir()))
         return True
