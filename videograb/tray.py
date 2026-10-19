@@ -154,7 +154,7 @@ class Tray:
         ("设置", "#settings"),
     ]
 
-    def __init__(self, window_getter=None, icon_path=None, on_quit=None, tooltip="Video-Grabing"):
+    def __init__(self, window_getter=None, icon_path=None, on_quit=None, tooltip="Makise Toolkit"):
         self._window_getter = window_getter or (lambda: None)
         self._icon_path = str(icon_path) if icon_path else ""
         self._on_quit = on_quit
@@ -341,10 +341,10 @@ class Tray:
         wc = WNDCLASSW()
         wc.lpfnWndProc = self._wndproc
         wc.hInstance = instance
-        wc.lpszClassName = "VideoGrabTrayWnd"
+        wc.lpszClassName = "MakiseTrayWnd"
         user32.RegisterClassW(ctypes.byref(wc))
         # HWND_MESSAGE：只用来收消息的隐藏窗口，不出现在任务栏
-        self._hwnd = user32.CreateWindowExW(0, "VideoGrabTrayWnd", "VideoGrabTray",
+        self._hwnd = user32.CreateWindowExW(0, "MakiseTrayWnd", "MakiseTray",
                                             0, 0, 0, 0, 0,
                                             ctypes.c_void_p(HWND_MESSAGE), None,
                                             instance, None)

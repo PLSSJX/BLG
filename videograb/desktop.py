@@ -18,7 +18,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-WINDOW_TITLE = "Video-Grabing"
+WINDOW_TITLE = "Makise Toolkit"
 WINDOW_SIZE = (1480, 960)
 MIN_SIZE = (1040, 720)
 
@@ -48,7 +48,7 @@ def wait_until_ready(url: str, timeout: float = 25.0) -> bool:
     while time.time() < deadline:
         try:
             with urllib.request.urlopen(url + "api/ping", timeout=1.5) as response:
-                if b"Video-Grabing" in response.read(256):
+                if b"MakiseToolkit" in response.read(256):
                     return True
         except (urllib.error.URLError, OSError, ValueError, TimeoutError):
             time.sleep(0.15)
@@ -204,7 +204,7 @@ def _explain_failure(url: str) -> None:
     try:
         import ctypes
         # 0x10 = 错误图标，0x40000 = 置顶，避免被别的窗口挡住看不见
-        ctypes.windll.user32.MessageBoxW(None, reason, "Video-Grabing", 0x10 | 0x40000)
+        ctypes.windll.user32.MessageBoxW(None, reason, "MakiseToolkit", 0x10 | 0x40000)
     except Exception as exc:
         print("  （无法弹出提示框：" + str(exc)[:80] + "）")
         print(reason)

@@ -1,9 +1,9 @@
-"""Video-Grabing 安装程序。
+"""MakiseToolkit 安装程序。
 
 用 PyInstaller 打包成单个 exe，内部以 payload.zip 的形式携带整个应用。
 安装过程：解包 → 创建快捷方式 → 注册到「应用和功能」→ 写入卸载程序。
 
-支持静默安装：Video-Grabing-Setup-x.y.z.exe /S /D=<安装目录>
+支持静默安装：MakiseToolkit-Setup-x.y.z.exe /S /D=<安装目录>
 """
 from __future__ import annotations
 
@@ -113,9 +113,9 @@ def install(target: Path, progress=None, make_shortcuts: bool = True,
     if make_shortcuts:
         desktop = W.desktop_dir() / (APP_NAME + ".lnk")
         start = W.programs_dir() / (APP_NAME + ".lnk")
-        if W.create_shortcut(desktop, exe, "Video-Grabing —— 多平台视频采集器"):
+        if W.create_shortcut(desktop, exe, "Makise Toolkit —— 多平台视频采集器"):
             created.append(str(desktop))
-        if W.create_shortcut(start, exe, "Video-Grabing —— 多平台视频采集器"):
+        if W.create_shortcut(start, exe, "MakiseToolkit —— 多平台视频采集器"):
             created.append(str(start))
 
     W.register_uninstall(target, APP_VERSION, W.directory_size_kb(target))
@@ -132,7 +132,10 @@ USER_KEEP_NAMES = {"data", "downloads"}
 
 
 NEST_NAME = "VGPlatform"          # 程序永远装在这个子文件夹里
-APP_FOLDER_NAMES = {"videograb", "video-grabing", "vgplatform"}
+# 认得"用户已经选到程序这一层"的目录名。改名后要加上新名字，
+# 老名字保留着，方便老安装目录被正确识别（不做嵌套）。
+APP_FOLDER_NAMES = {"videograb", "makisetoolkit", "makise toolkit",
+                    "video-grabing", "vgplatform"}
 
 
 def resolve_target(selected: Path) -> Path:
@@ -143,7 +146,7 @@ def resolve_target(selected: Path) -> Path:
     这些操作的波及范围从结构上就被限死了。
 
     三种例外（原样使用，不再套一层）：
-      1. 选中的目录本身就叫 VGPlatform / Video-Grabing（用户已经选到这一层）
+      1. 选中的目录本身就叫 VGPlatform / MakiseToolkit（用户已经选到这一层）
       2. 那里已经是一份现有安装（升级、自动更新传 /D=<当前目录>）
     """
     selected = Path(selected).expanduser()

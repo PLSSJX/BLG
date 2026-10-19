@@ -8,12 +8,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-APP_NAME = "Video-Grabing"
-APP_ID = "Video-Grabing"
+APP_NAME = "MakiseToolkit"
+APP_ID = "MakiseToolkit"
 PUBLISHER = "PLSSJX"
-EXE_NAME = "Video-Grabing.exe"
+EXE_NAME = "MakiseToolkit.exe"
 UNINSTALL_NAME = "uninstall.exe"
-UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Video-Grabing"
+UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\MakiseToolkit"
 # 安装时写下的文件清单，卸载程序只删清单里的东西
 MANIFEST_NAME = "installed-files.json"
 
@@ -28,7 +28,7 @@ def _appdata_dir() -> Path:
 
     以前这里写的是 os.environ[...] or "."，一旦环境变量缺失（从某些启动器、
     计划任务或精简环境里拉起安装程序时就会发生），默认目录会变成
-    "Programs\Video-Grabing" 这样的**相对路径** —— 文件被解到当前工作目录，
+    "Programs\MakiseToolkit" 这样的**相对路径** —— 文件被解到当前工作目录，
     而快捷方式里的 TargetPath 又被 PowerShell 按 C:\ 解析，
     结果就是桌面图标指向一个根本不存在的 exe。
     现在依次尝试：环境变量 → 系统 API → 用户主目录，绝不返回相对路径。
@@ -140,7 +140,7 @@ def remove_file(path: Path) -> None:
 
 
 def kill_running_app() -> int:
-    """安装前把正在运行的 Video-Grabing 关掉，否则文件被占用替换不了。"""
+    """安装前把正在运行的 MakiseToolkit 关掉，否则文件被占用替换不了。"""
     try:
         proc = subprocess.run(
             ["taskkill", "/F", "/IM", EXE_NAME, "/T"],

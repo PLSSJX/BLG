@@ -2,7 +2,7 @@
 r"""把 dist 里的成品装到本机，并**重建快捷方式**。
 
 用法：
-    python install.py                 # 装到 %LOCALAPPDATA%\Programs\Video-Grabing
+    python install.py                 # 装到 %LOCALAPPDATA%\Programs\MakiseToolkit
     python install.py --dir 某路径     # 装到指定目录
     python install.py --no-shortcut   # 只复制，不建快捷方式
 
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-APP_NAME = "Video-Grabing"
+APP_NAME = "MakiseToolkit"
 
 
 def default_dir() -> Path:
@@ -47,7 +47,7 @@ def copy_tree(src: Path, dst: Path) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="安装 Video-Grabing 并重建快捷方式")
+    parser = argparse.ArgumentParser(description="安装 MakiseToolkit 并重建快捷方式")
     parser.add_argument("--dir", help="安装目录")
     parser.add_argument("--no-shortcut", action="store_true", help="不重建快捷方式")
     args = parser.parse_args()

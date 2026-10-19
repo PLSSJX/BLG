@@ -45,9 +45,9 @@ def test_resolve_target():
     check(r(Path("D:\\")) == Path("D:\\VGPlatform"), "盘根 D:\\ -> D:\\VGPlatform")
     check(r(Path(r"D:\Tools")) == Path(r"D:\Tools\VGPlatform"), "普通目录 -> 其下 VGPlatform")
     check(r(Path(r"D:\Tools\VGPlatform")) == Path(r"D:\Tools\VGPlatform"), "已选到 VGPlatform 不再嵌套")
-    check(r(Path(r"D:\Tools\Video-Grabing")) == Path(r"D:\Tools\Video-Grabing"), "已选到程序目录不再嵌套")
+    check(r(Path(r"D:\Tools\MakiseToolkit")) == Path(r"D:\Tools\MakiseToolkit"), "已选到程序目录不再嵌套")
     sb = sandbox("resolve")
-    touch(sb / "Video-Grabing.exe")
+    touch(sb / "MakiseToolkit.exe")
     check(r(sb) == sb, "现有安装目录原地升级（不套两层）")
     sb2 = sandbox("resolve2")
     touch(sb2 / "installed-files.json", "{}")
@@ -81,23 +81,23 @@ def test_uninstall_existing():
 
     # 老安装（无清单）+ 用户文件：只删已知名字
     sb = sandbox("legacy")
-    touch(sb / "Video-Grabing.exe")
+    touch(sb / "MakiseToolkit.exe")
     touch(sb / "_internal" / "a.dll")
     touch(sb / "我的备份.txt")
     S.uninstall_existing(sb)
-    check(not (sb / "Video-Grabing.exe").exists(), "老安装：exe 被删")
+    check(not (sb / "MakiseToolkit.exe").exists(), "老安装：exe 被删")
     check(not (sb / "_internal").exists(), "老安装：_internal 被删")
     check((sb / "我的备份.txt").exists(), "老安装：用户文件保留")
 
     # 新安装（有清单）+ 用户文件
     sb = sandbox("manifest")
-    touch(sb / "Video-Grabing.exe")
+    touch(sb / "MakiseToolkit.exe")
     touch(sb / "_internal" / "a.dll")
     touch(sb / "installed-files.json",
-          '{"files": ["Video-Grabing.exe", "_internal/a.dll"]}')
+          '{"files": ["MakiseToolkit.exe", "_internal/a.dll"]}')
     touch(sb / "用户文件.txt")
     S.uninstall_existing(sb)
-    check(not (sb / "Video-Grabing.exe").exists(), "清单安装：exe 被删")
+    check(not (sb / "MakiseToolkit.exe").exists(), "清单安装：exe 被删")
     check(not (sb / "_internal").exists(), "清单安装：_internal 被删")
     check((sb / "用户文件.txt").exists(), "清单安装：用户文件保留")
 
@@ -114,11 +114,11 @@ def test_conflicts():
         def __init__(self, n):
             self.filename = n
 
-    members = [M("README.md"), M("_internal/old.dll"), M("Video-Grabing.exe")]
+    members = [M("README.md"), M("_internal/old.dll"), M("MakiseToolkit.exe")]
     bad = S.conflicting_files(sb, members)
     check("README.md" in bad, "用户同名文件被识别为冲突")
     check("_internal/old.dll" not in bad, "自己的旧文件不算冲突")
-    check("Video-Grabing.exe" not in bad, "新文件不算冲突")
+    check("MakiseToolkit.exe" not in bad, "新文件不算冲突")
 
 
 # ---------------------------------------------------------------- E. 下载目录归属
@@ -186,17 +186,17 @@ def test_remover():
     print("\nH. 卸载程序只删自己的文件")
     import uninstall as U
     sb = sandbox("uninst")
-    touch(sb / "Video-Grabing.exe")
+    touch(sb / "MakiseToolkit.exe")
     touch(sb / "_internal" / "a.dll")
     touch(sb / "installed-files.json",
-          '{"files": ["Video-Grabing.exe", "_internal/a.dll"]}')
+          '{"files": ["MakiseToolkit.exe", "_internal/a.dll"]}')
     touch(sb / "用户资料.txt")
     touch(sb / "我的照片" / "a.jpg")
     removed, failed, kept = U.remove_all(sb, keep_user_data=True)
     check("用户资料.txt" in kept, "用户文件进 kept 列表")
     check((sb / "用户资料.txt").exists(), "用户文件仍在")
     check((sb / "我的照片" / "a.jpg").exists(), "用户目录仍在")
-    check(not (sb / "Video-Grabing.exe").exists(), "程序文件被删")
+    check(not (sb / "MakiseToolkit.exe").exists(), "程序文件被删")
     check(not (sb / "_internal").exists(), "_internal 被删")
 
 
@@ -217,7 +217,7 @@ def test_self_delete():
 def test_real_install():
     print("\nJ. 真实静默安装到非空目录（集成）")
     import subprocess
-    setup = ROOT / "dist" / "Video-Grabing-Setup-2.4.7.exe"
+    setup = ROOT / "dist" / "MakiseToolkit-Setup-2.4.7.exe"
     if not setup.is_file():
         print("  [--] 跳过：安装包不在")
         return
@@ -230,7 +230,7 @@ def test_real_install():
     nested = sb / "VGPlatform"
     check(proc.returncode == 0, "安装成功（退出码 0）")
     check(nested.is_dir(), "在选中目录下建了 VGPlatform")
-    check((nested / "Video-Grabing.exe").is_file(), "主程序在 VGPlatform 里")
+    check((nested / "MakiseToolkit.exe").is_file(), "主程序在 VGPlatform 里")
     check((sb / "用户文件.txt").exists(), "用户文件完好")
     check((sb / "我的项目" / "main.py").exists(), "用户目录完好")
     # 顶层不该出现散落的程序文件

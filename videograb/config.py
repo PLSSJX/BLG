@@ -30,6 +30,45 @@ ROOT = BASE_DIR
 DATA_DIR = BASE_DIR / "data"
 DEFAULT_DOWNLOAD_DIR = BASE_DIR / "downloads"
 
+# 旧版本叫 Video-Grabing，改名后安装目录也变了。data/ 是放在 exe 同级目录的，
+# 不搬过来的话用户的 SESSDATA、下载目录、任务记录会凭空消失。
+LEGACY_NAMES = ("Video-Grabing", "Video-Grabing-restore")
+
+
+def _migrate_legacy_data() -> None:
+    """第一次在新名字下启动时，把旧安装目录里的 data/ 搬过来。
+
+    只在**新位置没有 config.json** 时动手，绝不覆盖已有的配置。
+    搬的是整个 data/（配置、任务记录、本地歌单）。下载的媒体文件不动 ——
+    它们的路径本来就记在 config 里，是绝对路径。
+    """
+    try:
+        if (DATA_DIR / "config.json").exists():
+            return
+        for name in LEGACY_NAMES:
+            old = BASE_DIR.parent / name / "data"
+            if not (old / "config.json").exists():
+                continue
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            import shutil as _sh
+            for item in old.iterdir():
+                target = DATA_DIR / item.name
+                if target.exists():
+                    continue                      # 新位置已有的不覆盖
+                try:
+                    if item.is_dir():
+                        _sh.copytree(item, target)
+                    else:
+                        _sh.copy2(item, target)
+                except OSError:
+                    continue
+            return
+    except OSError:
+        return
+
+
+_migrate_legacy_data()
+
 
 def _resolve_web_dir() -> Path:
     """界面文件目录，优先用 exe 同级的 web/ 覆盖层。

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""把 Video-Grabing 连同 Python 运行时、界面资源和可选工具打成一个独立 exe。
+"""把 MakiseToolkit 连同 Python 运行时、界面资源和可选工具打成一个独立 exe。
 
 用法：
     python build.py                    # 单文件便携版（推荐分发）
@@ -169,7 +169,7 @@ def build(python: Path, mode: str, icon: Path | None, with_ytdlp: bool,
     args = [
         str(python), "-m", "PyInstaller",
         "--noconfirm", "--clean",
-        "--name", "Video-Grabing",
+        "--name", "MakiseToolkit",
         "--distpath", str(DIST),
         "--workpath", str(TOOLS / "pyinstaller"),
         "--specpath", str(TOOLS),
@@ -191,7 +191,7 @@ def build(python: Path, mode: str, icon: Path | None, with_ytdlp: bool,
     if windowed:
         # 无控制台构建：双击不再弹黑框。
         # launcher.py 会在从命令行调用时 AttachConsole 接回父控制台，
-        # 所以 windowed 版同样可以用 Video-Grabing.exe probe BV... 这种命令行方式。
+        # 所以 windowed 版同样可以用 MakiseToolkit.exe probe BV... 这种命令行方式。
         args.append("--windowed")
     if icon:
         args += ["--icon", str(icon)]
@@ -217,7 +217,7 @@ def build(python: Path, mode: str, icon: Path | None, with_ytdlp: bool,
     if result.returncode != 0:
         raise SystemExit("打包失败，退出码 " + str(result.returncode))
 
-    target = DIST / "Video-Grabing.exe" if mode == "onefile" else DIST / "Video-Grabing" / "Video-Grabing.exe"
+    target = DIST / "MakiseToolkit.exe" if mode == "onefile" else DIST / "MakiseToolkit" / "MakiseToolkit.exe"
     if not target.exists():
         raise SystemExit("打包结束但没有找到 " + str(target))
     # 目录版把 bin/ 放到 exe 旁边，方便用户自行替换 ffmpeg
@@ -318,7 +318,7 @@ def build_installer(python: Path, icon: Path | None, with_ytdlp: bool = True) ->
     (TOOLS / "VERSION.txt").write_text(version, encoding="utf-8")
     installer_args = [
         str(python), "-m", "PyInstaller", "--noconfirm", "--clean",
-        "--onefile", "--windowed", "--name", "Video-Grabing-Setup-" + version,
+        "--onefile", "--windowed", "--name", "MakiseToolkit-Setup-" + version,
         "--distpath", str(DIST),
         "--workpath", str(TOOLS / "pyinstaller-setup"),
         "--specpath", str(TOOLS),
@@ -333,7 +333,7 @@ def build_installer(python: Path, icon: Path | None, with_ytdlp: bool = True) ->
     if subprocess.run(installer_args).returncode != 0:
         raise SystemExit("安装程序构建失败")
 
-    target = DIST / ("Video-Grabing-Setup-" + version + ".exe")
+    target = DIST / ("MakiseToolkit-Setup-" + version + ".exe")
     if not target.exists():
         raise SystemExit("没有找到生成的安装程序")
 
@@ -360,7 +360,7 @@ def report(target: Path, mode: str) -> None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="打包 Video-Grabing 独立 exe")
+    parser = argparse.ArgumentParser(description="打包 MakiseToolkit 独立 exe")
     parser.add_argument("--onefile", action="store_true", help="只打单文件版")
     parser.add_argument("--onedir", action="store_true", help="只打目录版")
     parser.add_argument("--all", action="store_true", help="两种都打")
@@ -385,7 +385,7 @@ def main() -> int:
         if args.onedir:
             modes.append("onedir")
 
-    print("Video-Grabing 打包工具")
+    print("MakiseToolkit 打包工具")
     print("  输出目录：" + str(DIST))
     print("  打包模式：" + "、".join(modes))
 

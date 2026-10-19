@@ -47,8 +47,8 @@ def build_state(ctx: Context) -> dict:
         })
     return {
         "version": __version__,
-        "app": "Video-Grabing",
-        "app_cn": "Video-Grabing",
+        "app": "MakiseToolkit",
+        "app_cn": "MakiseToolkit",
         "engines": describe(ctx),
         "sites": describe_sites(),
         "webview": _webview_status(),
@@ -198,7 +198,7 @@ def run_probe(ctx: Context, raw_input: str, qn: int = 0) -> dict:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "Video-Grabing"
+    server_version = "MakiseToolkit"
     protocol_version = "HTTP/1.1"
     ctx: Context = None  # type: ignore[assignment]
 
@@ -319,7 +319,7 @@ class Handler(BaseHTTPRequestHandler):
         expected = getattr(self.ctx, "api_token", "")
         if not expected:
             return True
-        return self.headers.get("X-Video-Grabing-Token") == expected
+        return self.headers.get("X-MakiseToolkit-Token") == expected
 
     def do_POST(self):  # noqa: N802
         route = urlparse(self.path).path
@@ -354,8 +354,8 @@ class Handler(BaseHTTPRequestHandler):
         if route == "/api/settings":
             return self._json({"ok": True, "settings": _public_settings(ctx)})
         if route == "/api/ping":
-            # 单实例检测用：另一个进程靠它判断"这个端口上是不是已经有一个 Video-Grabing"
-            return self._json({"ok": True, "app": "Video-Grabing", "version": __version__})
+            # 单实例检测用：另一个进程靠它判断"这个端口上是不是已经有一个 MakiseToolkit"
+            return self._json({"ok": True, "app": "MakiseToolkit", "version": __version__})
         if route == "/api/local/formats":
             from .music import transcode
             ffmpeg = transcode.find_ffmpeg()
@@ -534,7 +534,7 @@ class Handler(BaseHTTPRequestHandler):
             from .window_frame import apply_current
             payload = payload or {}
             ok = apply_current(
-                title="Video-Grabing",
+                title="MakiseToolkit",
                 caption=str(payload.get("caption") or ""),
                 text=str(payload.get("text") or ""),
                 border=str(payload.get("border") or ""),

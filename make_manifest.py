@@ -91,7 +91,7 @@ def find_installer() -> dict:
     dist = ROOT / "dist"
     if not dist.is_dir():
         return {}
-    candidates = sorted(dist.glob("Video-Grabing-Setup-*.exe"))
+    candidates = sorted(dist.glob("MakiseToolkit-Setup-*.exe"))
     if not candidates:
         return {}
     setup = candidates[-1]

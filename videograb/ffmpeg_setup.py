@@ -18,7 +18,7 @@ from pathlib import Path
 
 from .config import BIN_DIR
 
-USER_AGENT = "Video-Grabing/2.5"
+USER_AGENT = "MakiseToolkit/2.5"
 
 # 实测大小（2026-10）：gyan.dev 的 essentials 包 115 MB，BtbN 的完整包 200 MB。
 # 下载耗时取决于网速，慢的话可能要几分钟 —— 界面上会一直显示进度。

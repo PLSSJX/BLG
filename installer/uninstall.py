@@ -1,4 +1,4 @@
-"""Video-Grabing 卸载程序。
+"""MakiseToolkit 卸载程序。
 
 被安装到程序目录下，和主程序放在一起。运行时以自身所在目录为安装目录，
 删掉程序文件、快捷方式和注册表项；用户可以选择是否一并删除下载的视频和配置。
@@ -26,7 +26,7 @@ USER_DATA = {"data", "downloads", ".deps"}
 def install_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent.parent / "dist" / "Video-Grabing"
+    return Path(__file__).resolve().parent.parent / "dist" / "MakiseToolkit"
 
 
 # 没有清单时（老版本装的）只认这些名字，其余一律不动
@@ -60,7 +60,7 @@ def remove_all(target: Path, keep_user_data: bool) -> tuple[list, list, list]:
     返回 (已删除, 失败, 已保留)。**关键安全约束**：只删安装时记录过的文件；
     没有清单时只认已知的目录名。用户自己的文件一律保留并报告出来 ——
     以前这里是"遍历目录、见什么删什么"，如果程序被装进了用户的目录
-    （例如把安装路径选成 D:\Tools 而不是 D:\Tools\Video-Grabing），
+    （例如把安装路径选成 D:\Tools 而不是 D:\Tools\MakiseToolkit），
     卸载会把那个目录里原有的文件全部删掉。
     """
     removed, failed, kept = [], [], []

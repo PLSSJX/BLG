@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Video-Grabing 一键启动脚本。
+"""MakiseToolkit 一键启动脚本。
 
 用法：
     python start.py              # 启动界面并自动打开浏览器

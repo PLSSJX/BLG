@@ -769,7 +769,7 @@ def _parse_vorbis_comment(data: bytes) -> list[tuple[str, str]]:
     return pairs
 
 
-def _build_vorbis_comment(pairs: list[tuple[str, str]], vendor: bytes = b"Video-Grabing") -> bytes:
+def _build_vorbis_comment(pairs: list[tuple[str, str]], vendor: bytes = b"MakiseToolkit") -> bytes:
     """FLAC 的 Vorbis Comment 内部长度是小端（跟 Metadata Block 头的大端不一样）。"""
     out = bytearray()
     out += struct.pack("<I", len(vendor)) + vendor

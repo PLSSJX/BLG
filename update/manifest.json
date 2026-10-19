@@ -1,22 +1,22 @@
 {
- "version": "2.5.2",
- "generated": "2026-10-19 12:28:21 UTC",
+ "version": "3.0.0",
+ "generated": "2026-10-19 12:36:57 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
   {
    "path": "web/css/app.css",
-   "sha256": "e603c5f124c42e928abe4e79579335ed4c0322b721d40fdb0f21933a088fe11c",
+   "sha256": "4e076b490065031038bf10d1d2920bc11a6691fc769993f1b6e2f84df78b3a63",
    "size": 34771
   },
   {
    "path": "web/index.html",
-   "sha256": "909a1605d663b1adba9e6372750fed2fd642ea1730a287e7be7d9b25e561bc96",
+   "sha256": "6575ff7c381ba96d19c1845e9d18bc3413674a9c7c5c2d01bf3ce2c510ec1e69",
    "size": 1482
   },
   {
    "path": "web/js/api.js",
-   "sha256": "6c759748b69799aaf046933595ec7e4569c947f00bfd3c5862acb80cae2d131a",
+   "sha256": "e21d3f104628aa713136bb0228037ea6da87f563c94e3b35209db8cb0897b345",
    "size": 4944
   },
   {
@@ -58,28 +58,28 @@
  "source_files": [
   {
    "path": "launcher.py",
-   "sha256": "24ec5ac9699e7f40e1f9b48eac14c2405e00a8ba8971034570bb7f0176ef0a3c",
+   "sha256": "817aff4c09443b393d8989e5b0e3601d43901765e14eb54d4818ef5dd26b1f0b",
    "size": 3278
   },
   {
    "path": "start.py",
-   "sha256": "2bda1ebf6bbcd2c54a2cb0540e2ce6370c208757054f23a5678c155648068d03",
+   "sha256": "7a5c26f113af8597dbadf22d1eb7b67c88d608bf936aeb839847cfb2fc41679c",
    "size": 700
   },
   {
    "path": "build.py",
-   "sha256": "703f3cc63931a92939f9831f51ed5d5b0fa3ab6910d2298c356c2652962c4cc7",
+   "sha256": "8723dc5ae75c2d965dd243aef614fbb91db99d6f84fefcd282479b53fdb8a698",
    "size": 17955
   },
   {
    "path": "make_manifest.py",
-   "sha256": "d137c32c20f7599873665ea4759703ba29c6d5a414e107df0baf4c3e1d262500",
+   "sha256": "0b403613c70bb2d2acd450dee8f9965da8ec0ab2c8608037c172cc0d547bcb3d",
    "size": 4600
   },
   {
    "path": "create_shortcut.py",
-   "sha256": "a413c97b974ec9f8776570b6bbabc3b12471a06d68ec9926935c43fd81d81485",
-   "size": 5949
+   "sha256": "379e223e4d9dd4ce8d546e0ff2c84737d860dfaa9f2af5bca0125f1ae57d9c1f",
+   "size": 6898
   },
   {
    "path": "run.bat",
@@ -93,17 +93,17 @@
   },
   {
    "path": "README.md",
-   "sha256": "ca6b2ca4ec2e45cd50b6a28e5ed6333b2aeaefd6008df80e18e641d1b03dcdf9",
-   "size": 37746
+   "sha256": "3901bbd8fb8d712f3a501a3c89795c1d48729318637efba9498340316ec26874",
+   "size": 11165
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "6e1455a0be443ca69946ed655ffdf66e8dcfc3d8092503eefb017a2bd9d3f94a",
-   "size": 308
+   "sha256": "93122fef9d44ff4844addc1521fc2e71cdd3cbdb8b6798b4b096c741e9f1ab77",
+   "size": 398
   },
   {
    "path": "videograb/__main__.py",
-   "sha256": "cbcdcbc0c5cde590bbff0545a09c73952d5f3fb2c24573175aa50e57b4d3d595",
+   "sha256": "b72e86f782ad1fc94acf0805b9bc8b40f57a7630f02a5ee0af37fad71458e370",
    "size": 11445
   },
   {
@@ -118,8 +118,8 @@
   },
   {
    "path": "videograb/config.py",
-   "sha256": "b26b0fdd509803bd65192ffd9edeb6ac4c5c1f4017685b2a025a555245118878",
-   "size": 12682
+   "sha256": "d5dd7f0567b66319874c636d16e3839fe8fca6a43c3545d4c0a794709d14d8b6",
+   "size": 14172
   },
   {
    "path": "videograb/convert.py",
@@ -128,8 +128,8 @@
   },
   {
    "path": "videograb/desktop.py",
-   "sha256": "745081e61035026dad1194fdebbb3c1c97b477186371306a7d3420177dfcf62c",
-   "size": 9150
+   "sha256": "5a782dfa7ae8e2e8026619c0b7b2775e5e1899d67c46dd7a8d181e56133a4341",
+   "size": 9151
   },
   {
    "path": "videograb/downloader.py",
@@ -193,7 +193,7 @@
   },
   {
    "path": "videograb/engines/e8_external_tool.py",
-   "sha256": "901797aba4bcdeb0cdeb71c98fe2d518b346e6b8a7bea8e8ec74916cd66b531e",
+   "sha256": "b1b755f1d2dc07cc8954b5028ab37fdd2e1530cd078b8a5a92d715ec7ed3e593",
    "size": 12311
   },
   {
@@ -208,7 +208,7 @@
   },
   {
    "path": "videograb/ffmpeg_setup.py",
-   "sha256": "ab0cdff4a71b8b41e9d65dffd46a226fe6dd90b79aaf1ece815af282b736017e",
+   "sha256": "eb8233c3f5c1d24a141053ef7ccc89e5575248a2d60233f950a56ac6f27b93b7",
    "size": 5386
   },
   {
@@ -243,7 +243,7 @@
   },
   {
    "path": "videograb/music/transcode.py",
-   "sha256": "eb171fd274cbde9c89e7ad99568f036c40e5f794cb9378e4a3d1257504a1e3a7",
+   "sha256": "6f7aa575be07ef904eddc80d9ee2d46d0e5f86baa7ff46f11319e25c816fe35f",
    "size": 50487
   },
   {
@@ -273,7 +273,7 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "885b59561dc3bdba44f22bb3c87030c7c84fe6bbae6ece7eafe0988e205081a1",
+   "sha256": "181cd3b192032902ee76de1e9c513d9612ac054d2ef5b6e4451ff8cb0542aa61",
    "size": 65919
   },
   {
@@ -348,12 +348,12 @@
   },
   {
    "path": "videograb/tray.py",
-   "sha256": "0c9c8bafce9c2b187944cb7413d02affa3ce1bd191c981c332fdc86e03d9365c",
-   "size": 15236
+   "sha256": "a91166100010d6877de441e07bac910d20e2196ef816de88905351391378462e",
+   "size": 15228
   },
   {
    "path": "videograb/updater.py",
-   "sha256": "18698cc925100ca69655abe068868c309edd7d208dabd0564f048dc27a1bacd0",
+   "sha256": "8bddc6798d2ec645177c3bab7cd258e47786092dfedfa3edac675cc27f960e36",
    "size": 23442
   },
   {
@@ -376,11 +376,5 @@
    "sha256": "ae7bdcff06f2ffade10f1890d77eb853c2879e1a7b716319cbb6565636caf384",
    "size": 4632
   }
- ],
- "installer": {
-  "name": "Video-Grabing-Setup-2.5.2.exe",
-  "size": 44227278,
-  "sha256": "f0333b233d94b97cbac80a50ffe53bc9ecd82ec40d958bf8d78f55daf8ee2335",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v2.5.2/Video-Grabing-Setup-2.5.2.exe"
- }
+ ]
 }

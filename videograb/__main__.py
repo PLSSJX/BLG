@@ -35,12 +35,12 @@ def _display_width(text: str) -> int:
 
 
 def _existing_instance(host: str, port: int) -> str:
-    """端口上如果已经跑着一个 Video-Grabing，返回它的地址，否则返回空串。"""
+    """端口上如果已经跑着一个 MakiseToolkit，返回它的地址，否则返回空串。"""
     url = f"http://{host}:{port}/api/ping"
     try:
         with urllib.request.urlopen(url, timeout=2) as response:
             payload = json.loads(response.read().decode("utf-8"))
-        if payload.get("app") == "Video-Grabing":
+        if payload.get("app") == "MakiseToolkit":
             return f"http://{host}:{port}/"
     except (urllib.error.URLError, OSError, ValueError, TimeoutError):
         pass
@@ -231,7 +231,7 @@ def cmd_update(args) -> int:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="videograb",
-        description="Video-Grabing —— 八通道 B 站视频采集工具",
+        description="MakiseToolkit —— 八通道 B 站视频采集工具",
     )
     sub = parser.add_subparsers(dest="command")
 

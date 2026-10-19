@@ -44,7 +44,7 @@ def redirect_io_to_log() -> None:
     """没有控制台时把 print 导向日志文件，顺便给用户留一份可排查的记录。"""
     if sys.stdout is not None and sys.stderr is not None:
         return
-    log_path = base_dir() / "data" / "Video-Grabing.log"
+    log_path = base_dir() / "data" / "MakiseToolkit.log"
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         if log_path.exists() and log_path.stat().st_size > LOG_MAX_BYTES:
@@ -66,7 +66,7 @@ def show_error(message: str) -> None:
         return
     try:
         import ctypes
-        ctypes.windll.user32.MessageBoxW(None, message, "Video-Grabing", 0x10)
+        ctypes.windll.user32.MessageBoxW(None, message, "MakiseToolkit", 0x10)
     except Exception:
         pass
 
@@ -93,5 +93,5 @@ if __name__ == "__main__":
         print(detail, file=sys.stderr)
         last = [line for line in detail.strip().splitlines() if line.strip()][-1]
         show_error("程序启动失败：\n\n" + last +
-                   "\n\n完整日志：\n" + str(base_dir() / "data" / "Video-Grabing.log"))
+                   "\n\n完整日志：\n" + str(base_dir() / "data" / "MakiseToolkit.log"))
         sys.exit(1)

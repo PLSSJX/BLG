@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""为 Video-Grabing 创建桌面快捷方式（可选同时创建开始菜单项）。
+"""为 MakiseToolkit 创建桌面快捷方式（可选同时创建开始菜单项）。
 
 用法：
     python create_shortcut.py                  # 桌面快捷方式
@@ -23,16 +23,16 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-APP_NAME = "Video-Grabing"
-DESCRIPTION = "多平台视频采集器：B站 / 抖音 / 小红书 / 芒果TV / 腾讯视频 / 优酷 / 爱奇艺"
+APP_NAME = "MakiseToolkit"
+DESCRIPTION = "Makise Toolkit —— 多平台视频采集器：B站 / 抖音 / 小红书 / 芒果TV / 腾讯视频 / 优酷 / 爱奇艺"
 
 
 def find_target() -> Path | None:
     """按优先级找可执行文件：完整版 > 单文件版 > 项目根目录下的 exe。"""
     candidates = [
-        ROOT / "dist" / "Video-Grabing" / "Video-Grabing.exe",
-        ROOT / "dist" / "Video-Grabing.exe",
-        ROOT / "Video-Grabing.exe",
+        ROOT / "dist" / "MakiseToolkit" / "MakiseToolkit.exe",
+        ROOT / "dist" / "MakiseToolkit.exe",
+        ROOT / "MakiseToolkit.exe",
     ]
     for candidate in candidates:
         if candidate.exists():
@@ -155,7 +155,7 @@ def remove_link(link_path: Path) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="创建 Video-Grabing 桌面快捷方式")
+    parser = argparse.ArgumentParser(description="创建 MakiseToolkit 桌面快捷方式")
     parser.add_argument("--target", help="可执行文件路径，默认自动查找 dist 目录")
     parser.add_argument("--name", default=APP_NAME, help="快捷方式名称")
     parser.add_argument("--start-menu", action="store_true", help="同时创建开始菜单项")
@@ -168,7 +168,7 @@ def main() -> int:
 
     target = Path(args.target).resolve() if args.target else find_target()
     if not target or not target.exists():
-        print("找不到 Video-Grabing.exe。")
+        print("找不到 MakiseToolkit.exe。")
         print("请先运行 python build.py 打包，或用 --target 指定 exe 的位置。")
         return 1
 
@@ -182,7 +182,7 @@ def main() -> int:
         print("已删除：" + ("、".join(str(p) for p in removed) if removed else "没有找到快捷方式"))
         return 0
 
-    print("Video-Grabing 快捷方式")
+    print("MakiseToolkit 快捷方式")
     print("  目标程序：" + str(target))
     failures = 0
     for link_path in locations:
