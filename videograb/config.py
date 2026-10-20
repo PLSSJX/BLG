@@ -137,6 +137,7 @@ class Settings:
     # 音乐单独放一个目录，别和视频混在一起。留空 = <download_dir>/音乐
     music_dir: str = ""
     video_dir: str = ""
+    image_dir: str = ""
     # "native" = 系统标题栏；"custom" = 自绘标题栏（可调高度/配色/按钮大小）
     titlebar: str = "native"
     # 文档转 PDF 的两条通路。用户可以单独关掉某一条，也可以指定优先用哪条。
@@ -144,7 +145,7 @@ class Settings:
     doc_browser: bool = True
     doc_prefer: str = "office"          # "office" | "browser"
     # 转换产物目录名（英文，避免脚本/命令行处理中文路径）
-    doc_dir: str = "documents"
+    doc_dir: str = "document"
     # 登录态：填了才能解锁 1080P 及以上
     sessdata: str = ""
     bili_jct: str = ""
@@ -281,7 +282,24 @@ class Context:
                     return candidate
             except OSError:
                 pass
-        target = self.download_dir() / "视频"
+        target = self.download_dir() / "video"
+        target.mkdir(parents=True, exist_ok=True)
+        return target
+
+    def image_dir(self) -> Path:
+        """放大后的图片目录：<下载目录>/image。"""
+        configured = (self.settings.image_dir or "").strip()
+        if configured:
+            candidate = Path(configured)
+            if not candidate.is_absolute():
+                candidate = BASE_DIR / candidate
+            try:
+                if candidate.exists() or candidate.parent.exists():
+                    candidate.mkdir(parents=True, exist_ok=True)
+                    return candidate
+            except OSError:
+                pass
+        target = self.download_dir() / "image"
         target.mkdir(parents=True, exist_ok=True)
         return target
 
@@ -301,7 +319,7 @@ class Context:
                     return candidate
             except OSError:
                 pass
-        target = self.download_dir() / "音乐"
+        target = self.download_dir() / "audio"
         target.mkdir(parents=True, exist_ok=True)
         return target
 

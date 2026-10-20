@@ -2088,13 +2088,24 @@ function buildDownloadCard2(settings) {
           dir.value = picked.download_dir || dir.value;
           store.config.settings.download_dir = dir.value;
           refreshHint(store.config);
-          toast('下载目录已改为：' + dir.value);
+          toast('目录已选：' + dir.value);
+          // 选完立刻保存并询问迁移 —— 没有「保存」按钮了
+          await saveSetting({ download_dir: dir.value }, false);
+          await offerMigration('download_dir', originalDir, dir.value);
         } catch (error) {
           toast('选择目录失败：' + error.message);
         }
       } }),
       button('打开', { variant: 'tonal', iconName: 'folder_open', onClick: () => api.open(dir.value) }))),
     dirHint,
+    (() => {
+      dir.addEventListener('change', async () => {
+        const v = dir.value.trim();
+        await saveSetting({ download_dir: v }, false);
+        await offerMigration('download_dir', originalDir, v);
+      });
+      return null;
+    })(),
     h('div', { style: { height: '12px' } }),
     field('文件名模板（可用 {title} {up} {bvid} {quality} {engine}）', template),
     h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginTop: '12px' } },
@@ -2102,13 +2113,19 @@ function buildDownloadCard2(settings) {
       field('同时下载的任务数', parallel)),
     h('div', { style: { height: '12px' } }),
     field('默认清晰度', h('div', { class: 'select-wrap' }, qualitySelect)),
-    h('div', { class: 'btn-row', style: { marginTop: '14px' } },
-      button('保存', { onClick: () => saveSettingWithMove('download_dir', dir.value.trim(), {
-        download_dir: dir.value, filename_template: template.value,
+    // 不再有「保存」按钮：每个字段改完就存，避免用户改完不知道怎么生效
+    (() => {
+      const commit = () => saveSetting({
+        download_dir: dir.value.trim(), filename_template: template.value.trim(),
         threads_per_task: Number(threads.value) || 8,
         max_parallel_tasks: Number(parallel.value) || 2,
         prefer_quality: Number(qualitySelect.value) || 0,
-      }, false, originalDir) })),
+      }, false);
+      for (const el of [template, threads, parallel, qualitySelect]) {
+        el.addEventListener('change', commit);
+      }
+      return null;
+    })(),
     h('div', { style: { height: '10px' } }),
     // 三个下载目录放在同一张卡里：视频 / 音乐 / 文献。原来音乐目录是单独一张卡，
     // 东一个西一个不好对照，用户也容易只改了一处。
@@ -2127,14 +2144,18 @@ function buildDownloadCard2(settings) {
           } }),
           button('打开', { variant: 'tonal', iconName: 'folder_open', onClick: () => opener(box.value) })),
           box);
-        // 每行自己保存，不靠 DOM 下标去猜哪个框是哪个
-        box.addEventListener('change', () => saveSetting({ [field_]: box.value.trim() }, false));
+        // 每行自己保存，并且改完就问要不要迁移已有文件
+        box.addEventListener('change', async () => {
+          const v = box.value.trim();
+          await saveSetting({ [field_]: v }, false);
+          await offerMigration(field_, settings[field_] || '', v);
+        });
       };
       return h('div', {},
-        mkRow('音乐目录', 'music_dir', '留空 = 下载目录下的「音乐」', () => api.pickMusicDir(), (v) => api.open(v)),
-        mkRow('文献目录', 'doc_dir', '留空 = documents', () => api.pickDownloadDir(), (v) => api.open(v)),
+        mkRow('音频目录', 'music_dir', '留空 = 下载目录下的 audio', () => api.pickMusicDir(), (v) => api.open(v)),
+        mkRow('文档目录', 'doc_dir', '留空 = 下载目录下的 document', () => api.pickDownloadDir(), (v) => api.open(v)),
         h('div', { class: 'card-desc', style: { marginTop: '4px', opacity: '.7' } },
-          '三个目录的输入框失焦即保存；视频目录仍用上面的「保存」按钮。'));
+          '所有输入框改完即保存。默认在下载目录下分 video / audio / document / image 四个子文件夹。'));
     })(),
     switchRow('合并后保留原始分离流', '默认合并成功就删掉 .m4s / .m4a，打开后会保留在 _streams 目录',
       settings.keep_streams === true, (value) => saveSetting({ keep_streams: value }, false)),
@@ -3530,6 +3551,39 @@ document.addEventListener('task-finished', () => {
 /* ------------------------------------------------------------ 改目录时迁移
    保存下载/音乐目录前先比一下：目录真的变了、而且旧目录里有文件，
    就问用户要不要把已有文件搬过去。直接搬会吓到人，直接不搬又会丢东西。 */
+/** 目录变了就问一次，问完可选迁移。选目录、输入框改完、点保存都走这一个入口。 */
+async function offerMigration(field, oldRaw, nextValue) {
+  const oldNorm = String(oldRaw || '').replace(/[\\/]+$/, '');
+  const newNorm = String(nextValue || '').replace(/[\\/]+$/, '');
+  if (oldNorm === newNorm) return;
+  let preview = null, previewError = '';
+  try { preview = await api.movePreview(field, newNorm, oldRaw); }
+  catch (e) { previewError = e.message || '未知错误'; }
+  const worthAsking = preview ? (!preview.same && preview.files > 0) : true;
+  if (!worthAsking) return;
+  const mb = preview ? (preview.bytes / 1048576).toFixed(1) : '?';
+  const yes = await dialog({
+    title: '要把已有文件搬过去吗？',
+    body: (preview
+        ? '旧目录里还有 ' + preview.files + ' 个文件（' + mb + ' MB）。'
+        : '没能统计旧目录的文件数（' + previewError + '）。') +
+      '迁移会把它们移到新目录，之后新目录就是唯一的存放位置；' +
+      '不迁移则保持原样，程序以后往新目录写。',
+    confirm: '迁移过去',
+    cancel: '不迁移',
+  });
+  if (!yes) return;
+  if (!preview) { toast('无法统计文件数，已跳过迁移：' + previewError, 8000); return; }
+  toast('正在迁移 ' + preview.files + ' 个文件…', 8000);
+  try {
+    const r = await api.moveApply(field, newNorm, oldRaw);
+    const extra = r.skipped ? '，跳过 ' + r.skipped + ' 个同名文件（原有文件未动）' : '';
+    toast(r.failed
+      ? '迁移完成 ' + r.moved + ' 个' + extra + '，' + r.failed + ' 个失败（' + (r.errors[0] || '') + '）'
+      : '已迁移 ' + r.moved + ' 个文件到新目录' + extra, 7000);
+  } catch (e) { toast('迁移失败：' + e.message, 8000); }
+}
+
 async function saveSettingWithMove(field, nextValue, payload, silent, original) {
   // 旧值必须由调用方传进来：设置页的「选择…」按钮会立刻把新路径写进
   // store.config.settings，等用户再点「保存」时两边已经一样，

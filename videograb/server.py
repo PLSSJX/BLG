@@ -155,6 +155,19 @@ def _dblclick_ms() -> int:
         return 500
 
 
+# 启动时缓存两个目录的真实值。改目录要拿它当「旧目录」——
+# 不依赖前端传值，用户点几次「选择…」都不会判断错。
+_BOOT_DIRS = {}
+
+
+def remember_boot_dirs(ctx) -> None:
+    for field in ("download_dir", "music_dir", "video_dir", "image_dir"):
+        try:
+            _BOOT_DIRS[field] = str(getattr(ctx, field)())
+        except Exception:
+            pass
+
+
 def _public_settings(ctx: Context) -> dict:
     from dataclasses import asdict
     data = asdict(ctx.settings)
@@ -715,7 +728,7 @@ class Handler(BaseHTTPRequestHandler):
             from .config import BASE_DIR
             # field 决定选完之后写哪个设置项：视频目录还是音乐目录
             field = str(payload.get("field") or "download_dir")
-            if field not in ("download_dir", "music_dir"):
+            if field not in ("download_dir", "music_dir", "video_dir", "image_dir"):
                 raise ApiError("不支持设置 " + field)
             current = str(ctx.music_dir() if field == "music_dir" else ctx.download_dir())
             chosen = pick_folder(ctx, current)
@@ -727,7 +740,7 @@ class Handler(BaseHTTPRequestHandler):
                                "music_dir": str(ctx.music_dir())})
 
         if route == "/api/papers/list":
-            folder = ctx.download_dir() / "papers"
+            folder = ctx.download_dir() / "document" / "papers"
             items = []
             if folder.is_dir():
                 for f in sorted(folder.glob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)[:200]:
@@ -741,7 +754,7 @@ class Handler(BaseHTTPRequestHandler):
             url = str(payload.get("url") or "").strip()
             if not url:
                 raise ApiError("没有指定下载地址")
-            dest = ctx.download_dir() / "papers"
+            dest = ctx.download_dir() / "document" / "papers"
             try:
                 got = download_pdf(url, dest, str(payload.get("name") or ""))
             except PaperError as exc:
@@ -778,12 +791,13 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError("没有指定要打开的路径")
             target = Path(raw).resolve()
             roots = [ctx.download_dir().resolve()]
+            for _getter in ("video_dir", "image_dir"):
+                try:
+                    roots.append(getattr(ctx, _getter)().resolve())
+                except Exception:
+                    pass
             try:
-                roots.append(ctx.video_dir().resolve())
-            except Exception:
-                pass
-            try:
-                roots.append((ctx.download_dir() / str(getattr(ctx.settings, "doc_dir", "documents"))).resolve())
+                roots.append((ctx.download_dir() / str(getattr(ctx.settings, "doc_dir", "document"))).resolve())
             except Exception:
                 pass
             # 音乐目录必须放行：用户在设置里把音乐目录指到下载目录之外时，
@@ -819,7 +833,7 @@ class Handler(BaseHTTPRequestHandler):
             if target not in ("docx", "xlsx", "md", "pdf"):
                 raise ApiError("目标格式只能是 docx、xlsx、md 或 pdf")
             dest = Path(payload.get("dest") or
-                        str(ctx.download_dir() / str(getattr(ctx.settings, "doc_dir", "documents"))))
+                        str(ctx.download_dir() / str(getattr(ctx.settings, "doc_dir", "document"))))
             # 和 /api/video/trim 一样必须校验：dest 原本原样传给 convert，
             # 那边直接 mkdir + 写文件，等于给了调用方一个往任意目录写文件的口子。
             if not _inside_output_root(dest, ctx):
@@ -1039,13 +1053,12 @@ class Handler(BaseHTTPRequestHandler):
             # 旧目录由前端传进来。不能读 ctx：设置页的「选择…」按钮会先把新目录
             # 存进服务端，等用户点「保存」时 ctx 里已经是新值了，两下相等 →
             # 永远判断成"没改过"，迁移询问就不会出现（实测就是这样）。
-            given_from = str(payload.get("from") or "").strip()
+            given_from = (str(payload.get("from") or "").strip()
+                          or _BOOT_DIRS.get(field, ""))
             if given_from:
                 old_root = Path(given_from)
-            elif field == "download_dir":
-                old_root = ctx.download_dir()
             else:
-                old_root = ctx.music_dir()
+                old_root = getattr(ctx, field)()
             raw_new = str(payload.get("value") or "").strip()
             if not raw_new:
                 # 留空 = 恢复默认目录，同样要迁移
@@ -1990,6 +2003,7 @@ def _check_login(ctx: Context) -> dict:
 
 
 def serve(ctx: Context, host: str = "127.0.0.1", port: int = 8931, quiet: bool = True):
+    remember_boot_dirs(ctx)      # 必须在处理任何请求之前记下目录原值
     ctx.tasks = TaskManager(ctx)
     Handler.ctx = ctx
     httpd = ThreadingHTTPServer((host, port), Handler)
