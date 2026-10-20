@@ -29,6 +29,9 @@ let pollTimer = null;
 let lastSignature = '';
 
 /* ------------------------------------------------------------ 导航栏 */
+/** 左上角"新建解析"加号：暂时隐藏，功能保留。改天要用改成 true。 */
+const SHOW_RAIL_SEARCH = false;
+
 function buildNavigation() {
   const railHost = document.getElementById('railDestinations');
   const bottomHost = document.getElementById('bottomBar');
@@ -50,16 +53,125 @@ function buildNavigation() {
     bottomHost.append(make(true));
   }
 
+  // 一枚圆球负责画"选中"的底色，切换时从旧位置滑到新位置
+  let blob = railHost.querySelector('.rail-blob');
+  if (!blob) {
+    blob = h('div', { class: 'rail-blob' });
+    // 位移结束立刻摊回胶囊：比定时器可靠，动画被打断时也不会卡在圆形
+    blob.addEventListener('transitionend', (event) => {
+      if (event.propertyName === 'top') blob.classList.remove('moving');
+    });
+    railHost.prepend(blob);
+  }
+  requestAnimationFrame(() => positionBlob(false));
+
   // 左上角的主按钮 —— Kazumi 的 NavigationRail.leading 同样是一枚 elevation 0 的按钮。
   // 图标用加号：这一栏下面全是"看内容"的入口，左上角留给"新建一次解析"。
+  // 左上角加号暂时隐藏：功能（openQuickSearch）保留，改天要用把开关打开即可。
   const fab = document.getElementById('railSearch');
   fab.innerHTML = icon('add', 'filled', 24);
   fab.title = '新建解析';
   fab.setAttribute('aria-label', '新建解析');
-  fab.onclick = openQuickSearch;
+  fab.hidden = !SHOW_RAIL_SEARCH;
+  if (SHOW_RAIL_SEARCH) fab.onclick = openQuickSearch;
 }
 
+/** 把粘球移到当前选中项的位置。首次定位不做动画，之后每次都滑过去。 */
+let blobReady = false;
+function positionBlob(animate = true, routeId = current) {
+  const rail = document.getElementById('railDestinations');
+  if (!rail) return;
+  const blob = rail.querySelector('.rail-blob');
+  if (!blob) return;
+  const target = rail.querySelector('.destination[data-route="' + routeId + '"]');
+  if (!target) { blob.style.opacity = '0'; return; }
+  blob.style.opacity = '1';
+
+  const centreOf = () => {
+    const box = target.querySelector('.indicator') || target;
+    const railRect = rail.getBoundingClientRect();
+    const boxRect = box.getBoundingClientRect();
+    return boxRect.top - railRect.top + boxRect.height / 2;
+  };
+
+  // 逐帧动画：每一帧都重新读目标的实时中心，
+  // 这样目标在飞行途中因为文字展开/收起而上下移动时，球始终追着它。
+  cancelAnimationFrame(positionBlob._raf);
+  const from = blob.getBoundingClientRect();
+  const railTop = rail.getBoundingClientRect().top;
+  const startY = from.top - railTop + from.height / 2;
+
+  if (!animate || !blobReady) {
+    blob.style.top = centreOf() + 'px';
+    blobReady = true;
+    return;
+  }
+
+  blob.classList.add('moving');
+  const t0 = performance.now();
+  const dur = 520;
+  const ease = (t) => 1 - Math.pow(1 - t, 3);   // 缓出，不过冲
+  const step = () => {
+    const p = Math.min(1, (performance.now() - t0) / dur);
+    const goal = centreOf();
+    // 目标是"活"的：起点固定，终点每帧重算
+    const y = startY + (goal - startY) * ease(p);
+    blob.style.top = y + 'px';
+    if (p < 1) {
+      positionBlob._raf = requestAnimationFrame(step);
+      return;
+    }
+    // 主行程结束，但文字可能还在展开（0→300ms 的过渡），目标会继续移动。
+    // 这里用一段"跟随沉降"慢慢贴上去，既不跳也不冲。
+    const settleUntil = performance.now() + 420;
+    const settle = () => {
+      const goal = centreOf();
+      const rect = blob.getBoundingClientRect();
+      const cur = rect.top - rail.getBoundingClientRect().top + rect.height / 2;
+      const gap = goal - cur;
+      if (Math.abs(gap) < 0.5 || performance.now() > settleUntil) {
+        blob.style.top = centreOf() + 'px';
+        blob.classList.remove('moving');
+        return;
+      }
+      blob.style.top = (cur + gap * 0.25) + 'px';
+      positionBlob._raf = requestAnimationFrame(settle);
+    };
+    settle();
+  };
+  positionBlob._raf = requestAnimationFrame(step);
+}
 function markActive() {
+  const rail = document.getElementById('railDestinations');
+  const prev = rail ? rail.querySelector('.destination.active') : null;
+  const prevRoute = prev ? prev.dataset.route : '';
+
+  // 已经在目标项上：直接对齐，不重放动画
+  if (prevRoute === current) {
+    // 点的就是当前页：不做任何位移，只保证高亮是对的
+    refreshActiveClasses();
+    positionBlob(false, current);
+    return;
+  }
+
+  // ① 旧项立刻失去高亮 —— 它的图标先缩回去
+  if (prev) prev.classList.remove('active');
+  // ② 球滑向目标项
+  positionBlob(true, current);
+  // ③ 球到位后再点亮新项，新图标这时才放大。
+  // 这里**不能** clearTimeout：轮询/重绘会重复调 markActive，
+  // 一旦把定时器清掉，"点亮新项"永远等不到，图标就一直不放大（实测踩过）。
+  // 改成不取消、只校验当前是否还是这个目标。
+  markActive._pending = current;
+  setTimeout(() => {
+    if (markActive._pending !== current) return;
+    refreshActiveClasses();
+    // 位置交给 positionBlob 的跟随沉降，这里只点亮高亮
+  }, 460);
+}
+
+/** 把 .active 同步到当前路由（含底部导航）。 */
+function refreshActiveClasses() {
   for (const node of document.querySelectorAll('.destination')) {
     node.classList.toggle('active', node.dataset.route === current);
   }
@@ -92,8 +204,43 @@ function paint() {
   const view = document.getElementById('view');
   const scroll = view.scrollTop;
   const route = ROUTES.find((r) => r.id === current) || ROUTES[0];
+  const switched = current !== lastPaintedRoute;
+  lastPaintedRoute = current;
   route.render(view);
   view.scrollTop = scroll;
+  applyMotion(view, switched);
+}
+
+let lastPaintedRoute = '';
+let revealObserver = null;
+
+/** 给刚渲染的内容挂上入场动效。
+ *  只有"换页"才整页淡入；同一个页面内部重绘（轮询刷新）不重放整页动画，
+ *  否则任务页每 0.8 秒闪一次。卡片显现只对还没显示过的元素做。 */
+function applyMotion(view, switched) {
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (switched && !reduce) {
+    view.classList.remove('view-enter');
+    void view.offsetWidth;          // 强制回流，动画才会重放
+    view.classList.add('view-enter');
+  }
+  if (reduce) return;
+  if (!revealObserver) {
+    revealObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        entry.target.classList.add('in');
+        revealObserver.unobserve(entry.target);
+      }
+    }, { root: view, rootMargin: '0px 0px -8% 0px', threshold: 0.01 });
+  }
+  // 只观察还没动过的卡片，避免每次重绘重复入队
+  const cards = view.querySelectorAll('.card:not(.reveal)');
+  cards.forEach((card, i) => {
+    card.classList.add('reveal');
+    card.style.setProperty('--i', String(Math.min(i, 8)));
+    revealObserver.observe(card);
+  });
 }
 
 /* ------------------------------------------------------------ 任务轮询 */

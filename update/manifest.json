@@ -1,13 +1,13 @@
 {
- "version": "3.6.1",
- "generated": "2026-10-20 08:23:26 UTC",
+ "version": "3.7.0",
+ "generated": "2026-10-20 09:08:01 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
   {
    "path": "web/css/app.css",
-   "sha256": "590e6d277898742365b209e83f9b5e93b1d09c04c48baed091502c6f4be32bfa",
-   "size": 44334
+   "sha256": "07501a34a666acd7840222755c237141e9597b9723e57b579cd66726aacc10fd",
+   "size": 50625
   },
   {
    "path": "web/index.html",
@@ -21,8 +21,8 @@
   },
   {
    "path": "web/js/app.js",
-   "sha256": "a8f6614f815430d9916ed491fa1eb0067d516c8b16ecc1ce286cf9d632dd9b6d",
-   "size": 14971
+   "sha256": "0fa40789a7d270cf1aa710a458368b40e43b0bad4a52fcc1eabd9aa5ceb781ec",
+   "size": 20957
   },
   {
    "path": "web/js/icons.js",
@@ -98,7 +98,7 @@
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "a263f14e817d1ec89a558fe8252a73d51aac2a6649280e2acd9e5958817fca9f",
+   "sha256": "7e3509fa0d9d1dcf19186cad7df7971604fec604bda787b52c4575ecf6815623",
    "size": 398
   },
   {
@@ -403,9 +403,9 @@
   }
  ],
  "installer": {
-  "name": "MakiseToolkit-Setup-3.6.1.exe",
-  "size": 124442922,
-  "sha256": "ee6614c1c95e9f6955972d578522bcd21fa85bc9f8226483effa1af277c78bd2",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v3.6.1/MakiseToolkit-Setup-3.6.1.exe"
+  "name": "MakiseToolkit-Setup-3.7.0.exe",
+  "size": 124449642,
+  "sha256": "a3d64e5d4ddf52ba6620a524370d6f860f32cb8d7cfd821155bc4c4ab73f7cc0",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v3.7.0/MakiseToolkit-Setup-3.7.0.exe"
  }
 }

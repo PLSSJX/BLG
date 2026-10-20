@@ -994,3 +994,176 @@ body.has-titlebar .rail, body.has-titlebar .page-wrap { top: 44px; }
 .page > .card + .card,
 .page > .card + .split,
 .page > .split + .card { margin-top: 0 !important; }
+
+
+/* ================================================================ 过渡动效
+   iOS 那种"轻、快、带一点重量"的观感：位移很小（8-10px），
+   缓动用 cubic-bezier(.22,1,.36,1)（先快后慢，收尾有弹簧感），时长 260-320ms。
+   所有动效都尊重系统的"减少动态效果"设置。 */
+:root {
+  --ease-ios: cubic-bezier(.22, 1, .36, 1);
+  --dur-page: 300ms;
+  --dur-card: 260ms;
+}
+
+/* 切换页面：整体淡入 + 轻微上浮 */
+@keyframes view-in {
+  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(.995); }
+  to   { opacity: 1; transform: none; }
+}
+.view.view-enter > .page,
+.view.view-enter > .split {
+  animation: view-in var(--dur-page) var(--ease-ios) both;
+}
+
+/* 卡片逐个淡入：靠 --i 做轻微阶梯，越往后越晚一点点 */
+@keyframes card-in {
+  from { opacity: 0; transform: translate3d(0, 12px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+.card.reveal {
+  opacity: 0;
+  transform: translate3d(0, 12px, 0);
+}
+.card.reveal.in {
+  animation: card-in var(--dur-card) var(--ease-ios) both;
+  animation-delay: calc(var(--i, 0) * 28ms);
+}
+
+/* 按钮、列表行：按下/悬停给一点即时反馈，手感更"跟手" */
+.btn, .tb-btn, .page-row, .bottom-bar a {
+  transition: transform 120ms var(--ease-ios), background-color 150ms var(--ease-ios),
+              box-shadow 150ms var(--ease-ios), color 150ms var(--ease-ios);
+}
+.btn:active { transform: scale(.97); }
+
+/* 系统要求减少动态效果时，全部关掉 */
+@media (prefers-reduced-motion: reduce) {
+  .view.view-enter > .page,
+  .view.view-enter > .split,
+  .card.reveal.in {
+    animation: none !important;
+  }
+  .card.reveal { opacity: 1; transform: none; }
+  .btn, .tb-btn, .page-row, .bottom-bar a { transition: none; }
+}
+
+
+/* ================================================================ 侧边栏"粘球"
+   选中胶囊不再原地变色，而是一枚圆球从上一项滑到新的一项，
+   带一点回弹（overshoot），移动中轻微拉伸，像被拽过去的小粘球。 */
+.rail-destinations { position: relative; }
+
+.rail-blob {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 56px;                 /* 停稳时就是原来的胶囊尺寸 */
+  height: 32px;
+  border-radius: var(--radius-pill);
+  background: var(--md-secondary-container);
+  /* 以"中心点"定位：改用 top + translate(-50%,-50%)，
+     这样元素在胶囊(32px高)和圆球(40px高)之间变化时中心不动 */
+  transform: translate(-50%, -50%);
+  /* top 交给 JS 逐帧算（要一直追着目标的实时位置），这里只管尺寸变化。
+     之前用 CSS 过渡：目标图标会随文字展开/收起在飞行途中上下移动，
+     过渡只认出发时算好的终点，于是看起来像"冲过头"。 */
+  transition: width 180ms cubic-bezier(.22, 1, .36, 1),
+              height 180ms cubic-bezier(.22, 1, .36, 1),
+              border-radius 180ms cubic-bezier(.22, 1, .36, 1),
+              width 180ms cubic-bezier(.22, 1, .36, 1),
+              height 180ms cubic-bezier(.22, 1, .36, 1),
+              border-radius 180ms cubic-bezier(.22, 1, .36, 1);
+  will-change: transform;
+  pointer-events: none;
+  z-index: 0;
+}
+/* 移动中拉长一点，停下来再回圆 —— 这是"粘"的来源 */
+/* 移动中缩成正圆（像一颗球被拽走），落位后再摊回胶囊 */
+.rail-blob.moving {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+/* 图标和文字要压在球上面 */
+.rail .destination { position: relative; z-index: 1; }
+/* 选中项自己的背景交给球来画，否则会叠成两团 */
+.destination.active .indicator { background: transparent; }
+
+/* 页面切换放慢到和粘球同一个节奏 */
+:root { --dur-page: 460ms; }
+.view.view-enter > .page,
+.view.view-enter > .split {
+  animation-duration: 460ms;
+  animation-timing-function: cubic-bezier(.34, 1.25, .5, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail-blob { transition: none; }
+  .rail-blob.moving { border-radius: var(--radius-pill); }
+}
+
+
+/* 选中项的图标略微放大，切换时旧的先缩回、新的到位后再放大 */
+.destination .indicator svg {
+  transition: transform 200ms cubic-bezier(.22, 1, .36, 1);
+  transform: scale(1);
+}
+.destination.active .indicator svg { transform: scale(1.16); }
+
+@media (prefers-reduced-motion: reduce) {
+  .destination .indicator svg { transition: none; }
+}
+
+
+/* 图标放大/缩小动画：挂在 .indicator 上，因为 svg 会被 innerHTML 整个换掉，
+   直接给 svg 加 transition 在新节点上不会播动画。 */
+.destination .indicator {
+  transition: transform 300ms cubic-bezier(.34, 1.38, .5, 1),
+              background var(--dur-medium) var(--ease-emphasized);
+  transform: scale(1);
+  transform-origin: 50% 50%;
+}
+.destination.active .indicator { transform: scale(1.14); }
+
+@media (prefers-reduced-motion: reduce) {
+  .destination .indicator { transition: none; }
+}
+
+
+/* 悬停时不再画那圈胶囊底色 —— 现在有粘球画高亮了，
+   两套形状同时出现会看着像"多了一个预览椭圆"。改成只变图标颜色。 */
+.rail .destination:hover .indicator { background: transparent; }
+.rail .destination:hover { color: var(--md-on-surface); }
+
+
+/* ================================================================ 文字"长"出来
+   原来靠 display:none/block 切换，文字是瞬间蹦出来的。
+   改成保持占位、用高度+透明度+轻微缩放做过渡：
+   display 无法过渡，所以这里改 max-height / opacity / transform 三项一起走。 */
+.destination .label {
+  display: block;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-3px) scaleY(.7);
+  transform-origin: top center;
+  transition: max-height 300ms cubic-bezier(.22, 1, .36, 1),
+              opacity 220ms cubic-bezier(.22, 1, .36, 1),
+              transform 300ms cubic-bezier(.34, 1.32, .5, 1);
+}
+.destination.active .label {
+  max-height: 22px;
+  opacity: 1;
+  transform: translateY(0) scaleY(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .destination .label { transition: none; }
+}
+
+
+/* 左上角加号已隐藏（SHOW_RAIL_SEARCH = false）。
+   按钮有自己的 display 规则，光靠 hidden 属性挡不住，这里显式压掉。 */
+.rail-fab[hidden] { display: none; }
