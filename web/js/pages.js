@@ -3634,3 +3634,17 @@ async function saveSettingWithMove(field, nextValue, payload, silent, original) 
   }
   return saveSetting(payload, silent);
 }
+
+
+/* ------------------------------------------------------------ 项目管理
+   项目管理界面复用 prototype/ 的完整实现（列表 + 画布 + git 历史），
+   用 iframe 装进来：既能保持那套交互，又能跟着 MT 的导航切换页面。 */
+export function renderProjects(view) {
+  view.innerHTML = '';
+  const frame = document.createElement('iframe');
+  frame.className = 'projects-frame';
+  frame.src = '/projects/index.html?embed=1';
+  frame.title = '项目管理';
+  frame.setAttribute('allow', 'same-origin');
+  view.append(frame);
+}

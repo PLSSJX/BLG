@@ -1,13 +1,13 @@
 {
  "version": "3.7.0",
- "generated": "2026-10-20 09:08:01 UTC",
+ "generated": "2026-10-20 17:03:08 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
   {
    "path": "web/css/app.css",
-   "sha256": "07501a34a666acd7840222755c237141e9597b9723e57b579cd66726aacc10fd",
-   "size": 50625
+   "sha256": "e7bf7e3880bb13319507630db4b25b39bf7f5fb6c2acb9e9b47bc3073bcd3131",
+   "size": 50921
   },
   {
    "path": "web/index.html",
@@ -21,8 +21,8 @@
   },
   {
    "path": "web/js/app.js",
-   "sha256": "0fa40789a7d270cf1aa710a458368b40e43b0bad4a52fcc1eabd9aa5ceb781ec",
-   "size": 20957
+   "sha256": "90511946471005175b25ee9c2abb64d42a8d47dc84f2f90c61e5462a30f7bea5",
+   "size": 21751
   },
   {
    "path": "web/js/icons.js",
@@ -31,8 +31,8 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "48a9ad329a776f1b0e75047f2a1653c965a4494b4a1fb10800a269e737f33e57",
-   "size": 182697
+   "sha256": "78c90dddbce5826ed1b2a07b3220d601a37027cccd8f5c4017ee9fbcdbc95f74",
+   "size": 183263
   },
   {
    "path": "web/js/player.js",
@@ -48,6 +48,41 @@
    "path": "web/js/ui.js",
    "sha256": "17dd97e77f6ba484235d37ceb6599c731fb2c60f77e90253a86a87c4eedc7d81",
    "size": 7597
+  },
+  {
+   "path": "web/projects/css/style.css",
+   "sha256": "4bcc2d614b18e83592d3bf59a8d896ba2f887730ed1267bf5810ae35fac97342",
+   "size": 31741
+  },
+  {
+   "path": "web/projects/index.html",
+   "sha256": "ffa11fb46c6bc221ee748138029533e218f8129a8bc081a5e26113f8fc10237b",
+   "size": 5130
+  },
+  {
+   "path": "web/projects/js/api.js",
+   "sha256": "cc606deb72485c0352e10e1915afa74fced656cf5ba3eb2135bc329cd7fc0f79",
+   "size": 4477
+  },
+  {
+   "path": "web/projects/js/canvas.js",
+   "sha256": "2dc0b15337376e3df9275de403b7d314ce84c9b7dd5ca5c20b4eedad95fce636",
+   "size": 108810
+  },
+  {
+   "path": "web/projects/js/data.js",
+   "sha256": "0b190351a376d4eb51e42250702280f43809c516fa7c4905a852b6ae9b5b53a0",
+   "size": 2638
+  },
+  {
+   "path": "web/projects/js/md.js",
+   "sha256": "1a911d854d6811eac37f60df6b07ae85c9c5866292ea2cf72a0f4928185669ab",
+   "size": 3153
+  },
+  {
+   "path": "web/projects/project.html",
+   "sha256": "f1d154535a0d28474efc30d8325b9227c0d211e033f589d1fd7e7c3278d73659",
+   "size": 8169
   },
   {
    "path": "web/vendor/material-color-utilities.js",
@@ -217,6 +252,11 @@
    "size": 5386
   },
   {
+   "path": "videograb/git_compat.py",
+   "sha256": "450af6002a4f4116ceb2f46019cc889098a4d6207e5ae5546e26dac5b7100dcc",
+   "size": 6720
+  },
+  {
    "path": "videograb/hls.py",
    "sha256": "45bb063a12c46698ae429997641ed560051407e0fecc0cda4e01fc77a2c98146",
    "size": 9029
@@ -282,6 +322,11 @@
    "size": 31957
   },
   {
+   "path": "videograb/projects_api.py",
+   "sha256": "0dac2cedc1bad0907d3a9b26fa0589cd9b0cd099897e19a14ebfc313a7936c9d",
+   "size": 69146
+  },
+  {
    "path": "videograb/quality.py",
    "sha256": "939f8a715af77154fc019dd1597fd210e03cce3cf995075a74951e3e3d979da3",
    "size": 4601
@@ -293,8 +338,8 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "846cc76061e5cd7e33e65a768ee5f0e4b674160524733b6a0fcf5933fd4c5e6c",
-   "size": 96934
+   "sha256": "66ba6aaa482b3365e869d2e1cf0f542f4bcb8409464e5913baa97c7aea7df155",
+   "size": 97668
   },
   {
    "path": "videograb/sites/__init__.py",
@@ -360,6 +405,11 @@
    "path": "videograb/sites/youku.py",
    "sha256": "75e5ee631e676ec86b2c725903f2aec5862a134012b8a81e79bf7f231fe7f361",
    "size": 24779
+  },
+  {
+   "path": "videograb/snapshots.py",
+   "sha256": "1a2213a1339eea268f64b97f8a33604bf3b0ff5aabc8160146dc38052cd05b80",
+   "size": 16409
   },
   {
    "path": "videograb/tasks.py",

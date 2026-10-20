@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from . import __version__
+from . import projects_api
 from .config import (ALL_ENGINES, BASE_DIR, DATA_DIR, THEME_PRESETS, WEB_DIR,
                      Context, is_frozen)
 from .engines import describe, get_engine
@@ -451,6 +452,13 @@ class Handler(BaseHTTPRequestHandler):
             _le2("api:" + route, exc)
             return self._error(f"服务器内部错误：{exc}", 500)
 
+    # ---------------- 项目管理 ----------------
+    def _project_api(self, route: str, data: dict) -> None:
+        try:
+            return self._json({"ok": True, **projects_api.dispatch(route, data)})
+        except projects_api.ApiError as exc:
+            return self._error(str(exc), 400)
+
     # ---------------- GET API ----------------
     def _api_get(self, route: str) -> None:
         ctx = self.ctx
@@ -486,6 +494,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---------------- POST API ----------------
     def _api_post(self, route: str) -> None:
+        if route.startswith("/api/project"):
+            return self._project_api(route, self._body())
         ctx = self.ctx
         payload = self._body()
 
@@ -2033,8 +2043,18 @@ def _check_login(ctx: Context) -> dict:
     }
 
 
+def _init_projects() -> None:
+    """登记表放 data/ 下，并启动自动提交巡检。没有 git 也不能让应用起不来。"""
+    try:
+        projects_api.init(DATA_DIR)
+    except Exception as exc:
+        from .log import log_error
+        log_error("projects", exc)
+
+
 def serve(ctx: Context, host: str = "127.0.0.1", port: int = 8931, quiet: bool = True):
     remember_boot_dirs(ctx)      # 必须在处理任何请求之前记下目录原值
+    _init_projects()
     ctx.tasks = TaskManager(ctx)
     Handler.ctx = ctx
     httpd = ThreadingHTTPServer((host, port), Handler)

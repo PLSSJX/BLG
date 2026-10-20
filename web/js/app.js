@@ -6,12 +6,13 @@ import { applyTheme, prefersDark } from './theme.js';
 import { initPlayer } from './player.js';
 import {
   store, renderHome, renderMusic, renderPlayer, renderImage, renderDoc, renderClip,
-  renderTasks, renderPapers, renderSettings,
+  renderTasks, renderPapers, renderSettings, renderProjects,
   refreshTasks,
 } from './pages.js';
 
 // 通道体检已经并进解析页，所以这里不再有独立的「通道」入口
 const ROUTES = [
+  { id: 'projects', label: '项目', icon: 'folder_open', render: renderProjects },
   { id: 'home', label: '解析', icon: 'search', render: renderHome },
   // 图标名必须是 icons.js 里真实存在的：queue_music 没有，之前整条入口渲染成空白
   { id: 'music', label: '音乐', icon: 'music_note', render: renderMusic },
@@ -67,13 +68,28 @@ function buildNavigation() {
 
   // 左上角的主按钮 —— Kazumi 的 NavigationRail.leading 同样是一枚 elevation 0 的按钮。
   // 图标用加号：这一栏下面全是"看内容"的入口，左上角留给"新建一次解析"。
-  // 左上角加号暂时隐藏：功能（openQuickSearch）保留，改天要用把开关打开即可。
+  // 左上角按钮：其余页面按它回到「项目」；项目页里由页面内部的箭头负责保存退出
   const fab = document.getElementById('railSearch');
-  fab.innerHTML = icon('add', 'filled', 24);
-  fab.title = '新建解析';
-  fab.setAttribute('aria-label', '新建解析');
-  fab.hidden = !SHOW_RAIL_SEARCH;
-  if (SHOW_RAIL_SEARCH) fab.onclick = openQuickSearch;
+  fab.hidden = false;
+  fab.onclick = () => {
+    if (current !== 'projects') { navigate('projects'); return; }
+    // 已经在项目页：让嵌套页面自己处理（保存并退出）
+    const frame = document.querySelector('.projects-frame');
+    if (frame && frame.contentWindow) {
+      try { frame.contentWindow.postMessage({ type: 'mt-back' }, location.origin); } catch (e) { /* 忽略 */ }
+    }
+  };
+  syncRailFab();
+}
+
+/** 左上角按钮的图标随页面切换：项目页显示返回，其它页显示返回项目 */
+function syncRailFab() {
+  const fab = document.getElementById('railSearch');
+  if (!fab) return;
+  const onProjects = current === 'projects';
+  fab.innerHTML = icon('arrow_back', 'filled', 24);
+  fab.title = onProjects ? '保存并退出项目' : '回到项目';
+  fab.setAttribute('aria-label', fab.title);
 }
 
 /** 把粘球移到当前选中项的位置。首次定位不做动画，之后每次都滑过去。 */
@@ -207,6 +223,7 @@ function paint() {
   const switched = current !== lastPaintedRoute;
   lastPaintedRoute = current;
   route.render(view);
+  if (typeof syncRailFab === 'function') syncRailFab();
   view.scrollTop = scroll;
   applyMotion(view, switched);
 }

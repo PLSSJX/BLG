@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Makise Toolkit · 项目</title>
+<link rel="stylesheet" href="css/style.css?v=2">
+<style>
+  /* 内嵌到 MT 主界面时，隐藏原型自己的左侧栏（MT 已经有导航栏了） */
+  body.embed-mode .rail { display: none; }
+  body.embed-mode .shell { height: 100%; }
+  body.embed-mode .slab { border-radius: 0; }
+  body.embed-mode { background: transparent; }
+</style>
+<script>
+  if (location.search.indexOf('embed=1') >= 0) document.documentElement.dataset.embed = '1';
+</script>
+</head>
+<body>
+
+<div class="shell">
+  <nav class="rail">
+    <button class="rail-fab" id="newProject" title="新建项目">+</button>
+    <div class="rail-spacer"></div>
+  </nav>
+  <main class="slab">
+    <div class="view">
+      <h1 class="page-title">项目</h1>
+      <p class="page-sub">每个项目是一个被接管的文件夹，由 git 记录每一次保存。</p>
+      <div id="list"></div>
+    </div>
+  </main>
+</div>
+
+<div class="dialog-host" id="dialogHost">
+  <div class="dialog">
+    <h3>新建项目</h3>
+    <p>选一个空文件夹，Makise Toolkit 会接管它并用 git 管理。<br>
+       目前原型阶段不会真的写入磁盘。</p>
+    <input class="input" id="projectName" placeholder="项目名称，例如：低功耗芯片论文">
+    <input class="input" id="projectPath" placeholder="文件夹路径，例如：D:\\我的项目\\低功耗芯片" style="margin-top:8px">
+    <div class="actions">
+      <button class="btn text" id="cancel">取消</button>
+      <button class="btn" id="confirm">创建</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/data.js?v=2"></script>
+<style>
+/* 没有项目时的引导：暗色、箭头指向左上角 */
+.empty-hint {
+  position: absolute; left: 50%; top: 46%;
+  transform: translate(-50%, -50%);
+  display: flex; align-items: flex-start; gap: 18px;
+  color: #5f7d75;
+}
+.empty-arrow { font-size: 54px; line-height: 1; transform: rotate(-38deg); opacity: .55; }
+.empty-text { font-size: 15px; line-height: 1.9; letter-spacing: .4px; }
+.empty-text b { display: block; font-size: 17px; color: #7fa69c; margin-bottom: 6px; font-weight: 600; }
+</style>
+<div class="empty-hint" id="emptyHint" style="display:none">
+  <div class="empty-arrow">↖</div>
+  <div class="empty-text"><b>创建第一个项目吧！</b>点左上角的 ＋ 选一个空文件夹开始</div>
+</div>
+<script src="js/api.js?v=2"></script>
+<script>
+const MTD = window.MTData;
+
+const list = document.getElementById('list');
+const host = document.getElementById('dialogHost');
+
+let MTOnline = false;
+
+async function render() {
+  let projects = [];
+  MTOnline = await MTApi.available().catch(() => false);
+  if (MTOnline) {
+    try { projects = (await MTApi.list()).projects || []; } catch (e) { projects = []; }
+  } else {
+    projects = MTD.loadProjects();
+  }
+  list.innerHTML = '';
+  const hint = document.getElementById('emptyHint');
+  if (hint) hint.style.display = projects.length ? 'none' : 'flex';
+  if (!projects.length) return;
+  const grid = document.createElement('div');
+  grid.className = 'projects';
+  projects.forEach((p, i) => {
+    const card = document.createElement('div');
+    card.className = 'project-card';
+    card.style.animationDelay = (i * 40) + 'ms';
+    card.innerHTML =
+      '<div class="project-name">' + p.name + '</div>' +
+      '<div class="project-path">' + p.path + '</div>' +
+      '<div class="project-actions">' +
+        '<button class="mini-btn" data-act="rename" title="改个项目名">重命名</button>' +
+        '<button class="mini-btn danger" data-act="remove" title="从列表移除（不删文件）">移除</button>' +
+      '</div>' +
+      '<div class="project-meta">' +
+        '<span>版本 <b>' + (p.commits || 0) + '</b></span>' +
+        (p.branch ? '<span>分支 <b>' + p.branch + '</b></span>' : '') +
+        (p.head ? '<span>' + String(p.head).slice(0, 7) + '</span>' : '') +
+      '</div>';
+    card.onclick = () => { location.href = 'project.html?id=' + encodeURIComponent(p.id); };
+    grid.append(card);
+  });
+  list.append(grid);
+}
+
+document.getElementById('newProject').onclick = () => {
+  document.getElementById('projectName').value = '';
+  document.getElementById('projectPath').value = '';
+  host.classList.add('open');
+  setTimeout(() => document.getElementById('projectName').focus(), 80);
+};
+document.getElementById('cancel').onclick = () => host.classList.remove('open');
+host.onclick = (e) => { if (e.target === host) host.classList.remove('open'); };
+document.getElementById('confirm').onclick = () => {
+  const name = document.getElementById('projectName').value.trim();
+  const path = document.getElementById('projectPath').value.trim();
+  if (!name || !path) { alert('名称和路径都要填'); return; }
+  const p = MTD.createProject(name, path);
+  host.classList.remove('open');
+  render();
+  setTimeout(() => { location.href = 'project.html?id=' + encodeURIComponent(p.id); }, 260);
+};
+
+render();
+</script>
+<script>
+  if (document.documentElement.dataset.embed === '1') document.body.classList.add('embed-mode');
+</script>
+</body>
+</html>

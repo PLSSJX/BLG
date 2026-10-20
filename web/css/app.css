@@ -1167,3 +1167,16 @@ body.has-titlebar .rail, body.has-titlebar .page-wrap { top: 44px; }
 /* 左上角加号已隐藏（SHOW_RAIL_SEARCH = false）。
    按钮有自己的 display 规则，光靠 hidden 属性挡不住，这里显式压掉。 */
 .rail-fab[hidden] { display: none; }
+
+
+/* ---------- 项目页：用 iframe 承载完整画布 ---------- */
+.projects-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 18px;
+  background: transparent;
+  display: block;
+}
+#view:has(.projects-frame),
+.view:has(.projects-frame) { padding: 0; overflow: hidden; }

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Makise Toolkit · 项目画布</title>
+<link rel="stylesheet" href="css/style.css?v=2">
+<style>
+  /* 内嵌到 MT 主界面时，隐藏原型自己的左侧栏（MT 已经有导航栏了） */
+  body.embed-mode .rail { display: none; }
+  body.embed-mode .shell { height: 100%; }
+  body.embed-mode .slab { border-radius: 0; }
+  body.embed-mode { background: transparent; }
+</style>
+<script>
+  if (location.search.indexOf('embed=1') >= 0) document.documentElement.dataset.embed = '1';
+</script>
+</head>
+<body>
+
+<div class="shell">
+  <nav class="rail">
+    <button class="rail-fab" id="back" title="返回项目列表">←</button>
+    <div class="rail-spacer"></div>
+  </nav>
+  <main class="slab">
+    <div class="view">
+      <div class="project-head">
+        <div>
+          <div class="name" id="pName">项目</div>
+          <div class="path" id="pPath"></div>
+        </div>
+        <div style="flex:1"></div>
+        <div class="undo-group">
+          <button class="icon-btn" id="undoBtn" title="撤销 (Ctrl+Z)" disabled>↶</button>
+          <button class="icon-btn" id="redoBtn" title="恢复 (Ctrl+Shift+Z)" disabled>↷</button>
+        </div>
+        <div class="segmented" id="layoutSwitch">
+          <button data-layout="timeline" class="on">时间轴</button>
+          <button data-layout="mindmap">思维导图</button>
+        </div>
+      </div>
+
+      <div id="bannerHost"></div>
+
+      <div class="canvas-wrap" id="wrap">
+        <div class="canvas" id="canvas">
+          <svg class="edges" id="edges"></svg>
+          <svg class="edges edge-labels" id="edgeLabels"></svg>
+        </div>
+        <div class="stage" id="stage">
+          <div class="stage-title"><span>暂存区</span><span id="stageCount"></span></div>
+          <div id="stageItems"></div>
+          <div class="stage-actions">
+            <button class="btn text" id="stageAddText" title="新建一个空白文本框">＋ 文本框</button>
+            <button class="btn text" id="stageAddFile" title="选一个文件，拖进画布时会自动挂到节点上">📎 文件</button>
+          </div>
+          <div class="hint">拖到节点上＝链接<br>拖到空白＝浮空<br>鼠标移到线上可改说明/删除</div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn tonal" id="autoToggle" title="关闭后改动只累积，不会自动保存">自动保存：开</button>
+        <span id="watchStatus" style="font-size:12px;color:var(--md-on-surface-variant)">监听中</span>
+        <span class="dirty-dot" id="dot"></span>
+        <button class="btn" id="save" disabled>保存版本</button>
+        <button class="btn tonal" id="autoSummary">摘要同步：开</button>
+        <button class="btn tonal" id="branchBtn">分支：main</button>
+        <button class="btn tonal" id="history">历史</button>
+        <div class="grow"></div>
+        <button class="btn text" id="addNode">＋ 添加节点</button>
+      </div>
+    </div>
+  </main>
+</div>
+<div class="editor-host" id="mergeHost">
+  <div class="editor" style="width:min(880px,96vw)">
+    <h3 id="mergeTitle">处理冲突</h3>
+    <div class="hint">每一段冲突自己选：留我的、留对方的，或者两个都留。</div>
+    <div id="mergeBlocks" style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:10px"></div>
+    <div class="row">
+      <button class="btn text" id="mergeCancel">取消</button>
+      <button class="btn" id="mergeSave">保存并标记已解决</button>
+    </div>
+  </div>
+</div>
+<div class="editor-host" id="branchHost">
+  <div class="editor" style="width:min(460px,92vw)">
+    <h3>分支</h3>
+    <div class="hint">可以新建分支、切换分支，把别的分支合并进来。冲突时会在这里列出文件。</div>
+    <div id="branchList" style="display:flex;flex-direction:column;gap:6px;max-height:40vh;overflow:auto"></div>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <input class="input" id="newBranch" placeholder="新分支名，例如 experiment">
+      <button class="btn" id="createBranch">新建</button>
+    </div>
+    <div id="conflictBox" style="margin-top:10px"></div>
+    <div class="row" style="margin-top:auto"><button class="btn text" id="branchClose">关闭</button></div>
+  </div>
+</div>
+<div class="editor-host" id="historyHost">
+  <div class="editor" style="width:min(620px,94vw)">
+    <h3>版本历史</h3>
+    <div class="hint">按时间从新到旧排列，按天分组。可以整份回到某个版本，也可以只还原单个文件。</div>
+    <div id="historyList" style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px"></div>
+    <div class="row"><button class="btn text" id="historyExport" title="用系统 git 打开这份历史">导出为 Git 仓库</button>
+      <button class="btn text" id="historyClose">关闭</button></div>
+  </div>
+</div>
+<div class="editor-host" id="editorHost">
+  <div class="editor-empty" id="editorEmpty">点击左侧任意节点<br>即可在这里编辑</div>
+  <div class="editor">
+    <div class="editor-head">
+      <h3 id="editorTitle">编辑节点</h3>
+      <span class="hint" id="editorDirty" style="display:none;color:var(--md-primary)">未保存</span>
+    </div>
+    <div class="hint" id="editorHint" style="display:none;color:var(--md-primary)"></div>
+    <input id="editorName" placeholder="节点标题">
+    <div class="md-tabs" id="kindRow">
+      <span class="hint" style="align-self:center;margin-right:4px">类型</span>
+      <button data-kind="auto" class="on">自动</button>
+      <button data-kind="h">主干</button>
+      <button data-kind="v">分支</button>
+    </div>
+    <div class="editor-bar">
+      <div class="md-tabs" id="mdTabs">
+        <button data-mode="edit">编辑</button>
+        <button data-mode="split" class="on">分栏</button>
+        <button data-mode="preview">预览</button>
+      </div>
+      <div class="md-toolbar" id="mdToolbar">
+      <button data-act="h2" title="小标题">H2</button>
+      <button data-act="bold" title="粗体"><b>B</b></button>
+      <button data-act="italic" title="斜体"><i>I</i></button>
+      <button data-act="code" title="行内代码">&lt;/&gt;</button>
+      <button data-act="ul" title="列表">•</button>
+      <button data-act="quote" title="引用">❝</button>
+      <button data-act="link" title="链接">🔗</button>
+      </div>
+    </div>
+    <div class="md-body">
+      <textarea id="editorBody" placeholder="在这里写正文。保存后正文会成为项目里的 .md 文件，之后可以用 Typora / VS Code 直接改。"></textarea>
+      <div class="md-preview" id="mdPreview"></div>
+    </div>
+    <details class="asset-box">
+      <summary>挂文件 <span class="hint" id="assetCount"></span></summary>
+      <div class="asset-row">
+        <button class="btn" id="pickBtn" style="white-space:nowrap">选择文件…</button>
+        <input class="input" id="assetPath" placeholder="或粘贴路径">
+        <button class="btn" id="attachBtn" style="white-space:nowrap">挂上</button>
+      </div>
+      <div id="assetList"></div>
+      <div class="hint">挂上来的文件会复制一份到项目目录，之后改的是副本，源文件不动。</div>
+    </details>
+    <div class="row">
+      <button class="btn text" id="editorLink" style="margin-right:auto">关联节点…</button>
+      <button class="btn text" id="editorOpenFile" title="用 Typora / VS Code 等系统程序打开正文文件">外部打开</button>
+      <button class="btn text" id="editorMerge">并入父节点</button>
+      <button class="btn text" id="editorDelete" style="color:#ffb4ab">删除节点</button>
+      <button class="btn text" id="editorCancel">取消</button>
+      <button class="btn" id="editorSave">保存</button>
+    </div>
+  </div>
+</div>
+<script src="js/data.js?v=2"></script>
+<script src="js/api.js?v=2"></script>
+<script src="js/md.js?v=2"></script>
+<script src="js/canvas.js?v=2"></script>
+<script>
+  if (document.documentElement.dataset.embed === '1') document.body.classList.add('embed-mode');
+</script>
+</body>
+</html>

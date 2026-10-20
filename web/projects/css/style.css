@@ -1,0 +1,858 @@
+/* ============================================================
+   Makise Toolkit 项目管理原型 —— 视觉沿用应用的 Material 3 体系
+   ============================================================ */
+:root {
+  --ease-ios: cubic-bezier(.22, 1, .36, 1);
+  --ease-soft: cubic-bezier(.34, 1.32, .5, 1);
+  --dur-page: 460ms;
+
+  --md-primary: #8fd3c7;
+  --md-on-primary: #003731;
+  --md-primary-container: #07231f;
+  --md-on-primary-container: #c8f0e8;
+  --md-secondary-container: #24463f;
+  --md-on-secondary-container: #cdeee4;
+  --md-surface: #0d1512;
+  --md-surface-container: #131e1b;
+  --md-surface-container-low: #16231f;
+  --md-surface-container-high: #1d2e29;
+  --md-on-surface: #dfe9e4;
+  --md-on-surface-variant: #9db3aa;
+  --md-outline: #3a5049;
+  --md-outline-variant: #253832;
+  --md-error: #ffb4ab;
+
+  --radius-card: 12px;
+  --radius-slab: 22px;
+  --radius-pill: 999px;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: var(--md-surface);
+  color: var(--md-on-surface);
+  font-family: "Segoe UI", "Microsoft YaHei UI", system-ui, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; cursor: pointer; }
+input { font: inherit; }
+
+/* ---------------------------------------------------------- 布局骨架 */
+.shell { display: flex; height: 100%; }
+.rail {
+  width: 84px; flex: none;
+  background: var(--md-surface-container);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 12px 0 10px; gap: 10px;
+}
+.rail-fab {
+  width: 56px; height: 56px; border: none; border-radius: 16px;
+  background: var(--md-primary-container); color: var(--md-on-primary-container);
+  display: grid; place-items: center; font-size: 26px; line-height: 1;
+  transition: transform 140ms var(--ease-ios), background 160ms var(--ease-ios);
+}
+.rail-fab:hover { background: #0e332c; }
+.rail-fab:active { transform: scale(.94); }
+.rail-spacer { flex: 1; }
+
+.slab {
+  flex: 1; min-width: 0;
+  background: var(--md-primary-container);
+  color: var(--md-on-primary-container);
+  border-radius: var(--radius-slab) 0 0 var(--radius-slab);
+  overflow: hidden; display: flex;
+}
+.view { flex: 1; min-width: 0; overflow-y: auto; padding: 18px 22px 40px; }
+
+.page-title { font-size: 20px; font-weight: 600; margin: 0 0 2px; }
+.page-sub { margin: 0 0 16px; font-size: 12.5px; opacity: .72; }
+
+/* ---------------------------------------------------------- 卡片 */
+.card {
+  background: var(--md-surface-container-low);
+  border-radius: var(--radius-card);
+  padding: 13px 14px;
+  margin-bottom: 12px;
+}
+.card-title { font-size: 14px; font-weight: 600; margin: 0 0 6px; display: flex; align-items: center; gap: 8px; }
+.card-desc { font-size: 12.5px; color: var(--md-on-surface-variant); line-height: 1.6; margin: 0; }
+
+/* ---------------------------------------------------------- 按钮 */
+.btn {
+  height: 34px; padding: 0 14px; border: none; border-radius: var(--radius-pill);
+  background: var(--md-secondary-container); color: var(--md-on-secondary-container);
+  display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+  transition: transform 120ms var(--ease-ios), background 150ms var(--ease-ios), opacity 150ms;
+}
+.btn:hover { filter: brightness(1.12); }
+.btn:active { transform: scale(.97); }
+.btn.tonal { background: transparent; box-shadow: inset 0 0 0 1px var(--md-outline); color: var(--md-primary); }
+.btn.text { background: transparent; color: var(--md-primary); padding: 0 10px; }
+.btn:disabled { opacity: .38; cursor: not-allowed; transform: none; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+/* ---------------------------------------------------------- 首页：项目列表 */
+.projects { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.project-card {
+  background: var(--md-surface-container-low);
+  border-radius: var(--radius-card);
+  padding: 14px; cursor: pointer;
+  border: 1px solid transparent;
+  transition: border-color 160ms var(--ease-ios), transform 160ms var(--ease-ios), background 160ms;
+  animation: card-in 260ms var(--ease-ios) both;
+}
+.project-card:hover { border-color: var(--md-outline); transform: translateY(-2px); background: var(--md-surface-container); }
+.project-name { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+.project-path { font-size: 11.5px; color: var(--md-on-surface-variant); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-meta { display: flex; gap: 14px; margin-top: 10px; font-size: 12px; color: var(--md-on-surface-variant); }
+.project-meta b { color: var(--md-on-surface); font-weight: 600; }
+@keyframes card-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+.empty {
+  display: grid; place-items: center; gap: 10px;
+  padding: 70px 20px; text-align: center;
+  color: var(--md-on-surface-variant);
+}
+.empty .big { font-size: 40px; opacity: .5; }
+
+/* ---------------------------------------------------------- 项目视图 */
+.project-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.project-head .name { font-size: 18px; font-weight: 600; }
+.project-head .path { font-size: 11.5px; color: var(--md-on-surface-variant); }
+
+/* 外部 git 被动过的提示 */
+.banner {
+  display: flex; align-items: center; gap: 10px;
+  background: #3a2f10; color: #ffe08a;
+  border-radius: var(--radius-card); padding: 9px 12px; margin-bottom: 12px;
+  font-size: 12.5px;
+  animation: banner-in 260ms var(--ease-ios) both;
+}
+@keyframes banner-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+/* 画布 */
+/* 时间轴：横向卡片 */
+.node.card {
+  border-radius: 12px;
+  min-width: 132px; max-width: 190px;
+  text-align: left;
+}
+/* 思维导图：圆形节点，文字居中 */
+.canvas.round .node {
+  border-radius: 50%;
+  width: 104px; height: 104px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 0 10px;
+  font-size: 12px; line-height: 1.25;
+}
+.canvas.round .node .note { display: none; }
+.canvas.round .node.trunk {
+  width: 128px; height: 128px;
+  min-width: 0; max-width: none;
+  font-size: 13px;
+}
+
+/* 节点下沿的分支把手：按住往上拖不出来，点一下加一条分支 */
+.branch-handle {
+  position: absolute; left: 50%; bottom: -9px;
+  width: 18px; height: 18px; margin-left: -9px;
+  border-radius: 50%;
+  background: var(--md-surface-container-highest, #24352f);
+  border: 1px solid var(--md-outline);
+  color: var(--md-primary);
+  display: grid; place-items: center;
+  font-size: 13px; line-height: 1;
+  opacity: 0; transform: scale(.8);
+  transition: opacity 160ms var(--ease-ios), transform 160ms var(--ease-ios);
+  cursor: pointer;
+}
+.node:hover .branch-handle,
+.node.selected .branch-handle { opacity: 1; transform: scale(1); }
+/* 导图模式也给手柄，贴着圆周放 */
+.canvas.round .branch-handle.down { bottom: -14px; }
+.canvas.round .branch-handle.right { display: none; }
+
+.canvas-wrap {
+  position: relative;
+  background: var(--md-surface-container-low);
+  background-image: radial-gradient(circle, rgba(143,211,199,.10) 1px, transparent 1px);
+  background-size: 22px 22px;
+  border-radius: var(--radius-card);
+  height: calc(100vh - 210px);
+  min-height: 420px;
+  overflow: hidden;
+}
+.canvas {
+  position: absolute; inset: 0;
+  /* 点阵画在 .canvas-wrap 上，这样平移多远都有背景 */
+}
+/* overflow: visible 让超出视口的连线也能画出来，不会被裁掉 */
+.edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.edge { fill: none; stroke: var(--md-outline); stroke-width: 2; transition: d 420ms var(--ease-ios); }
+.edge.linked { stroke: var(--md-primary); stroke-opacity: .55; }
+
+.node.dragging {
+  transition: none !important;
+  pointer-events: none;   /* 拖动中让指针"穿透"到自己下面，才能判断压在谁身上 */
+}
+.node {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  transition: left 460ms var(--ease-ios), top 460ms var(--ease-ios),
+              box-shadow 160ms, background 160ms, border-color 160ms;
+  background: var(--md-surface-container-high);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 12px;
+  padding: 10px 14px;
+  min-width: 108px; max-width: 200px;
+  font-size: 13px; line-height: 1.4;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+  cursor: grab; user-select: none;
+  will-change: left, top;
+}
+.node:active { cursor: grabbing; }
+.node:hover { border-color: var(--md-outline); box-shadow: 0 4px 12px rgba(0,0,0,.35); }
+.node.selected { border-color: var(--md-primary); box-shadow: 0 0 0 2px rgba(143, 211, 199, .18); }
+.node.trunk {
+  background: var(--md-primary); color: var(--md-on-primary);
+  border-color: transparent; font-weight: 600;
+  min-width: 160px;
+  max-width: 240px;
+  padding: 12px 16px;
+  box-shadow: 0 4px 16px rgba(143,211,199,.18);
+}
+.node.floating { border-style: dashed; opacity: .92; }
+.node .note {
+  margin-top: 4px; font-size: 11px; color: var(--md-on-surface-variant);
+  border-top: 1px dashed var(--md-outline-variant); padding-top: 3px;
+}
+.node.trunk .note { color: rgba(0, 55, 49, .75); border-color: rgba(0, 55, 49, .3); }
+.node.dragging { transition: none; z-index: 30; }
+
+/* 暂存区 */
+.stage {
+  position: absolute; right: 14px; bottom: 14px; width: 208px;
+  background: color-mix(in srgb, var(--md-surface-container) 92%, transparent);
+  border: 1px dashed var(--md-outline);
+  border-radius: var(--radius-card);
+  padding: 10px;
+  backdrop-filter: blur(3px);
+}
+.stage-title { font-size: 11.5px; color: var(--md-on-surface-variant); margin-bottom: 8px; display: flex; justify-content: space-between; }
+.stage .item {
+  background: var(--md-surface-container-high);
+  border-radius: 9px; padding: 6px 9px; margin-bottom: 6px;
+  font-size: 12px; cursor: grab;
+  display: flex; gap: 6px; align-items: center;
+  transition: transform 140ms var(--ease-ios), background 140ms;
+}
+.stage .item:hover { background: #24352f; transform: translateX(-2px); }
+.stage .item:active { cursor: grabbing; }
+.stage .hint { font-size: 11px; color: var(--md-on-surface-variant); opacity: .8; }
+
+/* 浮动工具条 */
+.toolbar {
+  display: flex; gap: 8px; align-items: center;
+  margin-top: 12px;
+}
+.toolbar .grow { flex: 1; }
+.dirty-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--md-primary); opacity: 0; transition: opacity 200ms; }
+.dirty-dot.on { opacity: 1; }
+
+/* 视图切换分段控件 */
+.segmented {
+  display: inline-flex; background: var(--md-surface-container-high);
+  border-radius: var(--radius-pill); padding: 3px; gap: 2px;
+}
+.segmented button {
+  border: none; background: transparent; color: var(--md-on-surface-variant);
+  height: 28px; padding: 0 14px; border-radius: var(--radius-pill); font-size: 12.5px;
+  transition: background 200ms var(--ease-ios), color 200ms;
+}
+.segmented button.on { background: var(--md-secondary-container); color: var(--md-on-secondary-container); }
+
+/* 弹窗 */
+.dialog-host {
+  position: fixed; inset: 0; display: none; place-items: center;
+  background: rgba(0, 0, 0, .5); z-index: 100;
+}
+.dialog-host.open { display: grid; }
+.dialog {
+  width: min(420px, 90vw);
+  background: var(--md-surface-container);
+  border-radius: 16px; padding: 18px;
+  animation: dlg-in 240ms var(--ease-soft) both;
+}
+@keyframes dlg-in { from { opacity: 0; transform: scale(.96) translateY(8px); } to { opacity: 1; transform: none; } }
+.dialog h3 { margin: 0 0 6px; font-size: 16px; }
+.dialog p { margin: 0 0 14px; font-size: 12.5px; color: var(--md-on-surface-variant); line-height: 1.6; }
+.input {
+  width: 100%; height: 36px; padding: 0 12px;
+  background: var(--md-surface-container-high);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 10px; color: var(--md-on-surface);
+}
+.input:focus { outline: none; border-color: var(--md-primary); }
+.dialog .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+
+/* 分支线：虚线 + 琥珀色，和主线的实线青绿区分开 */
+.edge.branch {
+  stroke: #e8b86d;
+  stroke-dasharray: 5 5;
+  stroke-opacity: .8;
+  stroke-width: 1.6;
+}
+.edge.main { stroke: var(--md-primary); stroke-opacity: .55; }
+
+
+/* ---------- 节点摘要：编辑后的简练内容挂在节点上 ---------- */
+.node .summary {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--md-on-surface-variant);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.node.trunk .summary { color: rgba(0, 55, 49, .72); }
+.canvas.round .node .summary { display: none; }
+
+/* ---------- 节点两个方向的手柄 ---------- */
+.branch-handle.down { left: 50%; bottom: -9px; margin-left: -9px; }
+.branch-handle.right {
+  left: auto; right: -9px; bottom: auto;
+  top: 50%; margin-top: -9px;
+}
+.node:hover .branch-handle,
+.node.selected .branch-handle { opacity: 1; transform: scale(1); }
+.canvas.round .branch-handle { display: none; }
+
+/* ---------- 编辑面板 ---------- */
+.editor-host {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, .45);
+  display: none; z-index: 90;
+}
+.editor-host.open { display: block; }
+.editor {
+  position: absolute; right: 0; top: 0; bottom: 0;
+  width: min(460px, 96vw);
+  min-width: 0;
+  overflow-x: hidden;
+  background: var(--md-surface-container);
+  padding: 18px;
+  display: flex; flex-direction: column; gap: 10px;
+  transform: translateX(100%);
+  transition: transform 320ms var(--ease-soft);
+  box-shadow: -8px 0 32px rgba(0,0,0,.35);
+}
+.editor-host.open .editor { transform: none; }
+.editor h3 { margin: 0; font-size: 15px; }
+.editor .hint { font-size: 11.5px; color: var(--md-on-surface-variant); line-height: 1.6; }
+.editor input, .editor textarea {
+  width: 100%; background: var(--md-surface-container-high);
+  border: 1px solid var(--md-outline-variant); border-radius: 10px;
+  color: var(--md-on-surface); padding: 10px 12px; font: inherit; resize: none;
+}
+.editor textarea { flex: 1; min-height: 220px; line-height: 1.7; }
+.editor input:focus, .editor textarea:focus { outline: none; border-color: var(--md-primary); }
+.editor .row { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* 节点右下角显示对应的文件名，鼠标移上去才显示，避免太挤 */
+.node .filerow {
+  margin-top: 5px; font-size: 10px; opacity: 0;
+  color: var(--md-primary); letter-spacing: .2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: opacity 160ms var(--ease-ios);
+}
+.node:hover .filerow, .node.selected .filerow { opacity: .8; }
+.canvas.round .node .filerow { display: none; }
+
+/* 合并编辑器：层级高于分支面板，两侧对照要能同时看到 */
+#mergeHost { z-index: 95; }
+#mergeHost .editor { width: min(880px, 96vw); }
+#mergeHost .ed-row { color: #b8f0e4; }
+
+/* ---------- Markdown 编辑器 ---------- */
+.md-tabs { display: flex; gap: 4px; }
+.md-tabs button {
+  background: transparent; border: 1px solid var(--md-outline-variant);
+  color: var(--md-on-surface-variant); border-radius: 999px;
+  padding: 4px 12px; font: inherit; font-size: 12px; cursor: pointer;
+  transition: background 160ms var(--ease-ios), color 160ms var(--ease-ios);
+}
+.md-tabs button.on {
+  background: rgba(143, 211, 199, .14);
+  color: var(--md-primary);
+  border-color: rgba(143, 211, 199, .45);
+}
+.md-toolbar { display: flex; gap: 4px; }
+.md-toolbar button {
+  min-width: 30px; height: 26px; padding: 0 8px;
+  background: var(--md-surface-container-high);
+  border: 1px solid transparent; border-radius: 7px;
+  color: var(--md-on-surface-variant); font: inherit; font-size: 12px;
+  cursor: pointer; transition: background 140ms var(--ease-ios);
+}
+.md-toolbar button:hover { background: var(--md-surface-container-highest); color: var(--md-primary); }
+.md-body { display: flex; gap: 10px; flex: 1; min-height: 0; }
+.md-body textarea { flex: 1; min-height: 200px; }
+.md-preview {
+  flex: 1; min-height: 200px; overflow: auto; font-size: 13px; line-height: 1.75;
+  padding: 10px 12px; border-radius: 10px;
+  background: var(--md-surface-container-high);
+  border: 1px solid var(--md-outline-variant);
+}
+.editor[data-mode="edit"] .md-preview { display: none; }
+.editor[data-mode="preview"] textarea { display: none; }
+.editor[data-mode="preview"] .md-toolbar { display: none; }
+.editor[data-mode="preview"] .md-preview { flex: 1; }
+.md-preview h1, .md-preview h2, .md-preview h3 { margin: .6em 0 .35em; line-height: 1.35; }
+.md-preview h1 { font-size: 20px; } .md-preview h2 { font-size: 16px; } .md-preview h3 { font-size: 14px; }
+.md-preview p { margin: .5em 0; }
+.md-preview ul, .md-preview ol { margin: .4em 0; padding-left: 1.35em; }
+.md-preview blockquote {
+  margin: .5em 0; padding: 4px 10px; border-left: 2px solid var(--md-primary);
+  color: var(--md-on-surface-variant); background: rgba(143, 211, 199, .06);
+}
+.md-preview code {
+  background: rgba(0, 0, 0, .28); padding: 1px 5px; border-radius: 4px; font-size: 12px;
+}
+.md-preview pre.md-code {
+  background: rgba(0, 0, 0, .3); padding: 10px; border-radius: 8px; overflow: auto;
+}
+.md-preview pre.md-code code { background: none; padding: 0; }
+.md-preview a { color: var(--md-primary); }
+.md-preview hr { border: none; border-top: 1px solid var(--md-outline-variant); margin: 1em 0; }
+
+
+/* ---------- 编辑面板的尺寸与折行修复 ---------- */
+.editor > * { min-width: 0; }
+.editor input, .editor textarea { min-width: 0; }
+.editor textarea {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;      /* 一长串 11111… 一定要能折行 */
+  word-break: break-word;
+  overflow-x: hidden;
+  height: 100%;
+  min-height: 160px;
+  max-height: none;
+}
+.editor .md-body { min-height: 0; overflow: hidden; }
+.editor .md-body textarea { flex: 1 1 0; min-width: 0; }
+.editor .md-preview {
+  flex: 1 1 0; min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-x: hidden;
+}
+/* 面板窄的时候分栏没意义：自动只留编辑区 */
+@media (max-width: 900px) {
+  .editor[data-mode="split"] .md-preview { display: none; }
+  .editor[data-mode="split"] textarea { flex: 1; }
+}
+/* 面板太矮时，正文区让出一部分给附件区 */
+.editor textarea { field-sizing: content; }
+
+/* 节点右下角的附件角标：挂了文件一眼能看出来 */
+.node .asset-badge {
+  position: absolute; right: -9px; bottom: -9px;
+  min-width: 26px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 3;
+  background: var(--md-surface-container-highest);
+  border: 1px solid rgba(143, 211, 199, .45);
+  color: var(--md-primary);
+  border-radius: 999px; padding: 1px 6px;
+  font-size: 10px; line-height: 1.5; white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+}
+.canvas.round .node .asset-badge { right: -2px; bottom: 6px; }
+
+/* 关联线：和结构线明显区分 —— 紫色点线 + 可点击删除 */
+.edge.link {
+  stroke: #b9a6f0;
+  stroke-width: 1.8;
+  stroke-dasharray: 2 6;
+  stroke-linecap: round;
+  stroke-opacity: .9;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.edge.link:hover { stroke: #d5c8ff; stroke-width: 2.4; }
+.canvas.linking { cursor: crosshair; }
+
+/* 关联线上的文字：加描边做底，压在连线/节点上也看得清 */
+.edge-label {
+  font-size: 11px;
+  fill: #d5c8ff;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  paint-order: stroke;
+  stroke: var(--md-surface-container-low);
+  stroke-width: 3.5px;
+  stroke-linejoin: round;
+  pointer-events: auto;
+  cursor: pointer;
+  user-select: none;
+}
+.edge-label:hover { fill: #ffffff; }
+.edge-label.empty {
+  fill: rgba(213, 200, 255, .45);
+  font-style: italic;
+  pointer-events: none;   /* 占位文字不要挡住节点点击 */
+}
+
+/* 文字单独一层，压在节点上面；只让文字本身可点，不挡拖动 */
+.edge-labels { z-index: 6; pointer-events: none; overflow: visible; }
+.edge-labels text { pointer-events: auto; }
+
+/* 从分支再延伸出来的主线：点划线，和普通主线区分 */
+.edge.main-from-branch {
+  stroke: #7fc9bb;
+  stroke-dasharray: 9 5;
+  stroke-opacity: .6;
+}
+
+.stage-actions { display: flex; gap: 6px; margin-top: 2px; }
+.stage-actions .btn { font-size: 11.5px; padding: 0 8px; height: 26px; }
+
+/* 右键菜单 */
+.ctx-menu {
+  position: fixed; z-index: 300; min-width: 150px;
+  background: var(--md-surface-container-high);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 10px; padding: 5px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .45);
+  display: flex; flex-direction: column; gap: 1px;
+}
+.ctx-menu button {
+  background: transparent; border: none; text-align: left;
+  color: var(--md-on-surface); font: inherit; font-size: 12.5px;
+  padding: 7px 10px; border-radius: 7px; cursor: pointer;
+}
+.ctx-menu button:hover { background: var(--md-surface-container-highest); }
+.ctx-menu button.danger { color: #ffb4ab; }
+.ctx-menu .sep { height: 1px; background: var(--md-outline-variant); margin: 4px 6px; }
+
+/* 标题太长时截断，别把节点撑变形 */
+.node > div:first-child {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* 拖动时预告"会连到哪、怎么连" */
+.edge.preview {
+  stroke: var(--md-primary);
+  stroke-width: 2;
+  stroke-dasharray: 3 7;
+  stroke-opacity: .9;
+  animation: previewDash 1s linear infinite;
+}
+.edge.preview.preview-v { stroke: #e8b86d; }
+@keyframes previewDash { to { stroke-dashoffset: -20; } }
+.node.link-target {
+  border-color: var(--md-primary) !important;
+  box-shadow: 0 0 0 3px rgba(143, 211, 199, .28), 0 6px 18px rgba(0,0,0,.4) !important;
+}
+
+/* 线本身可以被指到，才能右键 */
+.edges .edge { pointer-events: stroke; cursor: pointer; }
+.edge-label.structural { fill: #b6d8d0; font-size: 10.5px; }
+.edge-label.structural.is-branch { fill: #e8c99a; }
+
+/* 附件弹层 */
+.asset-pop {
+  position: fixed; z-index: 320; min-width: 190px; max-width: 300px;
+  background: var(--md-surface-container-high);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 10px; padding: 8px;
+  box-shadow: 0 10px 26px rgba(0,0,0,.45);
+}
+.asset-pop-row {
+  display: flex; gap: 8px; align-items: center;
+  padding: 5px 6px; border-radius: 7px; cursor: pointer; font-size: 12px;
+}
+.asset-pop-row:hover { background: var(--md-surface-container-highest); }
+.asset-pop-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.asset-pop-size { opacity: .55; font-size: 11px; }
+
+#kindRow { align-items: center; }
+#kindRow button { font-size: 11.5px; padding: 4px 10px; }
+
+.mini-btn {
+  background: transparent; border: 1px solid var(--md-outline-variant);
+  color: var(--md-on-surface-variant); border-radius: 999px;
+  font: inherit; font-size: 11px; padding: 2px 9px; cursor: pointer;
+  transition: color 150ms, border-color 150ms;
+}
+.mini-btn:hover { color: var(--md-primary); border-color: var(--md-primary); }
+.mini-btn.danger:hover { color: #ffb4ab; border-color: #ffb4ab; }
+.project-actions { display: flex; gap: 6px; margin-top: 8px; }
+
+/* ---------- 编辑面板：头部固定 / 正文自适应 / 底部固定 ---------- */
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: hidden;          /* 面板本身不滚，正文区滚 */
+}
+.editor-head { display: flex; align-items: center; gap: 10px; }
+.editor-head h3 { margin: 0; }
+.editor-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.editor .md-body {
+  flex: 1 1 auto;
+  min-height: 160px;
+  max-height: none;
+}
+.asset-box {
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 10px;
+  padding: 6px 10px;
+  flex: 0 0 auto;
+}
+.asset-box summary {
+  cursor: pointer; font-size: 12px; color: var(--md-on-surface-variant);
+  list-style: none;
+}
+.asset-box summary::-webkit-details-marker { display: none; }
+.asset-box summary::before { content: '▸ '; }
+.asset-box[open] summary::before { content: '▾ '; }
+.asset-box .asset-row { display: flex; gap: 6px; margin-top: 6px; }
+.asset-box #assetList { display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow: auto; margin-top: 6px; }
+.editor > .row {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--md-outline-variant);
+  padding-top: 8px;
+}
+/* 节点上那两个快捷手柄：常态就看得见，别藏着 */
+.branch-handle { opacity: .62; }
+.branch-handle.down { font-size: 12px; }
+.branch-handle.right { font-size: 13px; font-weight: 600; }
+
+/* 关联模式下的源节点：一直亮着，提醒你"正在从它往外连" */
+.node.link-source {
+  border-color: #b9a6f0 !important;
+  box-shadow: 0 0 0 3px rgba(185, 166, 240, .25), 0 6px 18px rgba(0,0,0,.4) !important;
+}
+
+/* 提示条：多条同时出现时往上叠 */
+.mt-toast {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  background: #1d2e29; color: #dfe9e4;
+  padding: 9px 16px; border-radius: 999px; font-size: 12.5px;
+  z-index: 200; display: flex; gap: 12px; align-items: center;
+  box-shadow: 0 6px 20px rgba(0,0,0,.35);
+  transition: bottom 180ms var(--ease-ios), opacity 180ms;
+}
+
+/* 线的透明命中层：让 2px 的线也好点 */
+.edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.stage-size { margin-left: 6px; opacity: .5; font-size: 10.5px; }
+
+/* 线的悬浮工具条 */
+.edge-tip {
+  position: fixed; z-index: 310;
+  display: flex; gap: 2px;
+  background: var(--md-surface-container-high);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 999px; padding: 3px;
+  box-shadow: 0 8px 22px rgba(0,0,0,.45);
+}
+.edge-tip button {
+  background: transparent; border: none; color: var(--md-on-surface);
+  font: inherit; font-size: 11.5px; padding: 3px 9px;
+  border-radius: 999px; cursor: pointer;
+}
+.edge-tip button:hover { background: var(--md-surface-container-highest); color: var(--md-primary); }
+.edge-tip button.danger { color: #ffb4ab; }
+
+.node .asset-badge:hover {
+  background: var(--md-primary);
+  color: #06251f;
+  transform: scale(1.08);
+}
+
+.node .filerow:hover { opacity: 1; text-decoration: underline; }
+
+/* 节点上显示主文档名，点一下用外部程序打开 */
+.node .docrow {
+  margin-top: 4px; font-size: 10.5px;
+  color: #e8c99a; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.node .docrow:hover { text-decoration: underline; color: #f4dcae; }
+.canvas.round .node .docrow { display: none; }
+
+/* 改接提示浮标 + 改接预览线 */
+.reparent-hint {
+  position: fixed; z-index: 330; pointer-events: none;
+  background: #ffb4ab; color: #3b0d09;
+  font-size: 11.5px; padding: 3px 9px; border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(0,0,0,.4);
+}
+.edge.preview.reparent {
+  stroke: #ffb4ab;
+  stroke-width: 2.2;
+  stroke-dasharray: 2 5;
+  animation: none;
+}
+
+
+/* ---------- 编辑面板常驻右侧 ---------- */
+body.editing .slab { margin-right: 432px; }         /* 给右侧栏让位，别挤压内部布局 */
+#editorHost {
+  position: fixed;
+  top: 0; right: 0; bottom: 0; left: auto;        /* left:auto 才能真正贴右边 */
+  width: 432px;
+  display: block !important;      /* 常驻，不再隐藏 */
+  background: transparent;
+  pointer-events: none;           /* 空白处不挡画布 */
+  z-index: 40;
+}
+#editorHost .editor {
+  pointer-events: auto;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  transform: none !important;     /* 不做滑入动画 */
+  box-shadow: none;
+  border-left: 1px solid var(--md-outline-variant);
+  border-radius: 0;
+  padding: 14px 16px;
+}
+#editorHost .editor-empty {
+  pointer-events: auto;
+  position: absolute; inset: 0;
+  border-left: 1px solid var(--md-outline-variant);
+  background: var(--md-surface-container);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--md-on-surface-variant);
+  font-size: 13px; text-align: center; padding: 24px; line-height: 1.9;
+}
+@media (max-width: 1100px) {
+  body.editing .slab { margin-right: 0; }
+  #editorHost { width: min(420px, 92vw); box-shadow: -8px 0 32px rgba(0,0,0,.4); }
+}
+
+
+/* 编辑面板底部按钮：不许挤压、不许断行，放不下就整颗换行 */
+.editor > .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.editor > .row .btn {
+  white-space: nowrap;
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.editor > .row #editorSave { margin-left: auto; }
+
+/* ---------- 历史面板 ---------- */
+.history-group {
+  margin: 10px 2px 4px;
+  font-size: 11.5px;
+  color: var(--md-primary);
+  letter-spacing: .3px;
+}
+.history-item {
+  background: var(--md-surface-container-high);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.history-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; cursor: pointer;
+}
+.history-row:hover { background: var(--md-surface-container-highest); }
+.history-main { flex: 1; min-width: 0; }
+.history-subject {
+  font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.history-meta { font-size: 11px; opacity: .55; margin-top: 2px; }
+.history-acts { display: flex; gap: 4px; flex: 0 0 auto; }
+.history-files {
+  display: none; padding: 4px 10px 8px;
+  border-top: 1px solid var(--md-outline-variant);
+}
+.history-file {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11.5px; padding: 3px 0;
+}
+.history-file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 历史列表是 flex 列：子项不许被压缩，否则全挤成细条 */
+#historyList > * { flex: 0 0 auto; }
+
+/* 顶部的撤销 / 恢复 */
+.undo-group { display: flex; gap: 4px; margin-right: 10px; }
+.icon-btn {
+  width: 34px; height: 34px; border-radius: 10px;
+  border: 1px solid var(--md-outline-variant);
+  background: var(--md-surface-container-high);
+  color: var(--md-on-surface); font-size: 17px; line-height: 1;
+  cursor: pointer; transition: background 160ms, opacity 160ms, transform 120ms;
+}
+.icon-btn:hover:not(:disabled) { background: var(--md-surface-container-highest); color: var(--md-primary); }
+.icon-btn:active:not(:disabled) { transform: scale(.94); }
+.icon-btn:disabled { opacity: .3; cursor: default; }
+
+/* 应用内对话框 */
+.mt-modal {
+  position: fixed; inset: 0; z-index: 400;
+  background: rgba(0,0,0,.5);
+  display: flex; align-items: center; justify-content: center;
+}
+.mt-modal-box {
+  width: min(430px, 92vw);
+  background: var(--md-surface-container);
+  border: 1px solid var(--md-outline-variant);
+  border-radius: 14px; padding: 18px;
+  box-shadow: 0 20px 50px rgba(0,0,0,.5);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.mt-modal-title { font-size: 15px; font-weight: 600; }
+.mt-modal-body { font-size: 12.5px; line-height: 1.8; color: var(--md-on-surface-variant); white-space: pre-wrap; }
+.mt-modal-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+
+/* 从主干到选中节点的路径高亮 */
+.node.on-path {
+  border-color: rgba(143, 211, 199, .55);
+  box-shadow: 0 0 0 2px rgba(143, 211, 199, .14);
+}
+.node.selected.on-path { border-color: var(--md-primary); }
+#edges path.on-path {
+  stroke: var(--md-primary) !important;
+  stroke-opacity: .95 !important;
+  stroke-width: 2.6 !important;
+}
+
+/* 常驻编辑栏：没选中节点时只显示引导，不要和表单叠在一起 */
+#editorHost:not(.has-node) .editor { display: none !important; }
+#editorHost:not(.has-node) .editor-empty { display: flex !important; }
+#editorHost.has-node .editor { display: flex !important; }
+#editorHost.has-node .editor-empty { display: none !important; }
