@@ -366,6 +366,27 @@ class TaskManager:
             "done": sum(1 for t in items if t.status == STATUS_DONE),
             "error": sum(1 for t in items if t.status == STATUS_ERROR),
             "ffmpeg": find_ffmpeg() or "",
+            # 分类型统计：视频抓取失败和音乐下载失败的排查方向完全不同，
+            # 混在一起看"失败 11"根本不知道是哪边出的问题。
+            "by_kind": {
+                kind: {
+                    "total": len(group),
+                    "running": sum(1 for t in group
+                                   if t.status in (STATUS_RUNNING, STATUS_MERGING)),
+                    "queued": sum(1 for t in group if t.status == STATUS_QUEUED),
+                    "done": sum(1 for t in group if t.status == STATUS_DONE),
+                    "error": sum(1 for t in group if t.status == STATUS_ERROR),
+                }
+                # 注意 kind 的取值不止 video/audio/convert：解密来的任务 kind 是
+                # ncm / qmcflac 这类格式名，按等值分组会把它们全漏掉（界面显示全 0）。
+                # 所以按语义归类，并且留一个 other 桶兜底 —— 宁可多一行，不能藏数据。
+                for kind, group in (
+                    (k, [t for t in items if _task_bucket(t) == k])
+                    for k in ("video", "audio", "convert", "other")
+                )
+            },
+            # 有多少失败其实是"没登录"造成的，按平台分开统计
+            "need_login": _login_groups(items),
             # 调度线程出问题时界面能立刻看出来，而不是干等队列不动
             "dispatch_error": self._dispatch_error,
         }
@@ -1018,6 +1039,98 @@ class TaskManager:
 # 会得到「未知(2)」这种鬼东西，还会把 [2] 写进文件名。
 MUSIC_TIERS = {0: "自动", 1: "标准 128K", 2: "高品 320K", 3: "无损 FLAC", 4: "Hi-Res"}
 MUSIC_SITES = {"netease", "wangyi", "qqmusic", "kugou", "kuwo"}
+
+
+_AUDIO_KINDS = {
+    "audio", "music", "ncm", "qmc0", "qmc3", "qmcflac", "qmcogg", "mflac",
+    "mflac0", "mgg", "mgg1", "kgm", "kgma", "vpr", "kwm",
+    "mp3", "flac", "m4a", "aac", "ogg", "opus", "wav", "ape", "wma",
+}
+
+
+# 各平台"需要登录"的特征词。失败原因里出现这些词，基本就是没登录/没会员。
+# 分平台写是因为提示和跳转都要落到具体那个平台的设置上。
+_LOGIN_HINTS = {
+    "netease": ("MUSIC_U", "会员", "code=-110", "匿名", "login"),
+    "qqmusic": ("uin", "登录", "cookie", "vkey"),
+    "bilibili": ("SESSDATA", "大会员", "登录后", "需要登录"),
+    "kugou": ("登录", "cookie", "token"),
+    "kuwo": ("登录", "cookie"),
+    "youtube": ("sign in", "login", "cookies"),
+}
+_SITE_NAMES = {
+    "netease": "网易云音乐", "qqmusic": "QQ音乐", "bilibili": "哔哩哔哩",
+    "kugou": "酷狗音乐", "kuwo": "酷我音乐", "spotify": "Spotify",
+    "youtube": "YouTube", "douyin": "抖音", "xiaohongshu": "小红书",
+}
+
+
+def _needs_login(task) -> bool:
+    """这个失败任务是不是"没登录"导致的。
+
+    只认各平台的特征词，宁可漏判也不要把普通失败误标成需要登录 ——
+    误标会让用户去填根本没用的 Cookie。
+    """
+    err = str(getattr(task, "error", "") or "")
+    if not err:
+        return False
+    site = str(getattr(task, "site", "") or "").lower()
+    keys = _LOGIN_HINTS.get(site)
+    if not keys:
+        return False
+    return any(k.lower() in err.lower() for k in keys)
+
+
+def _login_groups(items) -> list:
+    """按平台统计"因未登录失败"的任务数。"""
+    counts: dict = {}
+    for t in items:
+        if t.status != STATUS_ERROR:
+            continue
+        if not _needs_login(t):
+            continue
+        site = str(t.site or "")
+        counts[site] = counts.get(site, 0) + 1
+    return [{"site": s, "name": _SITE_NAMES.get(s, s), "count": c}
+            for s, c in sorted(counts.items(), key=lambda kv: -kv[1])]
+
+
+# 音乐平台。任务的 kind 一律是 "download"，真正的区别在 site 上，
+# 所以必须按平台归类 —— 只按 kind 分的话所有任务都会落进"其他"（实测 28 条全是）。
+_MUSIC_SITES = {"netease", "qqmusic", "kugou", "kuwo", "spotify", "migu", "xiami"}
+
+
+def _kind_bucket(kind: str) -> str:
+    """旧接口：只按 kind 判断。保留给外部调用，内部请用 _task_bucket。"""
+    k = (kind or "").strip().lower()
+    if k == "convert":
+        return "convert"
+    if k in _AUDIO_KINDS:
+        return "audio"
+    if k in ("video", "", "movie", "download"):
+        return "video"
+    return "other"
+
+
+def _task_bucket(task) -> str:
+    """把任务归成 视频 / 音频 / 转换 / 其他。
+
+    判断顺序：转换任务 -> 站点是音乐平台 -> 产物里有音频 -> 其余算视频。
+    """
+    k = (getattr(task, "kind", "") or "").strip().lower()
+    if k == "convert":
+        return "convert"
+    site = (getattr(task, "site", "") or "").strip().lower()
+    if site in _MUSIC_SITES:
+        return "audio"
+    for f in (getattr(task, "files", None) or []):
+        if isinstance(f, dict) and (f.get("kind") or "").lower() == "audio":
+            return "audio"
+    if k in _AUDIO_KINDS:
+        return "audio"
+    if k in ("download", "video", "movie", ""):
+        return "video"
+    return "other"
 
 
 def _quality_text(task) -> str:

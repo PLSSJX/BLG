@@ -32,6 +32,25 @@ API_COOKIE_HOSTS = ("api.bilibili.com", "app.bilibili.com", "api.live.bilibili.c
 RISK_CONTROL_HINT = "触发了 B 站风控（HTTP 412），冷却几秒后自动重试即可"
 
 
+_NETEASE_NODES = ("m701.music.126.net", "m801.music.126.net")
+
+
+def _netease_node_alt(url: str) -> str:
+    """把网易云 CDN 的主机换成备用节点，路径和签名参数保持不变。"""
+    try:
+        from urllib.parse import urlsplit, urlunsplit
+        parts = urlsplit(url)
+    except Exception:
+        return ""
+    host = (parts.hostname or "").lower()
+    if not host.endswith(".music.126.net"):
+        return ""
+    for node in _NETEASE_NODES:
+        if host != node:
+            return urlunsplit((parts.scheme, node, parts.path, parts.query, parts.fragment))
+    return ""
+
+
 class HttpError(Exception):
     def __init__(self, status: int, url: str, body: bytes = b"", reason: str = ""):
         self.status = status
@@ -316,7 +335,17 @@ class HttpClient:
         if byte_range is not None:
             headers["Range"] = f"bytes={byte_range[0]}-{byte_range[1]}"
         req = urllib.request.Request(url, headers=headers, method="GET")
-        resp = self.opener.open(req, timeout=timeout)
+        try:
+            resp = self.opener.open(req, timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            # 网易云音频 CDN 是按节点分机器的：同一个签名地址，m704 这号节点
+            # 对我们是 403，换 m701 / m801 同样的路径却 200（实测）。
+            # 所以 403 时把主机名换到备用节点再试，而不是直接判定"号不能用"。
+            alt = _netease_node_alt(url)
+            if exc.code != 403 or not alt:
+                raise
+            req2 = urllib.request.Request(alt, headers=headers, method="GET")
+            resp = self.opener.open(req2, timeout=timeout)
         encoding = (resp.headers.get("Content-Encoding") or "").lower()
         raw = resp
         if "gzip" in encoding or "deflate" in encoding:

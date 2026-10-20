@@ -60,7 +60,8 @@ def build_state(ctx: Context) -> dict:
         "stats": ctx.tasks.stats() if ctx.tasks else {},
         "ffmpeg": find_ffmpeg() or "",
         "python": _python_version(),
-        "logged_in": bool(settings.sessdata.strip()),
+        "bili_name": _bili_login()[1],
+        "logged_in": _bili_login()[0],
         "download_dir": str(ctx.download_dir()),
         # 前端拿它给所有写操作签名；跨站页面读不到这个响应（CORS），拿不到令牌
         "api_token": getattr(ctx, "api_token", ""),
@@ -77,6 +78,72 @@ def build_state(ctx: Context) -> dict:
         "frozen": is_frozen(),
         "base_dir": str(BASE_DIR),
     }
+
+
+_BIGJPG_HISTORY = Path(__file__).resolve().parent.parent / "data" / "bigjpg.json"
+_BIGJPG_LOCK = __import__("threading").Lock()
+
+
+def _load_bigjpg() -> list:
+    try:
+        import json as _json
+        items = _json.loads(_BIGJPG_HISTORY.read_text(encoding="utf-8"))
+        return items if isinstance(items, list) else []
+    except Exception:
+        return []
+
+
+def _record_bigjpg(result: dict, *, style: str, noise: str, x2: str) -> None:
+    """把一次放大任务记进 data/bigjpg.json，历史记录页要能看到。
+
+    以前放大结果是纯内存的，页面一刷新就没了，用户也没法回头找。
+    """
+    import json as _json
+    import time as _time
+    try:
+        with _BIGJPG_LOCK:
+            items = _load_bigjpg()
+            items.insert(0, {
+                "file": result.get("file") or "",
+                "ok": bool(result.get("ok")),
+                "tid": result.get("tid") or "",
+                "error": result.get("error") or "",
+                "style": style, "noise": noise, "x2": x2,
+                "time": int(_time.time()),
+            })
+            del items[300:]
+            _BIGJPG_HISTORY.parent.mkdir(parents=True, exist_ok=True)
+            _BIGJPG_HISTORY.write_text(_json.dumps(items, ensure_ascii=False, indent=1),
+                                       encoding="utf-8")
+    except Exception:
+        pass
+
+
+_BILI_LOGIN_CACHE = {"at": 0.0, "ok": False, "name": ""}
+
+
+def _bili_login() -> tuple:
+    """B 站登录态：真的问一次 nav 接口，缓存 5 分钟。
+
+    原来只看"SESSDATA 非空"，Cookie 过期了界面还显示已登录 —— 用户会以为
+    1080P 拿不到是程序的锅。现在按接口的真实结果来。
+    """
+    import time as _t
+    now = _t.time()
+    if now - _BILI_LOGIN_CACHE["at"] < 300:
+        return _BILI_LOGIN_CACHE["ok"], _BILI_LOGIN_CACHE["name"]
+    ok, name = False, ""
+    try:
+        from . import credentials as _cred
+        r = _cred.check("bilibili", "")
+        ok = bool(r.get("ok"))
+        detail = str(r.get("detail") or "")
+        if ok and "：" in detail:
+            name = detail.split("：", 1)[1].strip()
+    except Exception:
+        pass
+    _BILI_LOGIN_CACHE.update({"at": now, "ok": ok, "name": name})
+    return ok, name
 
 
 def _dblclick_ms() -> int:
@@ -658,6 +725,43 @@ class Handler(BaseHTTPRequestHandler):
                                "download_dir": str(ctx.download_dir()),
                                "music_dir": str(ctx.music_dir())})
 
+        if route == "/api/papers/list":
+            folder = ctx.download_dir() / "papers"
+            items = []
+            if folder.is_dir():
+                for f in sorted(folder.glob("*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)[:200]:
+                    st = f.stat()
+                    items.append({"name": f.name, "path": str(f), "size": st.st_size,
+                                  "mtime": int(st.st_mtime)})
+            return self._json({"items": items, "dir": str(folder), "total": len(items)})
+
+        if route == "/api/papers/download":
+            from .papers import download_pdf, PaperError
+            url = str(payload.get("url") or "").strip()
+            if not url:
+                raise ApiError("没有指定下载地址")
+            dest = ctx.download_dir() / "papers"
+            try:
+                got = download_pdf(url, dest, str(payload.get("name") or ""))
+            except PaperError as exc:
+                raise ApiError(str(exc)) from None
+            return self._json(got)
+
+        if route == "/api/papers/search":
+            from .papers import search as _paper_search, PaperError
+            try:
+                result = _paper_search(
+                    str(payload.get("query") or ""),
+                    payload.get("sources") or None,
+                    int(payload.get("limit") or 10),
+                    int(payload.get("year_from") or 0),
+                    int(payload.get("year_to") or 0),
+                    bool(payload.get("oa_only")),
+                    str(payload.get("sort") or "relevance"))
+            except PaperError as exc:
+                raise ApiError(str(exc)) from None
+            return self._json(result)
+
         if route == "/api/doc/cancel":
             from .convert import request_cancel
             request_cancel()
@@ -675,6 +779,12 @@ class Handler(BaseHTTPRequestHandler):
             roots = [ctx.download_dir().resolve()]
             try:
                 roots.append((ctx.download_dir() / str(getattr(ctx.settings, "doc_dir", "documents"))).resolve())
+            except Exception:
+                pass
+            # 音乐目录必须放行：用户在设置里把音乐目录指到下载目录之外时，
+            # 「打开目录」会被这里挡掉，看着像功能坏了。
+            try:
+                roots.append(ctx.music_dir().resolve())
             except Exception:
                 pass
             if not any(target == root or root in target.parents for root in roots):
@@ -913,6 +1023,65 @@ class Handler(BaseHTTPRequestHandler):
             except _pl.PlaylistError as exc:
                 raise ApiError(str(exc)) from None
 
+        if route == "/api/credentials/check":
+            from . import credentials as _cred
+            site = str(payload.get("site") or "").strip().lower()
+            if not site:
+                raise ApiError("没有指定平台")
+            result = _cred.check(site, str(payload.get("value") or ""))
+            return self._json(result)
+
+        if route == "/api/playlist/import":
+            # 音乐页粘贴歌单链接 -> 新建同名歌单 -> 排前几首的下载任务。
+            # 一次只排 5 个，剩下的等前面的完成后再由用户点一次「继续下载」，
+            # 免得一口气塞几十个任务把队列和平台限速都顶爆。
+            from . import playlist as _pl
+            raw = str(payload.get("input") or "").strip()
+            try:
+                parsed = _pl.fetch(raw)
+            except _pl.PlaylistError as exc:
+                raise ApiError(str(exc)) from None
+            songs = parsed.get("songs") or []
+            # 用户在界面上勾选了哪几首就只导那几首；没传就全导
+            only = payload.get("only")
+            if isinstance(only, list) and only:
+                wanted = {str(u) for u in only}
+                songs = [s for s in songs if str(s.get("url")) in wanted]
+            if not songs:
+                raise ApiError("这个歌单里没有解析到歌曲，可能是空的或者需要登录")
+            title = (str(parsed.get("title") or "").strip() or "导入的歌单")[:60]
+            try:
+                pl = _pl.create_empty(title)
+            except (OSError, ValueError) as exc:
+                raise ApiError("新建歌单失败：" + str(exc)[:100]) from None
+            limit = max(1, min(int(payload.get("limit") or 5), 20))
+            queued, failed = 0, []
+            for song in songs:
+                entry = {
+                    "url": str(song.get("url") or ""),
+                    "name": str(song.get("name") or ""),
+                    "artist": str(song.get("artist") or ""),
+                    "cover": str(song.get("cover") or ""),
+                }
+                if not entry["url"] or not entry["name"]:
+                    continue
+                if not entry["url"].startswith(("http://", "https://")):
+                    continue      # 本地文件不需要下载
+                if queued < limit:
+                    try:
+                        task = ctx.tasks.submit(entry["url"], engine="auto",
+                                                qn=0, mode="auto")
+                        entry["task_id"] = task.id
+                        queued += 1
+                    except Exception as exc:
+                        failed.append({"name": entry["name"], "error": str(exc)[:100]})
+                try:
+                    _pl.add_song("local", pl["id"], entry)
+                except (OSError, ValueError):
+                    pass
+            return self._json({"ok": True, "playlist": _pl.find_local("local", pl["id"]) or pl,
+                               "total": len(songs), "queued": queued, "failed": failed})
+
         if route == "/api/playlist/save":
             from . import playlist as _pl
             try:
@@ -953,7 +1122,190 @@ class Handler(BaseHTTPRequestHandler):
 
         if route == "/api/playlist/list":
             from . import playlist as _pl
-            return self._json({"ok": True, "playlists": _pl.load_local()})
+            try:
+                # 先把下载完的任务回填成本地路径，界面才能显示「已下载」
+                _pl.backfill(lambda tid: ctx.tasks.get(tid))
+                # 注意：这里**不再自动排队**。以前每次读歌单都会 advance，
+                # 结果一打开歌单就开始下载，用户并没有点任何东西。
+                # 现在只有显式调用 /api/playlist/advance 才会排。
+            except Exception as exc:
+                from .log import log_error
+                log_error("playlist.backfill", exc)
+            items = _pl.load_local()
+            # 标出「记着本地路径但文件已经不存在」的条目。
+            # **只在 deep 时做**：歌单列表页只需要标题和首数，没必要为几百首
+            # 歌逐个 stat 文件；展开某个歌单时前端才会带 deep=1 过来。
+            try:
+                if not payload.get("deep"):
+                    raise StopIteration      # 浅查询：不做文件存在性检查
+                # 先把「同一个 key 已经下好」的路径建一张索引，
+                # 这样别的歌单下过的歌在这个歌单里也不会显示下载按钮。
+                from pathlib import Path as _P2
+                _have = {}
+                for pl in items:
+                    for song in (pl.get("songs") or []):
+                        loc = str(song.get("local") or "")
+                        if loc and _P2(loc).exists():
+                            k = _pl._song_key(song.get("url"))
+                            if k and k not in _have:
+                                _have[k] = loc
+                # 除了"别的歌单记着路径"，还要认"音乐目录里已经有这个文件"——
+                # 用户可能直接从音乐页下载，那样歌单条目里压根没有 task_id，
+                # 永远不会被回填。这里按文件名兜底匹配。
+                import re as _re
+                _AUDIO = {".mp3", ".flac", ".m4a", ".aac", ".wav", ".ogg", ".opus", ".wma", ".ape"}
+                def _clean(n: str) -> str:
+                    n = _re.sub(r"\s*(\[\d+\]|\(\d+\))$", "", str(n or "").strip())
+                    return n.replace(" ", "").lower()
+                _byname = {}
+                try:
+                    # 必须用 ctx.music_dir()：settings.music_dir 留空时它会算成
+                    # <下载目录>/音乐。之前我拿空字符串拼 Path('')/'音乐'，
+                    # 得到的是相对路径，永远指不到真实目录 —— 兜底等于没做。
+                    _mdir = ctx.music_dir()
+                    if _mdir.exists():
+                        for _f in _mdir.rglob("*"):
+                            if _f.is_file() and _f.suffix.lower() in _AUDIO:
+                                base = _re.sub(r"\s*\[[^\]]*\]$", "", _f.stem)
+                                _byname.setdefault(_clean(base), str(_f))
+                except Exception:
+                    _byname = {}
+
+                # 只靠歌单里记着的路径不够：从音乐页直接下载的歌，歌单条目
+                # 压根没有 local。这里再把"已完成任务"的产物按 URL 归一后
+                # 塞进索引，这样无论从哪儿下的，两个歌单都能认到。
+                try:
+                    for _t in ctx.tasks.list():
+                        st = str(_t.get("status") or "").lower()
+                        if st != "done":
+                            continue
+                        src = str(_t.get("url") or _t.get("raw_input") or _t.get("input") or "")
+                        k = _pl._song_key(src)
+                        if not k:
+                            continue
+                        for _f in (_t.get("files") or []):
+                            p2 = str(_f.get("path") or "")
+                            if p2 and _P2(p2).exists() and p2.lower().endswith(
+                                    (".mp3", ".flac", ".m4a", ".aac", ".wav", ".ogg", ".opus", ".wma", ".ape")):
+                                _have.setdefault(k, p2)
+                                break
+                except Exception:
+                    pass
+
+                for pl in items:
+                    for song in (pl.get("songs") or []):
+                        if not song.get("local"):
+                            k = _pl._song_key(song.get("url"))
+                            if k in _have:
+                                song["local"] = _have[k]      # 只填内存，不写盘
+                                song.pop("missing", None)
+                            else:
+                                hit = _byname.get(_clean(song.get("name")))
+                                if hit:
+                                    song["local"] = hit
+                                    song.pop("missing", None)
+                # 深查询顺便统计每个歌单正在下载几首，界面据此显示「取消下载」
+                _DONE = ("done", "error", "failed", "canceled", "cancelled", "stopped")
+                for pl in items:
+                    live = 0
+                    for song in (pl.get("songs") or []):
+                        tid = song.get("task_id")
+                        if not tid or song.get("local"):
+                            continue
+                        try:
+                            task = ctx.tasks.get(tid)
+                        except Exception:
+                            task = None
+                        if task and str(getattr(task, "status", "")).lower() not in _DONE:
+                            live += 1
+                    pl["downloading"] = live
+                from pathlib import Path as _Path
+                for pl in items:
+                    for song in (pl.get("songs") or []):
+                        local = str(song.get("local") or "")
+                        if local:
+                            song["missing"] = not _Path(local).exists()
+            except StopIteration:
+                pass
+            except Exception:
+                pass
+            return self._json({"ok": True, "playlists": items})
+
+        if route == "/api/playlist/resolve":
+            # 点播放时先问一句"这首歌是不是已经在别处下过了"
+            # 找到就把路径写回这个条目，前端直接播，不用再下载
+            from . import playlist as _pl
+            site = str(payload.get("site") or "")
+            pid = str(payload.get("id") or "")
+            url = str(payload.get("url") or "")
+            local = ""
+            try:
+                local = _pl.find_existing_local(url)
+                if local:
+                    _pl.set_song_local(site, pid, url, local)
+            except Exception as exc:
+                from .log import log_error
+                log_error("playlist.resolve", exc)
+            return self._json({"ok": True, "local": local})
+
+        if route == "/api/playlist/download-song":
+            # 只下这一首：
+            #   1) 别的歌单里同 URL 且文件还在 -> 直接复用，不下载
+            #   2) 否则只给这一首建任务，不动同歌单里其它歌
+            from . import playlist as _pl
+            site = str(payload.get("site") or "")
+            pid = str(payload.get("id") or "")
+            url = str(payload.get("url") or "")
+            if not url.startswith(("http://", "https://")):
+                raise ApiError("这首没有可下载的平台链接")
+            reused = _pl.find_existing_local(url)
+            if reused:
+                _pl.set_song_local(site, pid, url, reused)
+                return self._json({"ok": True, "reused": True, "local": reused})
+            try:
+                task = ctx.tasks.submit(url, engine="auto", qn=0, mode="auto")
+            except Exception as exc:
+                raise ApiError("提交下载失败：" + str(exc)[:120]) from None
+            try:
+                _pl.reset_song(site, pid, url)
+                _pl.set_song_task(site, pid, url, task.id)
+            except Exception:
+                pass
+            return self._json({"ok": True, "reused": False, "task": task.id})
+
+        if route == "/api/playlist/advance":
+            # 显式排队：只在用户点「下载」或「继续下载未完成的」时调用
+            from . import playlist as _pl
+            try:
+                _pl.backfill(lambda tid: ctx.tasks.get(tid))
+                n = _pl.advance(lambda tid: ctx.tasks.get(tid),
+                                lambda url: ctx.tasks.submit(url, engine="auto", qn=0, mode="auto"),
+                                5)
+            except Exception as exc:
+                raise ApiError("排队失败：" + str(exc)[:120]) from None
+            return self._json({"ok": True, "queued": n})
+
+        if route == "/api/playlist/retry-song":
+            from . import playlist as _pl
+            try:
+                pl = _pl.reset_song(str(payload.get("site") or ""),
+                                    str(payload.get("id") or ""),
+                                    str(payload.get("url") or ""))
+            except (OSError, ValueError) as exc:
+                raise ApiError(str(exc)[:120]) from None
+            return self._json({"ok": True, "playlist": pl})
+
+        if route == "/api/playlist/cancel":
+            # 取消这个歌单里所有还在跑的任务。取消后 advance 会自动接下一首。
+            from . import playlist as _pl
+            try:
+                stopped = _pl.cancel_all(lambda tid: ctx.tasks.get(tid),
+                                         lambda tid: ctx.tasks.cancel(tid))
+            except Exception as exc:
+                from .log import log_error
+                log_error("playlist.cancel", exc)
+                raise ApiError("取消失败：" + str(exc)[:120]) from None
+            return self._json({"ok": True, "stopped": stopped})
 
         if route == "/api/playlist/remove":
             from . import playlist as _pl
@@ -1018,7 +1370,11 @@ class Handler(BaseHTTPRequestHandler):
                                     "minute": info.get("minute")})
                 except _bj.BigjpgError as exc:
                     results.append({"ok": False, "file": _P(path).name, "error": str(exc)})
+                _record_bigjpg(results[-1], style=style, noise=noise, x2=x2)
             return self._json({"ok": True, "results": results})
+
+        if route == "/api/bigjpg/history":
+            return self._json({"ok": True, "items": _load_bigjpg()})
 
         if route == "/api/bigjpg/query":
             from . import bigjpg as _bj

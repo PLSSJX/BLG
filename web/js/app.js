@@ -6,7 +6,7 @@ import { applyTheme, prefersDark } from './theme.js';
 import { initPlayer } from './player.js';
 import {
   store, renderHome, renderMusic, renderPlayer, renderImage, renderDoc, renderClip,
-  renderTasks, renderSettings,
+  renderTasks, renderPapers, renderSettings,
   refreshTasks,
 } from './pages.js';
 
@@ -19,6 +19,7 @@ const ROUTES = [
   { id: 'clip', label: '剪辑', icon: 'videocam', render: renderClip },
   { id: 'doc', label: '文档', icon: 'description', render: renderDoc },
   { id: 'image', label: '图片', icon: 'image', render: renderImage },
+  { id: 'papers', label: '文献', icon: 'science', render: renderPapers },
   { id: 'tasks', label: '历史记录', icon: 'history', render: renderTasks },
   { id: 'settings', label: '设置', icon: 'settings', render: renderSettings },
 ];
@@ -108,8 +109,21 @@ function setPolling() {
   }
 }
 
+let lastStatuses = {};
+
 async function pollTasks() {
   await refreshTasks();
+  // 任务从"在跑"变成"完成/失败"时，通知正在看歌单详情的页面刷一次。
+  // 放在轮询里而不是渲染里 —— 渲染函数不能有副作用，否则会无限循环。
+  let justFinished = false;
+  for (const t of (store.tasks || [])) {
+    const prev = lastStatuses[t.id];
+    if (prev && prev !== t.status && (t.status === 'done' || t.status === 'error')) {
+      justFinished = true;
+    }
+    lastStatuses[t.id] = t.status;
+  }
+  if (justFinished) document.dispatchEvent(new CustomEvent('task-finished'));
   const signature = JSON.stringify((store.tasks || []).map(
     (t) => [t.id, t.status, Math.round(t.percent || 0), (t.files || []).length, (t.log || []).length]));
   if (current === 'tasks' && signature !== lastSignature) {
@@ -306,11 +320,19 @@ function resizeEdgeWidth() {
 }
 
 function edgeAt(e) {
-  const w = window.innerWidth, h = window.innerHeight;
+  // 必须用 documentElement.clientWidth，不能用 window.innerWidth：
+  // innerWidth 把竖直滚动条的宽度也算进去了，右侧那圈判定区正好压在滚动条上，
+  // 鼠标事件被滚动条吃掉，页面收不到 mousedown —— 表现就是右边缘怎么拉都不动。
+  const de = document.documentElement;
+  const w = de.clientWidth || window.innerWidth;
+  const h = de.clientHeight || window.innerHeight;
   const x = e.clientX, y = e.clientY;
   const edge = resizeEdgeWidth();
-  const left = x <= edge, right = x >= w - edge;
-  const top = y <= edge, bottom = y >= h - edge;
+  // 最外那几像素可能被 WebView2 的悬浮滚动条占着，鼠标事件到不了页面，
+  // 所以右/下边把判定带往里放宽一倍，用户抓的是"靠边一点点"的位置。
+  const outer = edge * 2;
+  const left = x <= edge, right = x >= w - outer;
+  const top = y <= edge, bottom = y >= h - outer;
   if (top && left) return 'topleft';
   if (top && right) return 'topright';
   if (bottom && left) return 'bottomleft';

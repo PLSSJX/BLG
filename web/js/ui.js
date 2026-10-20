@@ -48,15 +48,25 @@ export function clear(node) {
  *  class 里的额外类会被合并进来 —— 播放条要用 'active' 高亮乱序/循环状态，
  *  以前这个字段被无声丢掉，导致按钮永远是默认色。
  */
-export function button(label, { variant = '', iconName = '', onClick, title, disabled, class: extra = '' } = {}) {
+export function button(label, { variant = '', iconName = '', iconRotate = 0, onClick,
+                          title, disabled, class: extra = '' } = {}) {
   const classes = [...new Set(('btn ' + variant + ' ' + extra).split(/\s+/).filter(Boolean))].join(' ');
+  // 图标旋转：展开/收起用同一个 expand_more，靠旋转 180° 区分。
+  // 之前换图标（expand_less / expand_more）在实践中容易看错方向，
+  // 旋转的视觉信号明确得多。
+  const ico = iconName
+    ? icon(iconName, variant === 'text' ? 'outlined' : 'filled', 18)
+    : '';
+  const wrapped = ico && iconRotate
+    ? '<span style="display:inline-flex;transform:rotate(' + iconRotate + 'deg);transition:transform .18s ease">'
+      + ico + '</span>'
+    : ico;
   return h('button', {
     class: classes,
     title,
     disabled: disabled || false,
     onclick: onClick,
-    html: (iconName ? icon(iconName, variant === 'text' ? 'outlined' : 'filled', 18) : '') +
-          (label ? '<span>' + escapeHtml(label) + '</span>' : ''),
+    html: wrapped + (label ? '<span>' + escapeHtml(label) + '</span>' : ''),
   });
 }
 

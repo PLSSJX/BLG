@@ -898,3 +898,99 @@ body.has-titlebar .rail, body.has-titlebar .page-wrap { top: 44px; }
 #edgeHint[data-edge="topright"]::after    { transform: translate(-50%, -50%) rotate(45deg); }
 #edgeHint[data-edge="bottomleft"]::after  { transform: translate(-50%, -50%) rotate(-135deg); }
 #edgeHint[data-edge="bottomright"]::after { transform: translate(-50%, -50%) rotate(135deg); }
+
+
+/* 任务卡片：操作按钮一行放得下，错误提示别撑太高 */
+.task-card .btn-row { gap: 4px; }
+.task-card .btn { padding: 6px 10px; font-size: 12.5px; }
+.task-card .hint-box { padding: 8px 10px; margin-top: 6px; font-size: 12px; line-height: 1.5; }
+
+
+/* ================================================================ 全局密度
+   一轮整体的"收紧"：卡片内边距、卡片间距、标题与说明的行长、按钮高度。
+   全部用覆盖方式写在最后，改动集中、随时可以整块删掉回滚。 */
+:root {
+  --space-card: 12px;        /* 卡片之间的间距，原 16 */
+  --radius-card: 12px;
+}
+.page { padding: 16px 20px 40px; }
+.page-title { font-size: 20px; }
+.page-sub { margin-bottom: 14px; font-size: 12.5px; }
+
+.card { padding: 13px 14px; }
+.card-title { font-size: 14px; gap: 7px; }
+.card-title + .card-desc { margin-top: 1px; }
+.card-desc { margin-bottom: 9px; line-height: 1.55; }
+.section-label { margin: 14px 0 6px; font-size: 11.5px; }
+
+.btn { height: 34px; padding: 0 14px; font-size: 13px; gap: 6px; }
+.btn.text { padding: 0 9px; }
+.btn.small { height: 28px; padding: 0 11px; font-size: 12px; }
+.btn-row { gap: 6px; }
+
+.hint-box { padding: 9px 12px; font-size: 12px; line-height: 1.55; gap: 8px; }
+.stat-row { gap: 14px; }
+.split { columns: 3 300px; column-gap: var(--space-card); }
+
+/* 设置页的三栏瀑布流：条目本身再紧一点 */
+.set-row { padding: 7px 0 !important; }
+.help { margin-top: 8px; padding-top: 8px; }
+.help > summary { font-size: 12px; }
+.kv { padding: 5px 0; font-size: 12.5px; }
+
+/* 任务卡片：标题行更紧，进度条和标签之间少留白 */
+.task-card .card-title { margin-bottom: 0; }
+
+
+/* 设置页的瀑布流：纵向间距必须和横向（column-gap）一致。
+   之前 .card + .card 的上边距和 .split > * 的下边距叠加，纵向成了两倍。
+   这里在 .split 内部把上边距清零，让间距只由下边距决定，和 column-gap 相等。 */
+.split > .card + .card { margin-top: 0; }
+.split > *:last-child { margin-bottom: 0; }
+
+/* 列内卡片宽度按列宽铺满，避免不同列宽度不一致时看起来没对齐 */
+.split > * { width: 100%; }
+
+
+/* 长 URL / 长串不换行会把卡片撑破（「支持的平台」里全是长链接）。
+   统一允许在任意位置断行，避免文字溢出卡片边界。 */
+.card, .card * { overflow-wrap: anywhere; word-break: break-word; }
+/* 瀑布流里的卡片默认 min-width:auto，长内容会把列撑宽，这里允许收缩 */
+.split > * { min-width: 0; }
+
+
+/* 卡片间距只允许一个来源：
+   · 直接放在 .page 里的卡片 —— 用 margin-top
+   · 放在有 gap 的容器里（flex/grid/columns）—— 交给 gap，margin 清零
+   之前两者叠加，纵向间距变成 24px（横向只有 12px），看着就是没对齐。 */
+.card + .card { margin-top: 0; }
+.page > .card + .card { margin-top: var(--space-card); }
+.page > .split + .split,
+.page > .card + .split { margin-top: var(--space-card); }
+.split > .card + .card { margin-top: 0; }
+
+
+/* 卡片纵向间距统一：卡片自带下边距，不再依赖相邻选择器（卡片之间夹着
+   status 之类的节点时 .card + .card 匹配不上，间距会变成 0）。
+   放在 flex + gap 的容器里（.player-col、图片页的包裹层）清零，避免 gap 叠加。 */
+.card { margin-top: 0; margin-bottom: var(--space-card); }
+.card:last-child { margin-bottom: 0; }
+.player-col > .card { margin-bottom: 0; }
+.player-col > .card:last-child { margin-bottom: 0; }
+.page > div[style*="flex"] > .card { margin-bottom: 0; }
+.split > .card { margin-bottom: var(--space-card); }
+
+
+/* 间距只由一个地方决定：.stack 容器用 gap，里面的卡片不再带 margin。
+   图片页、历史记录页这些地方之前是 gap + margin 叠加，纵向变成了 24。 */
+.stack > .card { margin-bottom: 0 !important; }
+.stack > *:last-child { margin-bottom: 0; }
+/* 历史记录页：卡片之间的分组标题自己带上下留白，卡片不要再加 */
+.page > .section-label + .card { margin-top: 0; }
+
+
+/* 之前那条 .page > .card + .card { margin-top } 和新的 margin-bottom 又叠成 24。
+   间距统一由 margin-bottom 决定，这里把上边距彻底清零。 */
+.page > .card + .card,
+.page > .card + .split,
+.page > .split + .card { margin-top: 0 !important; }

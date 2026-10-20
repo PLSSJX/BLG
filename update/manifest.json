@@ -1,13 +1,13 @@
 {
- "version": "3.4.0",
- "generated": "2026-10-19 16:13:46 UTC",
+ "version": "3.6.0",
+ "generated": "2026-10-20 07:04:32 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
   {
    "path": "web/css/app.css",
-   "sha256": "d9460bec74a0587d5294c9ce7d9f003d7afc92b518e2096179d5b8e918852f72",
-   "size": 39972
+   "sha256": "590e6d277898742365b209e83f9b5e93b1d09c04c48baed091502c6f4be32bfa",
+   "size": 44334
   },
   {
    "path": "web/index.html",
@@ -16,13 +16,13 @@
   },
   {
    "path": "web/js/api.js",
-   "sha256": "3aa281695a79369c83ab8593c719d2e4482778add6e9b7ec3b07647c460f4000",
-   "size": 5539
+   "sha256": "7adb07094eae6213a5c503bb27d734da68bd2d5ee12f3c0888da42011b27b34b",
+   "size": 6434
   },
   {
    "path": "web/js/app.js",
-   "sha256": "fbbb0e055cc9dd04d66f76fbdcfcd70b588e969c1f505709492263bec956f802",
-   "size": 13702
+   "sha256": "a8f6614f815430d9916ed491fa1eb0067d516c8b16ecc1ce286cf9d632dd9b6d",
+   "size": 14971
   },
   {
    "path": "web/js/icons.js",
@@ -31,8 +31,8 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "24e2e907f7322d8448460fdba4c8a78b14be7a6973cc423450adb15a964da028",
-   "size": 142389
+   "sha256": "45df117da0daad80c9e691496e4b012ad8a313c435ab789eb218076585043d7c",
+   "size": 176334
   },
   {
    "path": "web/js/player.js",
@@ -46,8 +46,8 @@
   },
   {
    "path": "web/js/ui.js",
-   "sha256": "88d62195f2779e37758030a3cacef4686dc9adad7584a8ec99ddbb0e95146f4d",
-   "size": 7138
+   "sha256": "17dd97e77f6ba484235d37ceb6599c731fb2c60f77e90253a86a87c4eedc7d81",
+   "size": 7597
   },
   {
    "path": "web/vendor/material-color-utilities.js",
@@ -93,12 +93,12 @@
   },
   {
    "path": "README.md",
-   "sha256": "48e6d68e9496264b99e358b6203625e79868e98cee699a93b55785e425831c49",
-   "size": 11467
+   "sha256": "279b6a8fa047c2633934571ddc032caf8e382c8869caa65d1cf8066c38554d35",
+   "size": 12568
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "e3900dd096a5ccd00289f715fd479577a22c4b8e57bce588bc480d34bea01ae7",
+   "sha256": "fb62743de5bf062fb9aa592eec139cc696861843e4867c9e1f5f5ad3f2b6778e",
    "size": 398
   },
   {
@@ -125,6 +125,11 @@
    "path": "videograb/convert.py",
    "sha256": "a03f94211ddb2c9b5376b8cc81a7bb101d5b43a2f9bc5ec7b85252d683a7c5a7",
    "size": 32157
+  },
+  {
+   "path": "videograb/credentials.py",
+   "sha256": "862fdc4c63f57dbd53bf5ad973c47730b9d04ec075276625683a8615ca415537",
+   "size": 5425
   },
   {
    "path": "videograb/desktop.py",
@@ -237,6 +242,11 @@
    "size": 76
   },
   {
+   "path": "videograb/music/aes.py",
+   "sha256": "d57960f754d0299a49cc698a8464d3743973e20cc346d6541c4b138d032b4740",
+   "size": 2907
+  },
+  {
    "path": "videograb/music/decrypt.py",
    "sha256": "648c06346c4626a9d181b9e595840fdf99a63b5e4fddcb42971ba2e977ea3d46",
    "size": 38536
@@ -258,13 +268,18 @@
   },
   {
    "path": "videograb/net.py",
-   "sha256": "2b5c9e641a0ec1f437c50b594352085a10a20215f459304e3759ee57d8c0ee16",
-   "size": 14730
+   "sha256": "2c47c23fd05eeb04cd47f367006a2d2e6e57c04246dbe68393aa95e69d36da26",
+   "size": 15933
+  },
+  {
+   "path": "videograb/papers.py",
+   "sha256": "84f94f5ebd2507d6b6704b17c7babcc0adc5f512d9535a8687276eb2a7b914d2",
+   "size": 19288
   },
   {
    "path": "videograb/playlist.py",
-   "sha256": "905a8f47d86217a648345210839ab6f9a595f97af3e8433e8bfc69c5750edc28",
-   "size": 22386
+   "sha256": "b311ab3ef0df4d31407a695901b98fe8061c18ad9003603a5e51c5ea22db71af",
+   "size": 31957
   },
   {
    "path": "videograb/quality.py",
@@ -278,8 +293,8 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "93ed8e934561d351c38ecd5ee9788dea9981f4c0350b265221808dda68ac9c6f",
-   "size": 72685
+   "sha256": "c98e3fdbbc5f9df1f40ca01594211943a5249fe36f3fa55be9037a337284ac8d",
+   "size": 90117
   },
   {
    "path": "videograb/sites/__init__.py",
@@ -348,8 +363,8 @@
   },
   {
    "path": "videograb/tasks.py",
-   "sha256": "78f0c56d297e7e8391a5d8f67194033bdc3a0ceede4401c1edaeaa2eff867102",
-   "size": 51896
+   "sha256": "82832f40dba6e91b0ebd5505756f2a19368afc349981b93f81d8940a20361ddc",
+   "size": 56589
   },
   {
    "path": "videograb/titlebar.py",
@@ -388,9 +403,9 @@
   }
  ],
  "installer": {
-  "name": "MakiseToolkit-Setup-3.4.0.exe",
-  "size": 119626976,
-  "sha256": "9759e330af6333236c9428a76a2c6a23f8e7563c407334ee8999943b03118b1f",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v3.4.0/MakiseToolkit-Setup-3.4.0.exe"
+  "name": "MakiseToolkit-Setup-3.6.0.exe",
+  "size": 124440827,
+  "sha256": "5b548936a270dd42864eb459d67e692997957dd4b527ef52604377bd569da8eb",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v3.6.0/MakiseToolkit-Setup-3.6.0.exe"
  }
 }

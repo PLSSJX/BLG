@@ -38,7 +38,7 @@ export function renderHome(view) {
     h('div', { class: 'page-head' },
       h('h1', { class: 'page-title' }, '解析'),
       h('div', { class: 'spacer' }),
-      store.config ? pill(store.config.logged_in ? '已登录 · 可解锁高画质' : '未登录 · 最高 720P',
+      store.config ? pill(store.config.logged_in ? '哔哩哔哩已登录 · 可解锁高画质' : '未登录 · 最高 720P',
         store.config.logged_in ? 'ok' : 'mute') : null,
       buildQuitButton()),
     h('p', { class: 'page-sub' },
@@ -121,6 +121,7 @@ function buildMusicSearchCard() {
         try {
           const pl = await api.playlistFetch(raw);
           playlistState.data = pl;
+          playlistState.source = raw;      // 后面「导入并下载全部」还要用它
           mount(clear(status), 
             pill('《' + pl.title + '》' + pl.count + ' 首', 'ok'),
             '(' + (pl.songs || []).slice(0, 3).map((s) => s.name).join('、') + '…)');
@@ -158,29 +159,97 @@ function buildMusicSearchCard() {
     (playlistState.data ? h('div', { id: 'playlistResult', style: { marginTop: '14px' } },
       pill('《' + playlistState.data.title + '》' + playlistState.data.count + ' 首', 'ok'),
       h('div', { class: 'btn-row', style: { marginTop: '10px' } },
-        button('全部加入下载', { iconName: 'download', onClick: async (e) => {
+        // 一步到位：新建同名歌单 + 排前 5 首的下载任务。
+        // 下载完成后 play 页读歌单时会自动回填本地路径。
+        button('导入并下载全部', { variant: 'tonal', iconName: 'download', onClick: async (e) => {
           const btn = e.currentTarget; btn.disabled = true;
-          let ok = 0, bad = 0;
-          for (const s of (playlistState.data.songs || [])) {
-            try { await api.submit({ input: s.url, engine: 'auto', qn: 0, mode: 'auto' }); ok += 1; }
-            catch (err) { bad += 1; }
-          }
-          btn.disabled = false;
-          toast('已创建 ' + ok + ' 个任务' + (bad ? '，' + bad + ' 个失败' : ''), 5000);
-          document.dispatchEvent(new CustomEvent('tasks-changed'));
-        } }),
-        button('保存为本地歌单', { variant: 'tonal', iconName: 'save', onClick: async () => {
           try {
-            await api.playlistSave(playlistState.data);
+            // 只提交用户勾上的那几首
+            const songs = (playlistState.data && playlistState.data.songs) || [];
+            const only = songs.filter((s, i) => (playlistState.picked || [])[i] !== false)
+                              .map((s) => s.url);
+            if (!only.length) { toast('还没有勾选任何歌曲'); btn.disabled = false; return; }
+            const r = await api.playlistImport(playlistState.source, 5, only);
             playlistState.local = null;
-            toast('已保存到本地歌单');
+            toast('已新建《' + r.playlist.title + '》,' + r.total + ' 首，已排 ' + r.queued
+              + ' 个下载' + (r.failed.length ? '（' + r.failed.length + ' 个提交失败）' : ''), 7000);
+            document.dispatchEvent(new CustomEvent('tasks-changed'));
             renderMusic(document.getElementById('view'));
-          } catch (err) { toast('保存失败：' + err.message); }
+          } catch (err) {
+            toast('导入失败：' + err.message, 9000);
+          } finally {
+            btn.disabled = false;
+          }
         } })),
-      h('div', { style: { maxHeight: '200px', overflow: 'auto', marginTop: '10px' } },
-        ...(playlistState.data.songs || []).map((s, i) => h('div', {
-          style: { padding: '3px 0', borderBottom: '1px solid var(--md-outline-variant)', fontSize: '13px' },
-        }, (i + 1) + '. ' + s.name + ' — ' + s.artist)))
+      // 让用户自己勾要哪几首，默认全选。导入时只提交勾上的。
+      (() => {
+        const songs = playlistState.data.songs || [];
+        if (!playlistState.picked || playlistState.picked.length !== songs.length) {
+          playlistState.picked = songs.map(() => true);
+        }
+        const total = songs.length;
+        const onCount = () => playlistState.picked.filter(Boolean).length;
+        return h('div', {},
+          h('div', { class: 'btn-row', style: { marginTop: '8px' } },
+            button('全选', { variant: 'text', onClick: () => {
+              playlistState.picked = songs.map(() => true); renderMusic(document.getElementById('view'));
+            } }),
+            button('全不选', { variant: 'text', onClick: () => {
+              playlistState.picked = songs.map(() => false); renderMusic(document.getElementById('view'));
+            } }),
+            h('span', { class: 'card-desc', style: { margin: '0 0 0 6px' } },
+              '已选 ' + onCount() + ' / ' + total + ' 首')),
+          h('div', { style: { maxHeight: '220px', overflow: 'auto', marginTop: '6px' } },
+            ...songs.map((s, i) => h('label', {
+              style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '3px 0',
+                       borderBottom: '1px solid var(--md-outline-variant)',
+                       borderBottomWidth: '.5px', fontSize: '13px', cursor: 'pointer' },
+            },
+              h('input', {
+                type: 'checkbox', checked: playlistState.picked[i] !== false,
+                onchange: (e) => { playlistState.picked[i] = e.target.checked; renderMusic(document.getElementById('view')); },
+              }),
+              h('span', { style: { flex: '1', minWidth: '0', whiteSpace: 'nowrap',
+                                   overflow: 'hidden', textOverflow: 'ellipsis' } },
+                (i + 1) + '. ' + s.name + ' — ' + s.artist)))));
+      })(),
+      // 把勾选的歌加进一个已存在的歌单（不新建）。
+      // 和「导入并下载全部」互补：那个建新歌单并下载，这个只归拢到自己整理好的歌单。
+      button('添加到已有歌单', { iconName: 'add', title: '把勾选的歌加进已有歌单', onClick: async () => {
+        const songs = (playlistState.data && playlistState.data.songs) || [];
+        const chosen = songs.filter((s, i) => (playlistState.picked || [])[i] !== false);
+        if (!chosen.length) { toast('还没有勾选任何歌曲'); return; }
+        let lists = [];
+        try { lists = (await api.playlistList()).playlists || []; }
+        catch (err) { toast('读取歌单失败：' + err.message, 8000); return; }
+        if (!lists.length) { toast('还没有歌单，先用「导入并下载全部」建一个', 5000); return; }
+        const target = { value: null };
+        const rows = lists.map((pl) => h('label', {
+          style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', fontSize: '13px' },
+        },
+          h('input', { type: 'radio', name: 'pl2', onchange: () => { target.value = pl; } }),
+          h('span', { style: { flex: '1' } }, pl.title),
+          h('span', { class: 'card-desc', style: { margin: '0' } }, (pl.songs || []).length + ' 首')));
+        const yes = await dialog({
+          title: '把 ' + chosen.length + ' 首加入哪个歌单？',
+          body: h('div', { style: { maxHeight: '320px', overflow: 'auto' } }, ...rows),
+          confirm: '加入',
+        });
+        if (!yes || !target.value) return;
+        let ok = 0, bad = 0;
+        for (const song of chosen) {
+          try {
+            await api.playlistAddSong(target.value.site, target.value.id, {
+              id: song.url, name: song.name, artist: song.artist || '',
+              url: song.url, cover: song.cover || '',
+            });
+            ok += 1;
+          } catch (err) { bad += 1; }
+        }
+        playlistState.local = null;
+        toast('已加入 ' + ok + ' 首到《' + target.value.title + '》' + (bad ? '，' + bad + ' 首失败' : ''), 6000);
+        renderMusic(document.getElementById('view'));
+      } }),
     ) : null),
   );
 }
@@ -455,7 +524,7 @@ function buildMusicLibraryCard() {
                   '匹配 ' + matched.length + ' / ' + allItems.length + ' 首')
               : null,
             button(expanded ? '收起' : '展开全部 ' + allItems.length + ' 首', {
-              variant: 'text', iconName: expanded ? 'expand_less' : 'expand_more',
+              variant: 'text',
               onClick: () => { store.libExpand = !store.libExpand; paint(); },
             }))
         : null);
@@ -519,22 +588,58 @@ function buildSongGrid(pl) {
         h('div', { style: { flex: '1', minWidth: '0' } },
           h('div', { style: { fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
             idx + '. ' + (s.name || '未命名')),
-          h('div', { style: { fontSize: '11.5px', opacity: '.65', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '2px' } },
-            s.artist || '未知作者')),
-        button('', { variant: 'text', iconName: 'play_arrow', title: '播放', onClick: () => {
-          // 歌单里存的是 file:///D:/... 或平台链接；只有本地文件能直接播
+          h('div', { style: { fontSize: '11.5px', opacity: '.65', display: 'flex',
+                              gap: '6px', alignItems: 'center', minWidth: '0' } },
+            h('span', { style: { minWidth: '0', whiteSpace: 'nowrap', overflow: 'hidden',
+                                 textOverflow: 'ellipsis' } }, s.artist || '未知作者'),
+            // 连续失败两次后自动重试会停下，不标出来用户会以为还在排队
+            s.gave_up
+              ? h('span', { style: { flex: 'none', fontSize: '10.5px', padding: '0 6px',
+                                     height: '16px', display: 'inline-flex', alignItems: 'center',
+                                     borderRadius: '8px', background: '#93000a', color: '#ffdad6' } },
+                  '已放弃重试')
+              : null),
+        button('', { variant: 'text', iconName: 'play_arrow', title: '播放', onClick: async () => {
+          // 歌单里存的是 file:///D:/... 或平台链接
           const raw = String(s.url || '');
           if (raw.startsWith('file:///')) {
             const local = decodeURIComponent(raw.slice(8)).replace(/\//g, '\\');
             playFile(local, s.name);
-          } else {
-            toast('这首是平台链接，先「全部下载」到本地再播放', 4200);
+            return;
           }
+          // 平台链接：先问后端"别的歌单里下过没有"，有就直接播，不用重新下载
+          try {
+            const r = await api.playlistResolve(pl.site, pl.id, s.url);
+            if (r && r.local) {
+              s.local = r.local;
+              s.missing = false;
+              toast('这首已经在本地，直接播放');
+              playFile(r.local, s.name);
+              // 重绘一次：这首已经有本地文件了，下载按钮不该再出现
+              setTimeout(() => renderPlayer(document.getElementById('view')), 600);
+              return;
+            }
+          } catch (err) { /* 查不到就按未下载处理 */ }
+          toast('这首还没下载到本地，点右边的下载按钮', 4200);
         } }),
-        button('', { variant: 'text', iconName: 'playlist_add', title: '下一首播放', onClick: () => {
+        // 图标名必须是 icons.js 里真实存在的。之前用了 playlist_add，
+        // 那个图标根本没有，于是按钮渲染成空白 —— 界面上看就是"图标消失了"。
+        button('', { variant: 'text', iconName: 'sort', title: '下一首播放', onClick: async () => {
           const raw = String(s.url || '');
           if (!raw.startsWith('file:///')) {
-            toast('这首是平台链接，先下载到本地才能插进播放队列', 4200);
+            // 平台链接：先查有没有下载过
+            let hit = '';
+            try {
+              const r = await api.playlistResolve(pl.site, pl.id, s.url);
+              hit = (r && r.local) || '';
+            } catch (err) { /* 忽略 */ }
+            if (hit) {
+              s.local = hit; s.missing = false;
+              playNextItem({ path: hit, name: s.name || '' });
+              toast('已加入播放队列：「' + (s.name || '未命名') + '」');
+            } else {
+              toast('这首还没下载，点右边的下载按钮', 4200);
+            }
             return;
           }
           const local = decodeURIComponent(raw.slice(8)).replace(/\//g, '\\');
@@ -542,13 +647,34 @@ function buildSongGrid(pl) {
           playNextItem({ path: local, name: s.name || '' });
           toast('已加入播放队列：「' + (s.name || '未命名') + '」');
         } }),
+        // 只要有本地文件就不再显示下载按钮。
+        // 以前还带了 s.gave_up —— 那首歌被放弃过一次之后，即使后来下成功了，
+        // 按钮也一直在，看着就是"没同步"。
+        (!s.local || s.missing)
+          ? button('', { variant: 'text', iconName: 'download',
+              title: s.missing ? '本地文件已不存在，重新下载' : '下载这首',
+              onClick: async () => {
+              try {
+                // 只下这一首；别的歌单下过的会直接复用，不重复下载
+                const r = await api.playlistDownloadSong(pl.site, pl.id, s.url);
+                s.gave_up = false;
+                s.attempts = 0;
+                s.missing = false;
+                toast(r.reused ? '这首歌在别的歌单里已经下过，直接复用' : '已开始下载这一首');
+                // 清掉模块级缓存，让详情页重新深查询一次 —— 否则 pl 还是旧对象，
+                // 里面没有 downloading 字段，「取消下载」按钮不会出现。
+                playlistState.local = null;
+                renderPlayer(document.getElementById('view'));
+              } catch (err) { toast('加入队列失败：' + err.message, 8000); }
+            } })
+          : null,
         button('', { variant: 'text', iconName: 'delete', title: '从歌单移除', onClick: async () => {
           try {
             await api.playlistRemoveSong(pl.site, pl.id, s.url);
             pl.songs = pl.songs.filter((x) => x.url !== s.url);
             renderPlayer(document.getElementById('view'));
           } catch (err) { toast('移除失败：' + err.message); }
-        } })));
+        } }))));
     }
   }
   return h('div', {},
@@ -564,8 +690,12 @@ function buildPlaylistCard() {
 
   const paint = () => {
     clear(holder);
+    // 注意：这里**不能**每次渲染都清缓存 —— paint() 会重新请求，回来又 paint()，
+    // 变成无限请求，歌单页面直接卡死渲染不出来。
+    // 需要刷新时，由具体动作（进歌单/点下载/取消下载）主动置 null。
     if (!playlistState.local) {
-      api.playlistList()
+      // deep 只在展开详情时传：列表页不需要为每首歌 stat 一次文件
+      api.playlistList(!!playlistState.detail)
         .then((r) => { playlistState.local = r.playlists || []; paint(); })
         .catch(() => { playlistState.local = []; paint(); });
       mount(holder, h('div', { class: 'card-desc' }, busy('正在读取本地歌单…')));
@@ -584,7 +714,7 @@ function buildPlaylistCard() {
           button('播放全部', { variant: 'tonal', iconName: 'play_arrow', onClick: () => {
             const list = (pl.songs || []).map((s) => ({ path: s.url, name: s.name }));
             // 歌单里的歌是平台链接，不能直接播本地文件；提示去下载
-            toast('歌单里存的是平台链接，先「全部下载」到本地才能在播放器里听', 5000);
+            toast('歌单里的歌还没下载到本地，先到音乐页下载', 5000);
           } }),
           button('添加歌曲', { variant: 'tonal', iconName: 'add', onClick: async () => {
             // 从音乐目录里挑，勾中的加进这个歌单
@@ -614,14 +744,31 @@ function buildPlaylistCard() {
             playlistState.local = null;
             paint();
           } }),
-          button('全部下载', { iconName: 'download', onClick: async (e) => {
+          // 「全部下载」已移除：下载入口统一到音乐页的「导入并下载全部」，
+          // 由那里负责建歌单、排任务、下载完成后回填本地路径。
+          // 只在真的有歌在下载时显示「取消下载」
+          (pl.downloading > 0)
+            ? button('取消下载（' + pl.downloading + '）', { variant: 'text', iconName: 'close', onClick: async () => {
+            try {
+              const r = await api.playlistCancel();
+              toast(r.stopped ? '已取消 ' + r.stopped + ' 个下载任务' : '这个歌单没有在跑的任务');
+              playlistState.local = null;
+              setTimeout(() => renderPlayer(document.getElementById('view')), 800);
+            } catch (err) { toast('取消失败：' + err.message, 8000); }
+          } })
+            : null,
+          button('继续下载未完成的', { iconName: 'download', onClick: async (e) => {
             const btn = e.currentTarget; btn.disabled = true;
+            // 本地歌曲（file:///）已经在磁盘上了，不进下载队列
+            const todo = (pl.songs || []).filter(
+              (s) => !s.local && /^https?:/i.test(String(s.url || '')));
+            if (!todo.length) { btn.disabled = false; toast('这个歌单里的歌都已经下载过了'); return; }
             let ok = 0;
-            for (const s of (pl.songs || [])) {
-              try { await api.submit({ input: s.url, engine: 'auto', qn: 0, mode: 'auto' }); ok += 1; } catch (err) { /* 单首失败不影响其它 */ }
+            for (const s of todo.slice(0, 5)) {
+              try { await api.submit({ input: s.url, engine: 'auto', qn: 0, mode: 'auto' }); ok += 1; } catch (err) { }
             }
             btn.disabled = false;
-            toast('已创建 ' + ok + ' 个下载任务');
+            toast('已排 ' + ok + ' 个下载任务（还剩 ' + Math.max(0, todo.length - ok) + ' 首）');
             document.dispatchEvent(new CustomEvent('tasks-changed'));
           } })),
         h('div', { class: 'card-desc' }, '《' + pl.title + '》' + (pl.songs || []).length + ' 首'),
@@ -661,7 +808,7 @@ function buildPlaylistCard() {
     for (const pl of playlistState.local) {
       mount(holder, h('div', {
         style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 0', borderBottom: '1px solid var(--md-outline-variant)', cursor: 'pointer' },
-        onclick: (e) => { if (e.target.closest('button')) return; playlistState.query = null; playlistState.detail = { id: pl.id, site: pl.site }; paint(); },
+        onclick: (e) => { if (e.target.closest('button')) return; playlistState.query = null; playlistState.detail = { id: pl.id, site: pl.site }; playlistState.local = null; paint(); },
       },
         h('div', { style: { flex: '1', minWidth: '0' } },
           h('b', {}, pl.title),
@@ -1400,14 +1547,59 @@ export function renderTasks(view) {
       } }),
       button('打开目录', { variant: 'text', iconName: 'folder_open', onClick: () => api.open() })),
     h('p', { class: 'page-sub' }, '所有下载任务的历史记录，进行中的任务每 0.8 秒刷新一次进度。记录保存在 data/tasks.json，重启程序后依然在。'),
+    // 未登录失败的聚合成一条提示，按平台分开列 —— 视频和音乐要找的登录项不是同一个
+    (() => {
+      const nl = stats.need_login || [];
+      if (!nl.length) return null;
+      const total = nl.reduce((a, b) => a + b.count, 0);
+      return h('div', { style: { display: 'flex', alignItems: 'flex-start', gap: '10px',
+                                padding: '10px 12px', borderRadius: '10px',
+                                background: 'var(--md-surface-container)',
+                                border: '1px solid var(--md-outline-variant)',
+                                borderWidth: '.5px', marginBottom: '10px' } },
+        h('span', { style: { flex: 'none', marginTop: '1px' }, html: icon('info', 'outlined', 20) }),
+        h('div', { style: { flex: '1', minWidth: '0', fontSize: '12.5px', lineHeight: '1.7' } },
+          h('div', {}, '有 ' + total + ' 个任务是因为没登录才失败的：'),
+          h('div', { style: { opacity: '.85' } },
+            nl.map((x) => x.name + ' ' + x.count + ' 个').join(' · ')),
+          h('div', { style: { opacity: '.7', marginTop: '2px' } },
+            '不同平台要填的登录项不一样，去设置页找对应的那个。')),
+        button('去登录', { variant: 'text', iconName: 'key', onClick: () => {
+          location.hash = '#settings';
+          setTimeout(() => {
+            const nodes = [...document.querySelectorAll('#view *')];
+            const box = nodes.find((n) => n.textContent && n.textContent.trim().startsWith('平台账号与凭据'));
+            if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 500);
+        } }));
+    })(),
     card(
-      h('div', { class: 'stat-row' },
-        h('div', {}, '进行中 ', h('b', {}, String(stats.running || 0))),
-        h('div', {}, '排队 ', h('b', {}, String(stats.queued || 0))),
-        h('div', {}, '已完成 ', h('b', {}, String(stats.done || 0))),
-        h('div', {}, '失败 ', h('b', {}, String(stats.error || 0))),
-        h('div', {}, '合并方式 ', h('b', {}, stats.ffmpeg ? 'ffmpeg' : '内置 fMP4 合并器'))),
+      h('div', { class: 'stat-row', style: { flexDirection: 'column', alignItems: 'stretch',
+                                            gap: '6px' } },
+        ...[['视频', 'video'], ['音频', 'audio'], ['转换', 'convert'], ['其他', 'other']].map(([label, key]) => {
+          const b = (stats.by_kind || {})[key] || {};
+          // 一条任务都没有的分类整行不显示，不要占位置也不要写「暂无」
+          if (!b.total) return null;
+          const idle = false;
+          return h('div', { style: { display: 'flex', gap: '14px', alignItems: 'center',
+                                     opacity: idle ? '.55' : '1', fontSize: '12.5px' } },
+            h('b', { style: { minWidth: '38px' } }, label),
+            h('span', {}, '进行中 ', h('b', {}, String(b.running || 0))),
+            h('span', {}, '排队 ', h('b', {}, String(b.queued || 0))),
+            h('span', {}, '已完成 ', h('b', {}, String(b.done || 0))),
+            h('span', { style: { color: b.error ? 'var(--md-error, #ffb4ab)' : 'inherit' } },
+              '失败 ', h('b', {}, String(b.error || 0))),
+          );
+        }),
+        h('div', { style: { display: 'flex', gap: '14px', fontSize: '12.5px',
+                            opacity: store.paperCount ? '1' : '.55' } },
+          h('b', { style: { minWidth: '38px' } }, '文献'),
+          h('span', {}, '已下载 ', h('b', {}, String(store.paperCount == null ? '…' : store.paperCount)), ' 篇'),
+          h('span', { style: { opacity: '.6' } }, '合并方式 ',
+            h('b', {}, stats.ffmpeg ? 'ffmpeg' : '内置 fMP4 合并器')))),
     ),
+    buildBigjpgHistoryCard(),
+    buildPaperDownloadsCard(),
   );
 
   const tasks = store.tasks || [];
@@ -1459,7 +1651,7 @@ function buildTaskGroup(title, list, key) {
     rest.length > 2
       ? h('div', { class: 'btn-row', style: { marginTop: '10px' } },
           button(expanded ? '收起' : '显示全部 ' + rest.length + ' 条', {
-            variant: 'text', iconName: expanded ? 'expand_less' : 'expand_more',
+            variant: 'text',
             onClick: () => {
               store.taskExpand = store.taskExpand || {};
               store.taskExpand[key] = !expanded;
@@ -1500,7 +1692,7 @@ function buildTaskCard(task) {
     active && task.has_total ? h('span', {}, '剩余 ' + (task.eta_text || '-')) : null,
     task.elapsed ? h('span', {}, '用时 ' + Math.round(task.elapsed) + 's') : null);
 
-  const actions = h('div', { class: 'btn-row', style: { marginTop: '10px' } });
+  const actions = h('div', { class: 'btn-row', style: { marginTop: '10px', gap: '4px', flexWrap: 'wrap' } });
   if (active) {
     mount(actions, button('取消', { variant: 'text', iconName: 'close', onClick: async () => {
       await api.cancelTask(task.id); toast('已请求取消'); refreshTasks();
@@ -1529,7 +1721,7 @@ function buildTaskCard(task) {
       } }));
     }
     // 删除分两种，都要先把"会不会删文件、删哪些"说清楚
-    mount(actions, button('移出列表', { variant: 'text', iconName: 'delete', onClick: async () => {
+    mount(actions, button('移出', { variant: 'text', iconName: 'delete', onClick: async () => {
       const yes = await dialog({
         title: '从列表移出？',
         body: '只移除这条记录，磁盘上的文件会完整保留。',
@@ -1537,7 +1729,7 @@ function buildTaskCard(task) {
       });
       if (yes) { await api.removeTask(task.id, false); refreshTasks(); }
     } }));
-    mount(actions, button('删除并清理文件', { variant: 'text', iconName: 'delete', onClick: async () => {
+    mount(actions, button('删除', { variant: 'text', iconName: 'delete', onClick: async () => {
       // 先把真正会被删掉的路径逐条列出来，用户确认后才动手
       let preview = { items: [], total: 0 };
       try { preview = await api.previewRemove(task.id); } catch (error) { toast('读取失败：' + error.message); return; }
@@ -1636,8 +1828,7 @@ export function renderSettings(view) {
       buildCredentialsCard(),
       buildDownloadCard2(settings),
       // 视频下载和音乐下载是一对，紧挨着放，方便对照
-      buildMusicDirCard(settings),
-      buildWindowCard(settings),
+
       buildExtrasCard(settings),
       buildBigjpgCard(settings),
       buildFfmpegCard(),
@@ -1672,57 +1863,30 @@ async function saveSetting(patch, rerender = true) {
 }
 
 /** 窗口标题栏 + 文档转 PDF 的两条通路。 */
-function buildWindowCard(settings) {
+/** 标题栏开关（并入外观卡）。转换通路的设置已移到「文档」页。 */
+function buildWindowSection(settings) {
   const custom = (settings.titlebar || 'native') === 'custom';
-  const office = settings.doc_office !== false;
-  const browser = settings.doc_browser !== false;
-  const prefer = settings.doc_prefer || 'office';
-
-  // 之前用 align-items:center，描述一行和两行时按钮位置不一样，整列看着是歪的。
-  // 改成顶部对齐：按钮和标签的第一行同基线，行数再多也不会浮到中间。
-  const toggle = (label, desc, on, onClick) => h('div', {
-    class: 'set-row',
-    style: { display: 'flex', alignItems: 'flex-start', gap: '14px',
-             padding: '10px 0', borderTop: '1px solid var(--md-outline-variant)' },
-  },
-  h('div', { style: { flex: '1', minWidth: '0' } },
-    h('div', { class: 'set-row-label', style: { fontSize: '13px', lineHeight: '22px' } }, label),
-    h('div', { class: 'card-desc', style: { marginTop: '2px' } }, desc)),
-  h('div', { style: { flex: 'none', paddingTop: '0' } },
-    button(on ? '已开启' : '已关闭', { variant: on ? 'tonal' : 'text', onClick })));
-
-  return card(
-    h('div', { class: 'card-title', html: icon('palette', 'outlined', 20) + '<span>窗口与转换</span>' }),
-    h('div', { class: 'card-desc', style: { marginBottom: '6px' } },
-      '自绘标题栏可以自定义高度和配色；如果界面出问题，切回系统标题栏能立刻恢复。'),
-    toggle('自绘标题栏', custom
-      ? '当前是自绘标题栏（左上角显示 MakiseToolkit）。'
-      : '当前用 Windows 系统标题栏。', custom,
-      async () => {
-        // 提示先弹，再保存+重渲染 —— saveSetting 会把整张卡换掉，
-        // 放在它后面的 toast 经常被新渲染覆盖掉，用户看不到。
+  return [
+    h('div', { class: 'section-label', style: { marginTop: '14px' } }, '窗口'),
+    h('div', { class: 'set-row', style: { display: 'flex', alignItems: 'flex-start',
+                                            gap: '14px', padding: '8px 0' } },
+      h('div', { style: { flex: '1', minWidth: '0' } },
+        h('div', { style: { fontSize: '13px' } }, '自绘标题栏'),
+        h('div', { class: 'card-desc', style: { marginTop: '2px' } }, custom
+          ? '当前是自绘标题栏（左上角显示 MakiseToolkit），点右边关闭。'
+          : '当前用 Windows 系统标题栏，点右边切到自绘。')),
+      button(custom ? '已开启' : '已关闭', { variant: custom ? 'tonal' : 'text', onClick: async () => {
         toast('已保存，重启程序后生效', 5000);
         await saveSetting({ titlebar: custom ? 'native' : 'custom' }, false);
         renderSettings(document.getElementById('view'));
-      }),
-    // 保存的模式和正在运行的模式不一致时，明确挂一条提示
+      } })),
     (store.config?.titlebar === 'custom') === custom
       ? null
       : h('div', { class: 'hint-box', style: { marginTop: '8px' } },
           h('span', { html: icon('info', 'outlined', 20) }),
           h('div', {}, '标题栏改动需要重启程序才会生效。当前运行中的是',
             (store.config?.titlebar === 'custom') ? '自绘标题栏' : '系统标题栏', '。')),
-    h('div', { class: 'section-label', style: { marginTop: '14px' } }, 'Word / Excel 转 PDF 的通路'),
-    toggle('本机 Office', '版式最准，分页和页眉页脚都保留。第一次调用要冷启动 Word，约 5–10 秒。',
-      office, async () => { await saveSetting({ doc_office: !office }); }),
-    toggle('无头浏览器', '不需要装 Office，速度快（1–2 秒），但复杂文档排版会和 Word 原样不同。',
-      browser, async () => { await saveSetting({ doc_browser: !browser }); }),
-    h('div', { class: 'section-label', style: { marginTop: '12px' } }, '优先用哪条'),
-    h('div', { class: 'btn-row', style: { marginTop: '6px' } },
-      button('Office 优先', { variant: prefer === 'office' ? 'tonal' : 'text',
-        onClick: async () => { await saveSetting({ doc_prefer: 'office' }); } }),
-      button('浏览器优先', { variant: prefer === 'browser' ? 'tonal' : 'text',
-        onClick: async () => { await saveSetting({ doc_prefer: 'browser' }); } })));
+  ];
 }
 
 function buildAppearanceCard(settings) {
@@ -1755,6 +1919,7 @@ function buildAppearanceCard(settings) {
     modeRow,
     switchRow('动态取色', '关闭后使用内置的降级色板（官方算法库加载失败时也会自动降级）',
       settings.dynamic_color !== false, (value) => saveSetting({ dynamic_color: value }, false)),
+    ...buildWindowSection(settings),
   );
 }
 
@@ -1810,10 +1975,24 @@ function buildSiteCredentials(site) {
       toast(site.name + ' 的 ' + item.label + ' 已保存');
       renderSettings(document.getElementById('view'));
     } })];
-    // 校验目前只有 B 站有对应接口
-    if (site.id === 'bilibili' && item.key === 'sessdata') {
-      buttons.push(button('校验', { variant: 'tonal', onClick: () => checkLogin(result) }));
-    }
+    // 每个平台都能校验：真拿这个值去问一次平台的登录态接口。
+    // B 站沿用原来那条专用链路，其余走通用校验器。
+    buttons.push(button('校验', { variant: 'tonal', onClick: async () => {
+      if (site.id === 'bilibili' && item.key === 'sessdata') {
+        checkLogin(result);
+        return;
+      }
+      mount(clear(result), '正在用这个值询问平台…');
+      try {
+        const r = await api.checkCredential(site.id, input.value.trim());
+        const color = r.level === 'ok' ? 'var(--md-primary)'
+          : (r.level === 'bad' ? 'var(--md-error, #ffb4ab)' : 'var(--md-on-surface-variant)');
+        mount(clear(result),
+          h('span', { style: { color } }, (r.ok ? '✓ ' : '✗ ') + r.detail));
+      } catch (err) {
+        mount(clear(result), '校验请求失败：' + err.message);
+      }
+    } }));
 
     const details = (item.howto || []).length
       ? h('details', { class: 'help' },
@@ -1926,6 +2105,33 @@ function buildDownloadCard2(settings) {
         max_parallel_tasks: Number(parallel.value) || 2,
         prefer_quality: Number(qualitySelect.value) || 0,
       }, false) })),
+    h('div', { style: { height: '10px' } }),
+    // 三个下载目录放在同一张卡里：视频 / 音乐 / 文献。原来音乐目录是单独一张卡，
+    // 东一个西一个不好对照，用户也容易只改了一处。
+    (() => {
+      const mkRow = (label, field_, hintText, picker, opener) => {
+        const box = h('input', { class: 'input', value: settings[field_] || '', placeholder: hintText });
+        return field(label, h('div', { class: 'search-field' }, box,
+          button('选择…', { variant: 'tonal', iconName: 'folder_open', onClick: async () => {
+            try {
+              const r = await picker();
+              if (r.cancelled) return;
+              box.value = r[field_] || box.value;
+              store.config.settings[field_] = r[field_];
+              toast(label + '已改为：' + box.value);
+            } catch (e) { toast('选择失败：' + e.message); }
+          } }),
+          button('打开', { variant: 'tonal', iconName: 'folder_open', onClick: () => opener(box.value) })),
+          box);
+        // 每行自己保存，不靠 DOM 下标去猜哪个框是哪个
+        box.addEventListener('change', () => saveSetting({ [field_]: box.value.trim() }, false));
+      };
+      return h('div', {},
+        mkRow('音乐目录', 'music_dir', '留空 = 下载目录下的「音乐」', () => api.pickMusicDir(), (v) => api.open(v)),
+        mkRow('文献目录', 'doc_dir', '留空 = documents', () => api.pickDownloadDir(), (v) => api.open(v)),
+        h('div', { class: 'card-desc', style: { marginTop: '4px', opacity: '.7' } },
+          '三个目录的输入框失焦即保存；视频目录仍用上面的「保存」按钮。'));
+    })(),
     switchRow('合并后保留原始分离流', '默认合并成功就删掉 .m4s / .m4a，打开后会保留在 _streams 目录',
       settings.keep_streams === true, (value) => saveSetting({ keep_streams: value }, false)),
   );
@@ -1958,7 +2164,7 @@ function buildMusicDirCard(settings) {
 
 function buildFfmpegCard() {
   const holder = h('div', { class: 'card-desc' }, busy('正在检查…'));
-  const actions = h('div', { class: 'btn-row', style: { marginTop: '10px' } });
+  const actions = h('div', { class: 'btn-row', style: { marginTop: '10px', gap: '4px', flexWrap: 'wrap' } });
 
   const refresh = async () => {
     clear(holder); clear(actions);
@@ -2472,7 +2678,10 @@ export function renderImage(view) {
 
   // 卡片之间要有明确间距 —— 直接塞进裸 div 会失去 .page 里各卡片自己的外边距，
   // 三张卡片就会粘在一起。用 flex + gap 强制分开。
-  const infoHolder = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '12px' } });
+  // class 让 CSS 知道"这里的间距由 gap 负责"，卡片不要再带 margin-bottom，
+  // 否则 gap 12 + margin 12 = 24（实测就是这样翻倍的）
+  const infoHolder = h('div', { class: 'stack',
+                                style: { display: 'flex', flexDirection: 'column', gap: 'var(--space-card)' } });
   mount(page, h('div', { style: { marginTop: '12px' } }, infoHolder));
 
   function paintInfo() {
@@ -2526,6 +2735,12 @@ export function renderImage(view) {
       } })),
     h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: '12px', marginTop: '14px' } },
       field('图片类型', styleSel), field('降噪', noiseSel), field('放大倍数', scaleSel)),
+    // 免费通道有真实上限：8 倍 / 16 倍要 bigjpg 账号（VIP），单张 20MB，每月有次数上限。
+    // 不写清楚，用户选了 16 倍再报错会以为是程序坏了。
+    h('div', { class: 'card-desc', style: { marginTop: '10px' } },
+      '免费通道不用登录：2 倍、4 倍可以免费用。'
+      + '8 倍和 16 倍需要 bigjpg 账号（VIP），单张上限 20 MB，每月还有转换次数限制。'
+      + '超额时程序会明确提示「需要 VIP」或「免费额度用完」，不会静默失败。'),
     h('div', { class: 'btn-row', style: { marginTop: '14px' } },
       button('开始放大', { iconName: 'bolt', onClick: async (e) => {
         const btn = e.currentTarget;
@@ -2718,6 +2933,7 @@ export function renderDoc(view) {
                       } })))
                 : null)
           : null),
+      buildConvertPathCard(settingsOfDoc()),
       card(
         h('div', { class: 'card-title', html: icon('info', 'outlined', 20) + '<span>能做什么、不能做什么</span>' }),
         h('div', { class: 'card-desc' }, 'Word / Excel / Markdown 之间是完整读写，表格会保留成真表格。'),
@@ -2837,8 +3053,9 @@ export function renderClip(view) {
         h('div', { class: 'card-title', html: icon('movie', 'outlined', 20) + '<span>已下载的视频</span>' }),
         h('div', { class: 'card-desc' }, '点「剪辑」直接在播放器里打开，不用再去历史记录里翻。'),
         downloaded.length
+          // 和播放器页保持一致：默认只露 6 条，列表本身可滚动，多了点「展开全部」
           ? h('div', { class: 'song-scroll', style: { maxHeight: '260px', marginTop: '8px' } },
-              ...downloaded.slice(0, 50).map((f) => h('div', {
+              ...downloaded.slice(0, clipState.videosExpanded ? 50 : 6).map((f) => h('div', {
                 style: { display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 0',
                          borderBottom: '1px solid var(--md-outline-variant)' },
               },
@@ -2850,7 +3067,15 @@ export function renderClip(view) {
                 button('剪辑', { variant: 'text', iconName: 'play_arrow',
                   onClick: () => openVideo(f.path, f.name) }),
                 button('定位', { variant: 'text', iconName: 'folder_open',
-                  onClick: () => api.reveal(f.path) }))))
+                  onClick: () => api.reveal(f.path) }))),
+            downloaded.length > 6
+              ? button(clipState.videosExpanded
+                  ? '收起'
+                  : '展开全部 ' + downloaded.length + ' 个', {
+                  variant: 'text',
+                  onClick: () => { clipState.videosExpanded = !clipState.videosExpanded; paint(); },
+                })
+              : null)
           : h('div', { class: 'card-desc', style: { marginTop: '10px' } },
               '还没有下载过视频。到「解析」页下一个，或者用上面的本地视频剪辑。')),
       card(
@@ -2879,3 +3104,420 @@ export function renderClip(view) {
 }
 
 const clipState = { paths: [] };
+
+/* ------------------------------------------------------------ 文献检索 */
+
+const PAPER_SOURCES = [
+  ['openalex', 'OpenAlex', '4.7 亿作品，全学科，带开放获取链接'],
+  ['crossref', 'Crossref', '出版社交付的元数据，DOI 最权威'],
+  ['doaj', 'DOAJ', '经过质量审核的开放获取期刊'],
+  ['pubmed', 'PubMed', '生物医学首选'],
+  ['semantic', 'Semantic Scholar', '语义检索，摘要较全'],
+];
+const paperState = {
+  query: '',
+  sources: ['openalex', 'crossref', 'doaj'],
+  yearFrom: '',
+  yearTo: '',
+  oaOnly: false,
+  sort: 'relevance',
+  showSources: false,
+  busy: false,
+  data: null,
+};
+
+const PAPER_SORTS = [
+  ['relevance', '有全文优先'],
+  ['newest', '最新年份'],
+  ['oldest', '最早年份'],
+  ['oa', '仅看开放获取靠前'],
+];
+
+/** 把当前筛选条件说成人话，结果区顶部要显示出来。 */
+function paperFilterText() {
+  const bits = [];
+  if (paperState.yearFrom) bits.push(paperState.yearFrom + ' 年起');
+  if (paperState.yearTo) bits.push('至 ' + paperState.yearTo + ' 年');
+  if (paperState.oaOnly) bits.push('仅开放获取');
+  return bits.join(' · ');
+}
+
+export function renderPapers(view) {
+  clear(view);
+  const holder = h('div', {});
+
+  const run = async () => {
+    const q = (paperState.query || '').trim();
+    if (!q) { toast('请输入检索关键词'); return; }
+    if (!paperState.sources.length) { toast('至少选一个文献源'); return; }
+    paperState.busy = true;
+    paint();
+    try {
+      const data = await api.paperSearch(q, {
+        sources: paperState.sources,
+        limit: 10,
+        year_from: Number(paperState.yearFrom) || 0,
+        year_to: Number(paperState.yearTo) || 0,
+        oa_only: !!paperState.oaOnly,
+        sort: paperState.sort,
+      });
+      paperState.data = data;
+      if (data.total === 0) {
+        toast('没有命中结果' + (data.errors.length ? '（部分源报错，见下方）' : ''), 6000);
+      }
+    } catch (err) {
+      toast('检索失败：' + err.message, 9000);
+    } finally {
+      paperState.busy = false;
+      try { paint(); } catch (e) { paperState.busy = false; }
+    }
+  };
+
+  const resultRow = (it) => h('div', {
+    style: { padding: '10px 0', borderTop: '1px solid var(--md-outline-variant)',
+             borderTopWidth: '0.5px', opacity: '1' },
+  },
+  h('div', { style: { fontSize: '13.5px', lineHeight: '1.5' } },
+    it.url
+      ? h('a', { href: it.url, target: '_blank', rel: 'noopener',
+          style: { color: 'var(--md-primary)', textDecoration: 'none' } }, it.title || '(无标题)')
+      : (it.title || '(无标题)')),
+  h('div', { class: 'card-desc', style: { marginTop: '3px' } },
+    [it.authors, it.year, it.venue].filter(Boolean).join(' · ') || '—'),
+  h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px',
+                       alignItems: 'center' } },
+    h('span', { style: { fontSize: '11px', padding: '0 9px', height: '20px',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      borderRadius: '10px', whiteSpace: 'nowrap', letterSpacing: '.2px',
+      background: 'var(--md-surface-container-high)',
+      color: 'var(--md-on-surface-variant)', border: 'none' } },
+      PAPER_SOURCE_LABEL[it.source] || it.source),
+    it.oa || it.pdf
+      ? h('span', { style: { fontSize: '11px', padding: '0 9px', height: '20px',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          borderRadius: '10px', whiteSpace: 'nowrap', border: 'none',
+          background: 'var(--md-primary-container)',
+          color: 'var(--md-on-primary-container)' } }, '开放获取')
+      : null,
+    it.pdf
+      ? button('下载全文', { variant: 'text', iconName: 'download', onClick: async (e) => {
+          const btn = e.currentTarget;
+          if (btn.disabled) return;
+          btn.disabled = true;
+          btn.textContent = '下载中…';
+          try {
+            const r = await api.paperDownload(it.pdf, it.title);
+            toast('已保存：' + r.name + '（' + Math.round(r.size / 1024) + ' KB）', 7000);
+          } catch (err) {
+            // 抓不到就把原文页开出来，别让用户卡死在一句报错上
+            toast('自动下载失败：' + err.message, 9000);
+            if (it.url) window.open(it.url, '_blank', 'noopener');
+          } finally {
+            btn.disabled = false;
+            btn.textContent = '下载全文';
+          }
+        } })
+      : null,
+    it.doi
+      ? button('复制 DOI', { variant: 'text', iconName: 'link', onClick: async () => {
+          try {
+            await navigator.clipboard.writeText(it.doi);
+            toast('已复制 ' + it.doi);
+          } catch (e) { toast('复制失败：' + it.doi, 8000); }
+        } })
+      : null));
+
+  const paint = () => {
+    clear(holder);
+    const d = paperState.data;
+    mount(holder,
+      card(
+        h('div', { class: 'card-title', html: icon('search', 'outlined', 20) + '<span>文献检索</span>' }),
+        h('div', { class: 'card-desc' },
+          '同时查多个开放学术源，只接有公开 API 的，对方改版也不会突然失效。'),
+        h('div', { class: 'search-field', style: { marginTop: '10px' } },
+          h('input', {
+            class: 'input',
+            placeholder: '输入关键词，例如 transformer、阿尔茨海默病、urban planning',
+            value: paperState.query,
+            oninput: (e) => { paperState.query = e.target.value; },
+            onkeydown: (e) => { if (e.key === 'Enter') run(); },
+          }),
+          button(paperState.busy ? '检索中…' : '检索', {
+            iconName: 'search',
+            onClick: () => { if (!paperState.busy) run(); },
+          })),
+        // 文献源做成可展开的列表：默认收起，只显示"已选几个"，
+        // 展开后每行带说明，比一排按钮更容易看清哪个源是干什么的。
+        h('div', { class: 'section-label', style: { marginTop: '12px' } },
+          '文献源 · 已选 ' + paperState.sources.length + ' / ' + PAPER_SOURCES.length),
+        h('div', { class: 'btn-row', style: { marginTop: '2px' } },
+          button(paperState.showSources ? '收起' : '展开选择', {
+            variant: 'text',
+            onClick: () => { paperState.showSources = !paperState.showSources; paint(); },
+          })),
+        // 排序和筛选并排放，右边一大片空白就别浪费了
+        ...(paperState.showSources ? [] : []),
+        paperState.showSources
+          ? h('div', { style: { marginTop: '4px' } },
+              ...PAPER_SOURCES.map(([id, name, desc]) => {
+                const on = paperState.sources.includes(id);
+                return h('div', { class: 'set-row',
+                  style: { display: 'flex', alignItems: 'flex-start', gap: '12px',
+                           padding: '8px 0', borderTop: '1px solid var(--md-outline-variant)' } },
+                  h('div', { style: { flex: '1', minWidth: '0' } },
+                    h('div', { style: { fontSize: '13px' } }, name),
+                    h('div', { class: 'card-desc', style: { marginTop: '2px' } }, desc)),
+                  button(on ? '已选' : '未选', {
+                    variant: on ? 'tonal' : 'text',
+                    onClick: () => {
+                      paperState.sources = on
+                        ? paperState.sources.filter((x) => x !== id)
+                        : [...paperState.sources, id];
+                      paint();
+                    },
+                  }));
+              }))
+          : null,
+
+        // 排序 + 筛选并排，省掉两段各自的标题
+        h('div', { style: { display: 'flex', gap: '18px', flexWrap: 'wrap',
+                            marginTop: '10px', alignItems: 'flex-start' } },
+          h('div', { style: { flex: '1 1 320px', minWidth: '0' } },
+            h('div', { class: 'section-label' }, '排序'),
+            h('div', { class: 'btn-row', style: { marginTop: '4px' } },
+              ...PAPER_SORTS.map(([id, label]) => button(label, {
+                variant: paperState.sort === id ? 'tonal' : 'text',
+                onClick: () => {
+                  paperState.sort = id;
+                  paint();
+                  if (paperState.data) run();
+                },
+              })))),
+          h('div', { style: { flex: '1 1 320px', minWidth: '0' } },
+            h('div', { class: 'section-label' }, '筛选'),
+            h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center',
+                                marginTop: '4px', flexWrap: 'wrap' } },
+              h('input', {
+                class: 'input', style: { width: '92px' }, placeholder: '起始年',
+                value: paperState.yearFrom,
+                oninput: (e) => { paperState.yearFrom = e.target.value.replace(/\D/g, '').slice(0, 4); },
+              }),
+              h('span', { class: 'card-desc', style: { margin: '0' } }, '—'),
+              h('input', {
+                class: 'input', style: { width: '92px' }, placeholder: '结束年',
+                value: paperState.yearTo,
+                oninput: (e) => { paperState.yearTo = e.target.value.replace(/\D/g, '').slice(0, 4); },
+              }),
+              button(paperState.oaOnly ? '仅开放获取 ✓' : '仅开放获取', {
+                variant: paperState.oaOnly ? 'tonal' : 'text',
+                onClick: () => { paperState.oaOnly = !paperState.oaOnly; paint(); },
+              })))),
+        paperState.busy
+          ? h('div', { style: { marginTop: '12px' } },
+              h('div', { class: 'progress-track' }, h('div', { class: 'progress-run' })))
+          : null),
+      d
+        ? card(
+            h('div', { class: 'card-title', html: icon('description', 'outlined', 20) + '<span>结果</span>' }),
+            h('div', { class: 'card-desc' },
+              '共 ' + d.total + ' 条　' + Object.entries(d.counts || {})
+                .map(([k, v]) => k + ' ' + v).join(' · ')),
+            // 筛选条件必须显式列出来，否则用户会以为结果本来就少
+            (paperFilterText() || d.filtered_out)
+              ? h('div', { class: 'card-desc', style: { marginTop: '4px' } },
+                  '筛选：' + (paperFilterText() || '无')
+                  + (d.filtered_out ? '（已排除 ' + d.filtered_out + ' 条）' : ''))
+              : null,
+            d.errors.length
+              ? h('div', { style: { marginTop: '8px', padding: '8px 10px', borderRadius: '8px',
+                                    background: 'var(--md-surface-container)',
+                                    fontSize: '12px', lineHeight: '1.6' } },
+                  ...d.errors.map((e) => h('div', {
+                    style: { display: 'flex', gap: '8px', alignItems: 'baseline' } },
+                    h('span', { style: { color: 'var(--md-error, #ffb4ab)', flex: 'none',
+                                          fontWeight: '600' } }, e.source),
+                    h('span', { style: { opacity: '.8', wordBreak: 'break-all' } },
+                      e.error.includes('CERTIFICATE_VERIFY_FAILED')
+                        ? '证书校验失败 —— 通常是本机有代理或防火墙在中间拦截，不是接口挂了'
+                        : (e.error.includes('429')
+                            ? '被限速了（429），这个源没给密钥的调用有频率上限，过一会儿再试'
+                            : e.error)))))
+              : null,
+            ...(d.items.length ? paperGrouped(d, resultRow)
+              : [h('div', { class: 'card-desc', style: { marginTop: '10px' } }, '没有命中结果，换个关键词试试。')]))
+        : null);
+    return holder;
+  };
+
+  paint();
+  mount(view, h('div', { class: 'page' },
+    h('div', { class: 'page-head' }, h('h1', { class: 'page-title' }, '文献')),
+    h('p', { class: 'page-sub' },
+      '聚合开放学术源检索。没有公开接口的国内平台（PubScholar、OpenSign 等）不接，避免改版后静默失效。'),
+    holder));
+}
+
+/** 结果按来源平台分组，组内保持后端给的顺序。 */
+const PAPER_SOURCE_LABEL = {
+  openalex: 'OpenAlex', crossref: 'Crossref', doaj: 'DOAJ',
+  pubmed: 'PubMed', semantic: 'Semantic Scholar',
+};
+
+function paperGrouped(d, rowFn) {
+  const buckets = new Map();
+  for (const it of d.items) {
+    const key = it.source || 'other';
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(it);
+  }
+  const out = [];
+  for (const [key, items] of buckets) {
+    out.push(h('div', {
+      class: 'section-label',
+      style: { marginTop: '16px', display: 'flex', alignItems: 'baseline', gap: '8px' },
+    },
+    PAPER_SOURCE_LABEL[key] || key,
+    h('span', { style: { fontSize: '11px', opacity: '.6', fontWeight: '400' } },
+      items.length + ' 条')));
+    for (const it of items) out.push(rowFn(it));
+  }
+  return out;
+}
+
+/** 历史记录页里的「文献下载」一栏 —— 和视频/音乐任务分开列。 */
+function buildPaperDownloadsCard() {
+  const holder = h('div', {});
+  const paint = (data) => {
+    clear(holder);
+    const items = (data && data.items) || [];
+    mount(holder,
+      h('div', { class: 'card-title', html: icon('science', 'outlined', 20) + '<span>文献下载</span>' }),
+      h('div', { class: 'card-desc' },
+        items.length ? '共 ' + items.length + ' 篇，保存在 ' + data.dir : '还没有下载过文献。'),
+      items.length
+        ? h('div', { style: { marginTop: '8px', maxHeight: '220px', overflow: 'auto' } },
+            ...items.slice(0, 20).map((it) => h('div', {
+              style: { display: 'flex', gap: '10px', alignItems: 'center',
+                       padding: '6px 0', borderTop: '1px solid var(--md-outline-variant)',
+                       borderTopWidth: '.5px' },
+            },
+            h('div', { style: { flex: '1', minWidth: '0', fontSize: '12.5px',
+                                whiteSpace: 'nowrap', overflow: 'hidden',
+                                textOverflow: 'ellipsis' } }, it.name),
+            h('span', { class: 'card-desc', style: { margin: '0', flex: 'none' } },
+              Math.round(it.size / 1024) + ' KB'),
+            button('打开', { variant: 'text', onClick: () => {
+              api.shellOpen(it.path, false).catch((e) => toast(e.message, 8000));
+            } }))))
+        : null);
+  };
+  // 先用缓存渲染，避免"空白→填充"的闪烁；没有缓存才去请求，拿到后原地更新。
+  paint(store.paperData || null);
+  if (!store.paperData) {
+    api.paperList().then((data) => {
+      store.paperData = data;
+      store.paperCount = (data && data.total) || 0;
+      try { paint(data); } catch (e) { /* 渲染失败不影响其它任务列表 */ }
+    }).catch(() => {});
+  }
+  return card(holder);
+}
+
+// 已下载视频列表的展开状态
+if (!('videosExpanded' in clipState)) clipState.videosExpanded = false;
+
+/** 历史记录页里的「图片放大」一栏。 */
+function buildBigjpgHistoryCard() {
+  const holder = h('div', {});
+  const first = (data) => {
+    const d = data;
+    const items = (d && d.items) || [];
+    clear(holder);
+    const head = h('div', { class: 'card-title', html: icon('image', 'outlined', 20) + '<span>图片放大</span>' });
+    const desc = h('div', { class: 'card-desc' },
+      items.length ? ('共 ' + items.length + ' 次') : '还没有用过图片放大。');
+    // 说明这栏是什么、结果去哪拿 —— 和文献下载那栏一样给出可操作的提示
+    const hint = h('div', { style: { marginTop: '8px', padding: '8px 10px', borderRadius: '8px',
+                                    background: 'var(--md-surface-container)', fontSize: '12px',
+                                    lineHeight: '1.6', opacity: '.85' } },
+      '这里只记录提交过的放大任务。放大结果由 bigjpg 生成，'
+      + '回到「图片」页点「查询进度」就能拿到下载链接。');
+    const list = h('div', { style: { marginTop: '8px', maxHeight: '220px', overflow: 'auto' } });
+    for (const it of items.slice(0, 20)) {
+      const row = h('div', { style: { display: 'flex', gap: '10px', alignItems: 'center',
+        padding: '6px 0', borderTop: '1px solid var(--md-outline-variant)', borderTopWidth: '.5px' } });
+      const name = h('div', { style: { flex: '1', minWidth: '0', fontSize: '12.5px',
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, it.file);
+      const tag = h('span', { style: { fontSize: '11px', flex: 'none',
+        color: it.ok ? 'var(--md-primary)' : 'var(--md-error, #ffb4ab)' } },
+        it.ok ? '已提交' : '失败');
+      mount(row, name, tag);
+      mount(list, row);
+    }
+    mount(holder, head, desc, hint, items.length ? list : null);
+  };
+  // 同样先用缓存，避免每 0.8 秒闪一次
+  first(store.bigjpgData || { items: [] });
+  if (!store.bigjpgData) {
+    api.bigjpgHistory().then((d) => { store.bigjpgData = d; try { first(d); } catch (e) {} }).catch(() => {});
+  }
+  return card(holder);
+}
+
+
+/* ------------------------------------------------------------ 文档：转换通路 */
+/** 文档页里的「转换通路」设置（从设置页搬过来的）。 */
+function settingsOfDoc() {
+  return (store.config && store.config.settings) || {};
+}
+
+function buildConvertPathCard(settings) {
+  const office = settings.doc_office !== false;
+  const browser = settings.doc_browser !== false;
+  const prefer = settings.doc_prefer || 'office';
+
+  const row = (label, desc, on, onClick) => h('div', {
+    class: 'set-row',
+    style: { display: 'flex', alignItems: 'flex-start', gap: '14px', padding: '8px 0' },
+  },
+  h('div', { style: { flex: '1', minWidth: '0' } },
+    h('div', { style: { fontSize: '13px' } }, label),
+    h('div', { class: 'card-desc', style: { marginTop: '2px' } }, desc)),
+  button(on ? '已开启' : '已关闭', { variant: on ? 'tonal' : 'text', onClick }));
+
+  return card(
+    h('div', { class: 'card-title', html: icon('tune', 'outlined', 20) + '<span>转换通路</span>' }),
+    h('div', { class: 'card-desc' },
+      'Word / Excel 转 PDF 有两条路，可以单独关掉某一条，也可以指定先试哪条。'),
+    row('本机 Office', '版式最准，第一次调用要冷启动 Word（约 5–10 秒）。',
+      office, async () => { await saveSetting({ doc_office: !office }, false); renderDoc(document.getElementById('view')); }),
+    row('无头浏览器', '不需要 Office，1–2 秒出结果，但复杂排版会和 Word 原样不同。',
+      browser, async () => { await saveSetting({ doc_browser: !browser }, false); renderDoc(document.getElementById('view')); }),
+    (office && browser)
+      ? h('div', { class: 'btn-row', style: { marginTop: '8px' } },
+          button('Office 优先', { variant: prefer === 'office' ? 'tonal' : 'text',
+            onClick: async () => { await saveSetting({ doc_prefer: 'office' }, false); renderDoc(document.getElementById('view')); } }),
+          button('浏览器优先', { variant: prefer === 'browser' ? 'tonal' : 'text',
+            onClick: async () => { await saveSetting({ doc_prefer: 'browser' }, false); renderDoc(document.getElementById('view')); } }))
+      : null,
+    (!office && !browser)
+      ? h('div', { class: 'hint-box', style: { marginTop: '8px' } },
+          h('span', { html: icon('warning_amber', 'outlined', 20) }),
+          h('div', {}, '两条都关掉了，转 PDF 会直接报错。至少打开一条。'))
+      : null);
+}
+
+
+/* ------------------------------------------------------------ 下载完成刷新
+   任务完成时刷新正在查看的歌单详情，让"已下载"和"取消下载"及时更新。
+   只在详情页打开时动作，列表页不跟着刷。 */
+document.addEventListener('task-finished', () => {
+  try {
+    if (!playlistState || !playlistState.detail) return;
+    if (!document.getElementById('view')) return;
+    if ((location.hash || '').slice(1) !== 'player') return;
+    playlistState.local = null;
+    renderPlayer(document.getElementById('view'));
+  } catch (e) { /* 刷新失败不影响其它功能 */ }
+});

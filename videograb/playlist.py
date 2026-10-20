@@ -372,6 +372,169 @@ def add_local(pl: dict) -> dict:
     return entry
 
 
+_AUDIO_EXT = {".mp3", ".flac", ".m4a", ".wav", ".ogg", ".opus", ".aac", ".wma", ".ape"}
+
+
+def _pick_audio(files) -> str:
+    """从任务产物里挑出音频文件路径。"""
+    for f in files or []:
+        if not isinstance(f, dict):
+            continue
+        path = str(f.get("path") or "")
+        if not path:
+            continue
+        if f.get("kind") == "audio" or Path(path).suffix.lower() in _AUDIO_EXT:
+            return path
+    return ""
+
+
+def find_local(site: str, pid: str):
+    """按 site+id 找歌单，找不到返回 None。"""
+    for pl in load_local():
+        if str(pl.get("id")) == str(pid) and pl.get("site") == site:
+            return pl
+    return None
+
+
+_FAILED_STATUS = {"error", "failed", "canceled", "cancelled", "stopped"}
+
+
+def advance(get_task, submit=None, limit: int = 5) -> int:
+    """把还没排上队的歌补进去，让队列一直保持 limit 个在跑。
+
+    「中止一首之后要接下一首」就是靠这里：某个任务被取消或失败后，
+    它不再算"在跑"，下一首自然会被补上。
+    """
+    if submit is None:
+        return 0
+    with _STORE_LOCK:
+        items = _load_for_update()
+    changed = 0
+    for pl in items:
+        # 被「取消下载」过的歌单处于暂停状态，不要再自动排队 ——
+        # 用户点的是"整体取消"，如果还自动接下一首，等于没取消。
+        if pl.get("paused"):
+            continue
+        songs = pl.get("songs") or []
+        live = 0
+        pending = []
+        for song in songs:
+            if song.get("local"):
+                continue
+            tid = song.get("task_id")
+            if not tid:
+                pending.append(song)
+                continue
+            try:
+                task = get_task(tid)
+            except Exception:
+                task = None
+            if task is None:
+                pending.append(song)
+                continue
+            status = str(getattr(task, "status", "")).lower()
+            if status in _FAILED_STATUS:
+                # 失败/取消：清掉关联，但**必须计次**。
+                # 之前这里无条件重新入队，而 advance 在每次读歌单时都会跑，
+                # 结果一首一直失败的歌会被无限重试（列表每 0.8 秒刷新一次），
+                # 任务列表会被同一个失败刷屏。
+                song.pop("task_id", None)
+                tries = int(song.get("attempts") or 0) + 1
+                song["attempts"] = tries
+                if tries < 2:
+                    pending.append(song)
+                else:
+                    song["gave_up"] = True     # 放弃自动重试，等用户手动
+            else:
+                song["attempts"] = 0
+                live += 1
+        for song in pending:
+            if live >= limit:
+                break
+            if song.get("gave_up"):
+                continue
+            # 本地歌曲（url 是 file:///）不该进下载队列 —— 它已经在磁盘上了。
+            # 之前没挡，这些条目会被当成待下载的歌排进队列，下载器报
+            # "无法识别的链接"，界面上就出现一条莫名其妙的失败记录。
+            if not str(song.get("url") or "").startswith(("http://", "https://")):
+                continue
+            try:
+                task = submit(str(song.get("url") or ""))
+                song["task_id"] = task.id
+                live += 1
+                changed += 1
+            except Exception:
+                continue
+    if changed:
+        save_local(items)
+    return changed
+
+
+def set_paused(site: str, pid: str, paused: bool) -> None:
+    """暂停/恢复一个歌单的自动排队。"""
+    with _STORE_LOCK:
+        items = _load_for_update()
+    for pl in items:
+        if str(pl.get("id")) == str(pid) and pl.get("site") == site:
+            if paused:
+                pl["paused"] = True
+            else:
+                pl.pop("paused", None)
+    save_local(items)
+
+
+def cancel_all(get_task, cancel) -> int:
+    """取消这个歌单里所有还在跑的任务，并把歌单标成暂停。返回取消数量。"""
+    stopped = 0
+    for pl in load_local():
+        for song in (pl.get("songs") or []):
+            tid = song.get("task_id")
+            if not tid or song.get("local"):
+                continue
+            try:
+                task = get_task(tid)
+                status = str(getattr(task, "status", "")).lower() if task else ""
+                if task is None or status in _FAILED_STATUS or status == "done":
+                    continue
+                cancel(tid)
+                stopped += 1
+            except Exception:
+                continue
+    return stopped
+
+
+def backfill(get_task) -> int:
+    """把已经下载完的任务回填成歌单条目的本地路径。
+
+    用「懒回填」而不是后台线程：每次读歌单时顺手查一下，永远准确，
+    不用管线程生命周期，也不会漏掉程序关闭期间完成的任务。
+    """
+    try:
+        from .tasks import STATUS_DONE
+    except Exception:
+        STATUS_DONE = "done"
+    with _STORE_LOCK:
+        items = _load_for_update()
+    changed = 0
+    for pl in items:
+        for song in (pl.get("songs") or []):
+            if song.get("local") or not song.get("task_id"):
+                continue
+            try:
+                task = get_task(song["task_id"])
+            except Exception:
+                continue
+            if task is None or getattr(task, "status", "") != STATUS_DONE:
+                continue
+            path = _pick_audio(getattr(task, "files", None))
+            if path:
+                song["local"] = path
+                changed += 1
+    if changed:
+        save_local(items)
+    return changed
+
+
 def create_empty(title: str) -> dict:
     """手动新建一个空歌单。"""
     name = (title or "").strip()
@@ -404,12 +567,114 @@ def add_song(site: str, pid: str, song: dict) -> dict:
             already = dict(target)
             already["added"] = False
             return already
-        songs.append({"id": str(song.get("id") or ""), "name": name,
-                      "artist": str(song.get("artist") or ""),
-                      "url": url})
+        entry = {"id": str(song.get("id") or ""), "name": name,
+                 "artist": str(song.get("artist") or ""),
+                 "url": url}
+        # 这几个字段是「导入并下载」流程要用的：
+        #   cover    界面缩略图
+        #   task_id  对应的下载任务，用来判断下载完了没有
+        #   local    下载完成后的本地路径，播放实际用它
+        # 以前这里只存四个字段，多传的会被丢掉。
+        for extra in ("cover", "task_id", "local"):
+            if song.get(extra):
+                entry[extra] = song[extra]
+        songs.append(entry)
         target["songs"] = songs
         save_local(items)
         return target
+
+
+def _song_key(url: str) -> str:
+    """把歌曲链接归一成一个稳定的 key。
+
+    同一首歌的链接写法千差万别：
+        https://music.163.com/song?id=123
+        https://music.163.com/#/song?id=123&userid=456
+        https://music.163.com/m/song?id=123
+    按字符串比对永远匹配不上，所以提取平台 + 歌曲 id 作为 key。
+    """
+    import re as _re
+    u = str(url or "").strip()
+    if not u:
+        return ""
+    m = _re.search(r"[?&#]id=(\d+)", u)
+    if m and "music.163.com" in u:
+        return "netease:" + m.group(1)
+    m = _re.search(r"songmid=([0-9A-Za-z]+)", u)
+    if m:
+        return "qq:" + m.group(1)
+    m = _re.search(r"[?&#]id=(\d+)", u)
+    if m:
+        return "id:" + m.group(1)
+    return u
+
+
+def find_existing_local(url: str) -> str:
+    """跨歌单找同一首歌已经下载好的本地文件。
+
+    同一首歌在多个歌单里出现很常见（比如两个歌单都收了《海阔天空》）。
+    只要有一个歌单下过、文件还在，其余歌单直接复用，不用重复下载。
+    """
+    want = _song_key(url)
+    if not want:
+        return ""
+    for pl in load_local():
+        for song in (pl.get("songs") or []):
+            if _song_key(song.get("url")) != want:
+                continue
+            local = str(song.get("local") or "")
+            if local and Path(local).exists():
+                return local
+    return ""
+
+
+def set_song_task(site: str, pid: str, url: str, task_id: str) -> None:
+    """记下这首歌对应的下载任务 id，下载完成后靠它回填本地路径。"""
+    with _STORE_LOCK:
+        items = _load_for_update()
+    for pl in items:
+        if str(pl.get("id")) == str(pid) and pl.get("site") == site:
+            for song in (pl.get("songs") or []):
+                if str(song.get("url")) == str(url):
+                    song["task_id"] = task_id
+    save_local(items)
+
+
+def set_song_local(site: str, pid: str, url: str, local: str) -> None:
+    """把本地路径写到指定歌单条目上。"""
+    with _STORE_LOCK:
+        items = _load_for_update()
+    for pl in items:
+        if str(pl.get("id")) == str(pid) and pl.get("site") == site:
+            for song in (pl.get("songs") or []):
+                if str(song.get("url")) == str(url):
+                    song["local"] = local
+                    song.pop("missing", None)
+                    song.pop("gave_up", None)
+                    song["attempts"] = 0
+    save_local(items)
+
+
+def reset_song(site: str, pid: str, url: str) -> dict:
+    """清掉某首歌的「已放弃重试」标记，让它重新进入自动排队。
+
+    用户在界面上点「重试」时调用 —— 否则一首被放弃的歌永远不会再试，
+    用户也没有任何办法恢复，只能删了重加。
+    """
+    with _STORE_LOCK:
+        items = _load_for_update()
+    target = next((x for x in items
+                   if str(x.get("id")) == str(pid) and x.get("site") == site), None)
+    if target is None:
+        raise ValueError("找不到这个歌单")
+    for song in (target.get("songs") or []):
+        if str(song.get("url")) == str(url):
+            song.pop("gave_up", None)
+            song["attempts"] = 0
+            song.pop("task_id", None)
+            break
+    save_local(items)
+    return target
 
 
 def remove_song(site: str, pid: str, url: str) -> dict:
