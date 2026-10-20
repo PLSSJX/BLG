@@ -2131,7 +2131,12 @@ function buildDownloadCard2(settings) {
     // 东一个西一个不好对照，用户也容易只改了一处。
     (() => {
       const mkRow = (label, field_, hintText, picker, opener, resolved) => {
-        const box = h('input', { class: 'input', value: settings[field_] || resolved || '', placeholder: hintText });
+        // 存的值如果是相对名（历史遗留的 "document"），显示解析后的绝对路径，
+        // 否则用户看到的和实际落点对不上
+        const stored = String(settings[field_] || '');
+        const absolute = /^([a-zA-Z]:[\\/]|\\\\|\/)/.test(stored);
+        const shown = absolute ? stored : (resolved || stored);
+        const box = h('input', { class: 'input', value: shown, placeholder: hintText });
         return field(label, h('div', { class: 'search-field' }, box,
           button('选择…', { variant: 'tonal', iconName: 'folder_open', onClick: async () => {
             try {

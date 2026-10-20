@@ -69,7 +69,7 @@ def build_state(ctx: Context) -> dict:
             "download": str(ctx.download_dir()),
             "video": str(ctx.video_dir()),
             "music": str(ctx.music_dir()),
-            "document": str(ctx.download_dir() / str(getattr(settings, "doc_dir", "document") or "document")),
+            "document": str(ctx.doc_root()),
             "image": str(ctx.image_dir()),
         },
         # 前端拿它给所有写操作签名；跨站页面读不到这个响应（CORS），拿不到令牌
@@ -170,7 +170,7 @@ _BOOT_DIRS = {}
 
 
 def remember_boot_dirs(ctx) -> None:
-    for field in ("download_dir", "music_dir", "video_dir", "image_dir"):
+    for field in ("download_dir", "music_dir", "video_dir", "image_dir", "doc_dir"):
         try:
             _BOOT_DIRS[field] = str(getattr(ctx, field)())
         except Exception:
@@ -760,7 +760,7 @@ class Handler(BaseHTTPRequestHandler):
             from .config import BASE_DIR
             # field 决定选完之后写哪个设置项：视频目录还是音乐目录
             field = str(payload.get("field") or "download_dir")
-            if field not in ("download_dir", "music_dir", "video_dir", "image_dir"):
+            if field not in ("download_dir", "music_dir", "video_dir", "image_dir", "doc_dir"):
                 raise ApiError("不支持设置 " + field)
             current = str(ctx.music_dir() if field == "music_dir" else ctx.download_dir())
             chosen = pick_folder(ctx, current)
@@ -829,7 +829,7 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception:
                     pass
             try:
-                roots.append((ctx.download_dir() / str(getattr(ctx.settings, "doc_dir", "document"))).resolve())
+                roots.append(ctx.doc_root().resolve())
             except Exception:
                 pass
             # 音乐目录必须放行：用户在设置里把音乐目录指到下载目录之外时，
@@ -864,8 +864,7 @@ class Handler(BaseHTTPRequestHandler):
             target = str(payload.get("target") or "").strip().lower()
             if target not in ("docx", "xlsx", "md", "pdf"):
                 raise ApiError("目标格式只能是 docx、xlsx、md 或 pdf")
-            dest = Path(payload.get("dest") or
-                        str(ctx.download_dir() / str(getattr(ctx.settings, "doc_dir", "document"))))
+            dest = Path(payload.get("dest") or str(ctx.doc_root()))
             # 和 /api/video/trim 一样必须校验：dest 原本原样传给 convert，
             # 那边直接 mkdir + 写文件，等于给了调用方一个往任意目录写文件的口子。
             if not _inside_output_root(dest, ctx):

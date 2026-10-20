@@ -286,6 +286,19 @@ class Context:
         target.mkdir(parents=True, exist_ok=True)
         return target
 
+    def doc_root(self) -> Path:
+        """文档转换目录。
+
+        doc_dir 历史上存的是"目录名"（如 document），现在也允许直接填绝对路径，
+        这样设置页里能像其它三个目录一样显示/选择完整路径。
+        """
+        configured = (self.settings.doc_dir or "").strip() or "document"
+        candidate = Path(configured)
+        if not candidate.is_absolute():
+            candidate = self.download_dir() / candidate
+        candidate.mkdir(parents=True, exist_ok=True)
+        return candidate
+
     def image_dir(self) -> Path:
         """放大后的图片目录：<下载目录>/image。"""
         configured = (self.settings.image_dir or "").strip()
