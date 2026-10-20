@@ -683,7 +683,30 @@ class Handler(BaseHTTPRequestHandler):
                     else:
                         win.maximize()
                 else:
-                    if ctx.on_quit:
+                    # 「叉掉」不退出程序：隐藏窗口留到托盘里，用户从托盘菜单退出。
+                    # 托盘没起来时才真的退出，否则窗口藏了就再也找不回来。
+                    tray = getattr(ctx, "tray", None)
+                    hidden = False
+                    if tray is not None:
+                        # 这个版本的 pywebview 没有可用的 hide()，必须直接调
+                        # Win32 ShowWindow(SW_HIDE)，否则只会最小化，看着像"叉不掉"。
+                        try:
+                            import ctypes as _ct
+                            from .window_frame import find_window as _fw
+                            from .desktop import WINDOW_TITLE as _T
+                            hwnd = _fw(_T) or _fw("")
+                            if hwnd:
+                                _ct.windll.user32.ShowWindow(hwnd, 0)   # SW_HIDE
+                                hidden = True
+                        except Exception:
+                            hidden = False
+                        if not hidden:
+                            try:
+                                win.minimize()
+                                hidden = True
+                            except Exception:
+                                hidden = False
+                    if not hidden and ctx.on_quit:
                         ctx.on_quit()
             except Exception as exc:
                 raise ApiError("窗口操作失败：" + str(exc)[:100]) from None

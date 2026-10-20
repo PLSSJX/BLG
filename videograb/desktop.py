@@ -184,6 +184,8 @@ def _run_webview(url: str, on_closed=None, ctx=None) -> bool:
                 on_quit=(ctx.on_quit if ctx is not None else None),
             )
             tray.start()
+            if ctx is not None:
+                ctx.tray = tray      # 关闭按钮要用它判断"能不能藏到托盘"
         except Exception as exc:
             print("  托盘图标不可用（不影响主程序）：" + str(exc)[:120])
         # 显式指定 EdgeChromium：Windows 上其它后端要么是 IE，要么要额外运行库
