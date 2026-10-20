@@ -189,7 +189,16 @@ def _run_webview(url: str, on_closed=None, ctx=None) -> bool:
         except Exception as exc:
             print("  托盘图标不可用（不影响主程序）：" + str(exc)[:120])
         # 显式指定 EdgeChromium：Windows 上其它后端要么是 IE，要么要额外运行库
+        import time as _time
+        _t0 = _time.time()
         webview.start(gui="edgechromium", private_mode=False, storage_path=str(_storage_dir()))
+        # webview.start 返回 = 窗口关闭。记一下存活时长：
+        # 只活了几十秒就退出，通常是前端/渲染进程出问题，而不是用户关的。
+        try:
+            from .log import log_note
+            log_note("window.exit", "webview.start 返回，窗口存活 %.1f 秒" % (_time.time() - _t0))
+        except Exception:
+            pass
         return True
     except Exception as exc:
         print("  内置窗口启动失败，改用备用方式：" + str(exc)[:160])

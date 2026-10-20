@@ -127,7 +127,8 @@ class Repo:
                 continue
             if size > LARGE_LIMIT:
                 # 大文件只记指纹，不存内容（docx/视频这类）
-                h = "L:" + hashlib.sha1(str(path) + ":" + str(size) + ":" + str(path.stat().st_mtime)).hexdigest()
+                stamp = "%s:%s:%s" % (path, size, path.stat().st_mtime)
+                h = "L:" + hashlib.sha1(stamp.encode("utf-8")).hexdigest()
                 out[rel.as_posix()] = (h, size, True)
                 continue
             try:

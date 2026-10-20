@@ -381,6 +381,10 @@ function mtAlert(title, body) {
   return mtDialog({ title, body, okText: '知道了', cancelText: '关闭' });
 }
 
+/* 编辑框里有没有未保存的输入：有的话 Ctrl+Z 交给浏览器的文本撤销，
+   没有的话 Ctrl+Z 就是画布撤销（否则点了节点之后撤销键会像失灵一样）。 */
+let editorDirty = false;
+
 /* ---------------------------------------------------------- 撤销 / 重做
    每一步改动前把结构拍个快照；涉及删除文件的动作，还会把文件内容一起记下来，
    撤销时连同文件一起还原。 */
@@ -462,7 +466,8 @@ async function doRedo() {
 
 window.addEventListener('keydown', (e) => {
   const tag = document.activeElement && document.activeElement.tagName;
-  if (tag === 'INPUT' || tag === 'TEXTAREA') return;   // 输入框里交给浏览器自己的撤销
+  const inField = tag === 'INPUT' || tag === 'TEXTAREA';
+  if (inField && editorDirty) return;   // 正在改正文：让浏览器做文本撤销
   const mod = e.ctrlKey || e.metaKey;
   if (!mod) return;
   if (e.key === 'z' || e.key === 'Z') {
@@ -1017,6 +1022,8 @@ window.addEventListener('blur', closeCtxMenu);
 
 /** 把视图缩放到刚好框住所有节点 */
 function fitView(padding = 60) {
+  // 右侧常驻编辑栏会吃掉一块宽度，全图适配时把最小缩放抬到 0.62，
+  // 再小字就看不清了（0.3 时正文只有 6px）。
   const list = [graph.trunk, ...graph.nodes]
     .filter((n) => n && !n.floating && typeof n.x === 'number' && typeof n.y === 'number');
   if (!list.length) { view = { x: 0, y: 0, scale: 1 }; applyView(); return; }
@@ -1031,7 +1038,7 @@ function fitView(padding = 60) {
   const rect = canvas.getBoundingClientRect();
   const bw = Math.max(1, maxX - minX);
   const bh = Math.max(1, maxY - minY);
-  const scale = Math.min(1.3, Math.max(0.3,
+  const scale = Math.min(1.3, Math.max(0.62,
     Math.min((rect.width - padding * 2) / bw, (rect.height - padding * 2) / bh)));
   view.scale = scale;
   view.x = (rect.width - bw * scale) / 2 - minX * scale;
@@ -1274,6 +1281,12 @@ function toCanvas(clientX, clientY) {
 
 // 空白处按住拖动 → 平移整个画布
 canvas.addEventListener('mousedown', (e) => {
+  // 在画布上按鼠标 = 离开输入框，否则 Ctrl+Z 会被输入框的文本撤销吃掉，
+  // 用户会觉得"画布的撤销键没反应"。
+  const active = document.activeElement;
+  if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+    try { active.blur(); } catch (err) { /* 忽略 */ }
+  }
   if (e.button !== 0) return;
   if (e.target.closest('.node')) return;
   panState = { sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
@@ -2173,6 +2186,7 @@ document.getElementById('attachBtn').addEventListener('click', async () => {
 });
 
 async function openEditor(data) {
+  editorDirty = false;
   if (!data) return;
   editingId = data.id;
   await ensureNodeFile(data);
@@ -2736,10 +2750,18 @@ document.getElementById('historyHost').addEventListener('click', (e) => {
 });
 
 select(null);
+showEditorEmpty();
 render();
 bootAsync();
+// 右侧常驻编辑栏占掉一块宽度：等布局稳定后再把图适配进剩余区域，
+// 否则右边几个节点会被编辑栏挡住。
+setTimeout(() => { try { fitView(false); } catch (e) {} }, 400);
 initWatchUI();
 initMarkdownEditor();
+// 任何编辑框的输入都算"脏"，此时 Ctrl+Z 交给文本撤销
+for (const el of document.querySelectorAll('#editorHost input, #editorHost textarea')) {
+  el.addEventListener('input', () => { editorDirty = true; });
+}
 
 const undoBtnEl = document.getElementById('undoBtn');
 const redoBtnEl = document.getElementById('redoBtn');

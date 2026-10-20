@@ -47,6 +47,45 @@ def _existing_instance(host: str, port: int) -> str:
     return ""
 
 
+_MUTEX_HANDLE = None
+
+
+def _single_instance_mutex(name: str = "MakiseToolkit.SingleInstance") -> bool:
+    """拿命名互斥量。返回 True 表示本进程是第一个，False 表示已经有实例在跑。
+
+    为什么不用 HTTP ping 判断：对方可能刚起来还没开始监听，
+    ping 失败会让第二个实例继续往下走、再开一个 WebView2 窗口，
+    而 WebView2 的用户数据目录是独占的 —— 第二个窗口必定初始化失败，
+    用户看到的就是一堆空白窗口（0x8007139F）。
+    """
+    global _MUTEX_HANDLE
+    if sys.platform != "win32":
+        return True
+    try:
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.CreateMutexW(None, False, "Local\\" + name)
+        if not handle:
+            return True                      # 拿不到就放行，别把用户挡在门外
+        _MUTEX_HANDLE = handle               # 保持引用，进程活着就一直占着
+        return kernel32.GetLastError() != 183   # ERROR_ALREADY_EXISTS
+    except Exception:
+        return True
+
+
+def _activate_existing(base: str) -> bool:
+    """请已经运行的实例把窗口拉到前台。"""
+    try:
+        req = urllib.request.Request(base.rstrip("/") + "/api/window/activate",
+                                     data=b"{}", method="POST",
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=3) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        return bool(payload.get("ok"))
+    except Exception:
+        return False
+
+
 def cmd_serve(args) -> int:
     # 必须在创建任何窗口之前声明 DPI 感知，否则 Windows 会把整个窗口位图拉伸，
     # 在非 100% 缩放的机器上界面就是糊的。
@@ -59,25 +98,31 @@ def cmd_serve(args) -> int:
 
     # 单实例：桌面版双击第二次时不该报"端口被占用"，
     # 直接把已经在跑的那个界面打开就好。
+    if not args.allow_multi and not _single_instance_mutex():
+        # 已经有实例在跑：等它开始监听（最多 10 秒），然后请它把窗口拿到前台
+        for _ in range(20):
+            running = _existing_instance(args.host, args.port)
+            if running and _activate_existing(running):
+                print("  已经有一个 MakiseToolkit 在运行，已切换到它的窗口。")
+                return 0
+            time.sleep(0.5)
+        # 拿不到窗口就不要硬开第二个（WebView2 会初始化失败，只会多一个空白窗口）
+        print("  已经有一个 MakiseToolkit 在运行。")
+        return 0
+
     if not args.allow_multi:
         running = _existing_instance(args.host, args.port)
         if running:
             print(f"  程序已经在运行：{running}")
-            if args.no_browser:
+            # 直接让已经在跑的那个窗口跳到前台。
+            # 以前这里会再开一个 WebView 窗口，但 WebView2 的用户数据目录是独占的，
+            # 第二个窗口必定起不来，用户看到的就是一堆空白窗口。
+            if _activate_existing(running):
+                print("  已切换到正在运行的窗口。")
                 return 0
-            # 第二次双击时要开**我们自己的窗口**，而不是把用户丢进系统浏览器。
-            # 之前这里直接 webbrowser.open()，用户看到的就是一个浏览器标签页，
-            # 会以为"这程序是个网页"——实际只是复用了已经在跑的那个服务。
-            if args.browser:
-                print("  使用系统浏览器打开\n")
-                webbrowser.open(running)
-                ctx.window_mode = "browser"
-                return 0
-            from .desktop import open_window
-            print("  正在打开独立窗口…\n")
-            mode = open_window(running, ctx)
-            if not getattr(ctx, "window_mode", ""):
-                ctx.window_mode = mode
+            # 拉不到窗口就不要硬开第二个：WebView2 的用户数据目录是独占的，
+            # 第二个窗口必定初始化失败，用户只会多一个空白窗口。
+            print("  已经有一个 MakiseToolkit 在运行。")
             return 0
 
     httpd = serve(ctx, host=args.host, port=args.port, quiet=not args.verbose)

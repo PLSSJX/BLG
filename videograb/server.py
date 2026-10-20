@@ -452,6 +452,21 @@ class Handler(BaseHTTPRequestHandler):
             _le2("api:" + route, exc)
             return self._error(f"服务器内部错误：{exc}", 500)
 
+    def _activate_window(self) -> None:
+        """把本进程的窗口拉到前台（第二次双击时用，避免开第二个 WebView 窗口）。"""
+        try:
+            from . import window_frame as _wf
+            hwnd = _wf.find_window("")
+            if not hwnd:
+                return self._json({"ok": False, "error": "没找到窗口"})
+            import ctypes
+            user32 = ctypes.windll.user32
+            user32.ShowWindow(hwnd, 9)        # SW_RESTORE
+            user32.SetForegroundWindow(hwnd)
+            return self._json({"ok": True})
+        except Exception as exc:
+            return self._json({"ok": False, "error": str(exc)[:120]})
+
     # ---------------- 项目管理 ----------------
     def _project_api(self, route: str, data: dict) -> None:
         try:
@@ -494,6 +509,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # ---------------- POST API ----------------
     def _api_post(self, route: str) -> None:
+        if route == "/api/window/activate":
+            return self._activate_window()
         if route.startswith("/api/project"):
             return self._project_api(route, self._body())
         ctx = self.ctx

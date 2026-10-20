@@ -40,6 +40,19 @@ def attach_parent_console() -> bool:
         return False
 
 
+def enable_crash_log() -> None:
+    """原生崩溃（访问冲突之类）不会给 Python 异常，只能靠 faulthandler 记下来。"""
+    try:
+        import faulthandler
+        path = base_dir() / "data" / "crash.log"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        stream = open(path, "a", encoding="utf-8", buffering=1)
+        stream.write("\n" + "=" * 60 + "\n" + "启动 " + __import__("time").strftime("%Y-%m-%d %H:%M:%S") + "\n")
+        faulthandler.enable(file=stream, all_threads=True)
+    except Exception:
+        pass
+
+
 def redirect_io_to_log() -> None:
     """没有控制台时把 print 导向日志文件，顺便给用户留一份可排查的记录。"""
     if sys.stdout is not None and sys.stderr is not None:
@@ -84,6 +97,7 @@ def main() -> int:
 if __name__ == "__main__":
     attach_parent_console()
     redirect_io_to_log()
+    enable_crash_log()
     try:
         sys.exit(main())
     except SystemExit:

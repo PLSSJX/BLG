@@ -55,15 +55,15 @@ JUNK_DIRS = {".git", ".mt", "node_modules", "__pycache__"}
 
 # ------------------------------------------------------------------ 锁检测
 def _holders(path: Path) -> list:
-    """判断文件是否被别的程序独占打开。
+    """判断文件是否被别的程序占用（Windows）。
 
-    早先这里用 Windows Restart Manager（ctypes 调 rstrtmgr.dll），
-    在 64 位下会偶发访问冲突，直接把整个服务进程打崩（无 Python 异常可捕获）。
-    改成一个纯 Python 的探测：独占打开时 os.open 会失败。
+    做法：用 CreateFileW 以「独占、不共享」的方式试着打开一次。
+    如果别的程序（Word / WPS / 记事本 / 其它编辑器）正开着它，
+    这个调用会失败，我们就知道不能提交。
 
-    注意：VS Code / Typora 这类编辑器根本不锁文件，这里查不到占用是正常的，
-    它们靠「内容变化 + 静默窗口」判断，不依赖这个。
-    被占用时返回 [(None, "占用中")]，否则返回 []。
+    注意：以前这里用 Restart Manager（ctypes 回调 + rstrtmgr.dll），
+    在 64 位下会偶发访问冲突直接把进程打崩，所以改成这种一次性的简单调用：
+    没有回调、没有注册，失败最多是判断不出来，不会带走整个进程。
     """
     if os.name != "nt":
         return []
@@ -73,13 +73,29 @@ def _holders(path: Path) -> list:
     except OSError:
         return []
     try:
-        fd = os.open(str(path), os.O_RDWR)
-    except PermissionError:
-        return [(None, "被其他程序占用")]
-    except OSError:
-        return []          # 其它原因（只读、权限等）：当作可以提交
-    else:
-        os.close(fd)
+        import ctypes
+        from ctypes import wintypes
+        GENERIC_READ = 0x80000000
+        GENERIC_WRITE = 0x40000000
+        OPEN_EXISTING = 3
+        FILE_ATTRIBUTE_NORMAL = 0x80
+        INVALID = ctypes.c_void_p(-1).value
+        kernel32 = ctypes.windll.kernel32
+        kernel32.CreateFileW.restype = wintypes.HANDLE
+        kernel32.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                         ctypes.c_void_p, wintypes.DWORD, wintypes.DWORD,
+                                         wintypes.HANDLE]
+        handle = kernel32.CreateFileW(str(path), GENERIC_READ | GENERIC_WRITE, 0,
+                                      None, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, None)
+        if handle == INVALID or handle is None:
+            err = kernel32.GetLastError()
+            # 32 = 共享冲突（被打开）；5 = 拒绝访问（只读或权限），不算"被占用"
+            if err == 32:
+                return [(None, "被其他程序占用")]
+            return []
+        kernel32.CloseHandle(handle)
+        return []
+    except Exception:
         return []
 
 
@@ -861,12 +877,17 @@ def watch_loop(stop_event: threading.Event) -> None:
                         pw = ProjectWatch(path)
                         WATCHERS[item["id"]] = pw
 
-                # 分支变了就先暂停，避免提交到用户没预期的分支
+                # 分支变了就先暂停，避免提交到用户没预期的分支。
+                # 注意：项目还没有任何版本时 rev-parse HEAD 会失败，
+                # 这里绝不能 continue —— 否则永远扫不到改动、也就永远建不出第一个版本。
                 try:
                     head = run_git(path, "rev-parse", "HEAD").strip()
+                except ApiError:
+                    head = ""
+                try:
                     branch = run_git(path, "rev-parse", "--abbrev-ref", "HEAD").strip()
                 except ApiError:
-                    continue
+                    branch = "main"
                 if pw.last_branch and branch != pw.last_branch and not pw.paused:
                     pw.paused = True
                     pw.pause_reason = "分支从 " + pw.last_branch + " 切到了 " + branch
@@ -1455,7 +1476,10 @@ def api_staged_attach(payload: dict) -> dict:
     node_id = str(payload.get("nodeId") or "").strip()
     rel = str(payload.get("path") or "").strip()
     graph = locked_read_graph(path)
-    node = next((n for n in (graph.get("nodes") or []) if n.get("id") == node_id), None)
+    pool = list(graph.get("nodes") or [])
+    if graph.get("trunk"):
+        pool.append(graph["trunk"])       # 主干不在 nodes 列表里，但它也能挂文件
+    node = next((n for n in pool if n.get("id") == node_id), None)
     if node is None:
         raise ApiError("找不到这个节点")
     target = ensure_inside(path, rel)
@@ -1486,7 +1510,10 @@ def api_attach(payload: dict) -> dict:
         raise ApiError("找不到这个文件：" + str(src))
 
     graph = locked_read_graph(path)
-    node = next((n for n in (graph.get("nodes") or []) if n.get("id") == node_id), None)
+    pool = list(graph.get("nodes") or [])
+    if graph.get("trunk"):
+        pool.append(graph["trunk"])     # 主干也能挂文件
+    node = next((n for n in pool if n.get("id") == node_id), None)
     if node is None:
         raise ApiError("找不到这个节点")
 
@@ -1520,7 +1547,10 @@ def api_asset_remove(payload: dict) -> dict:
     node_id = str(payload.get("nodeId") or "").strip()
     rel = str(payload.get("path") or "").strip()
     graph = locked_read_graph(path)
-    node = next((n for n in (graph.get("nodes") or []) if n.get("id") == node_id), None)
+    pool = list(graph.get("nodes") or [])
+    if graph.get("trunk"):
+        pool.append(graph["trunk"])
+    node = next((n for n in pool if n.get("id") == node_id), None)
     if node is None:
         raise ApiError("找不到这个节点")
     node["assets"] = [a for a in (node.get("assets") or []) if a.get("path") != rel]

@@ -20,6 +20,7 @@ from __future__ import annotations
 import ctypes
 import os
 import sys
+from ctypes import wintypes
 import threading
 import time
 
@@ -95,7 +96,7 @@ def find_window(title: str = "") -> int:
         if not user32.IsWindowVisible(hwnd):
             return True
         if not user32.GetWindow(hwnd, 4):     # GW_OWNER：跳过对话框之类的子窗口
-            rect = wt.RECT()
+            rect = wintypes.RECT()
             user32.GetWindowRect(hwnd, ctypes.byref(rect))
             area = max(0, rect.right - rect.left) * max(0, rect.bottom - rect.top)
             found.append((area, hwnd))

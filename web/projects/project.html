@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Makise Toolkit · 项目画布</title>
-<link rel="stylesheet" href="css/style.css?v=2">
+<link rel="stylesheet" href="css/style.css?v=3">
 <style>
   /* 内嵌到 MT 主界面时，隐藏原型自己的左侧栏（MT 已经有导航栏了） */
   body.embed-mode .rail { display: none; }
@@ -59,11 +59,11 @@
       </div>
 
       <div class="toolbar">
-        <button class="btn tonal" id="autoToggle" title="关闭后改动只累积，不会自动保存">自动保存：开</button>
+        <button class="btn tonal" id="autoToggle" title="关闭后改动只累积，不会自动保存">自动保存</button>
         <span id="watchStatus" style="font-size:12px;color:var(--md-on-surface-variant)">监听中</span>
         <span class="dirty-dot" id="dot"></span>
         <button class="btn" id="save" disabled>保存版本</button>
-        <button class="btn tonal" id="autoSummary">摘要同步：开</button>
+        <button class="btn tonal" id="autoSummary">摘要同步</button>
         <button class="btn tonal" id="branchBtn">分支：main</button>
         <button class="btn tonal" id="history">历史</button>
         <div class="grow"></div>
@@ -160,10 +160,10 @@
     </div>
   </div>
 </div>
-<script src="js/data.js?v=2"></script>
-<script src="js/api.js?v=2"></script>
-<script src="js/md.js?v=2"></script>
-<script src="js/canvas.js?v=2"></script>
+<script src="js/data.js?v=3"></script>
+<script src="js/api.js?v=3"></script>
+<script src="js/md.js?v=3"></script>
+<script src="js/canvas.js?v=3"></script>
 <script>
   if (document.documentElement.dataset.embed === '1') document.body.classList.add('embed-mode');
 </script>
