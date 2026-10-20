@@ -2079,7 +2079,7 @@ function buildDownloadCard2(settings) {
   return card(
     h('div', { class: 'card-title', html: icon('download', 'outlined', 20) + '<span>下载</span>' }),
     h('div', { class: 'card-desc' }, '多线程分块下载，支持断点续传；中断后重新下载会自动跳过已完成的块。'),
-    field('视频下载目录', h('div', { class: 'search-field' }, dir,
+    field('下载根目录（下面四个分类目录都放在它里面）', h('div', { class: 'search-field' }, dir,
       button('选择…', { variant: 'tonal', iconName: 'folder_open', onClick: async () => {
         // 用系统文件夹选择框，避免手打路径出错
         try {
@@ -2130,8 +2130,8 @@ function buildDownloadCard2(settings) {
     // 三个下载目录放在同一张卡里：视频 / 音乐 / 文献。原来音乐目录是单独一张卡，
     // 东一个西一个不好对照，用户也容易只改了一处。
     (() => {
-      const mkRow = (label, field_, hintText, picker, opener) => {
-        const box = h('input', { class: 'input', value: settings[field_] || '', placeholder: hintText });
+      const mkRow = (label, field_, hintText, picker, opener, resolved) => {
+        const box = h('input', { class: 'input', value: settings[field_] || resolved || '', placeholder: hintText });
         return field(label, h('div', { class: 'search-field' }, box,
           button('选择…', { variant: 'tonal', iconName: 'folder_open', onClick: async () => {
             try {
@@ -2152,8 +2152,10 @@ function buildDownloadCard2(settings) {
         });
       };
       return h('div', {},
-        mkRow('音频目录', 'music_dir', '留空 = 下载目录下的 audio', () => api.pickMusicDir(), (v) => api.open(v)),
-        mkRow('文档目录', 'doc_dir', '留空 = 下载目录下的 document', () => api.pickDownloadDir(), (v) => api.open(v)),
+        mkRow('视频目录', 'video_dir', '留空 = 下载目录下的 video', () => api.pickDownloadDir(), (v) => api.open(v), (store.config.dirs || {}).video),
+        mkRow('音频目录', 'music_dir', '留空 = 下载目录下的 audio', () => api.pickMusicDir(), (v) => api.open(v), (store.config.dirs || {}).music),
+        mkRow('文档目录', 'doc_dir', '留空 = 下载目录下的 document', () => api.pickDownloadDir(), (v) => api.open(v), (store.config.dirs || {}).document),
+        mkRow('图片目录', 'image_dir', '留空 = 下载目录下的 image', () => api.pickDownloadDir(), (v) => api.open(v), (store.config.dirs || {}).image),
         h('div', { class: 'card-desc', style: { marginTop: '4px', opacity: '.7' } },
           '所有输入框改完即保存。默认在下载目录下分 video / audio / document / image 四个子文件夹。'));
     })(),

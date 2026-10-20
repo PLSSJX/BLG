@@ -63,6 +63,15 @@ def build_state(ctx: Context) -> dict:
         "bili_name": _bili_login()[1],
         "logged_in": _bili_login()[0],
         "download_dir": str(ctx.download_dir()),
+        # 四个分类目录的真实路径（设置留空时就是算出来的默认值），
+        # 界面上直接显示，用户才知道文件到底落在哪
+        "dirs": {
+            "download": str(ctx.download_dir()),
+            "video": str(ctx.video_dir()),
+            "music": str(ctx.music_dir()),
+            "document": str(ctx.download_dir() / str(getattr(settings, "doc_dir", "document") or "document")),
+            "image": str(ctx.image_dir()),
+        },
         # 前端拿它给所有写操作签名；跨站页面读不到这个响应（CORS），拿不到令牌
         "api_token": getattr(ctx, "api_token", ""),
         "window_mode": getattr(ctx, "window_mode", "") or "server",
