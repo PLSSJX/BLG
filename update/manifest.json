@@ -1,6 +1,6 @@
 {
  "version": "3.6.0",
- "generated": "2026-10-20 07:04:32 UTC",
+ "generated": "2026-10-20 07:45:02 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -16,8 +16,8 @@
   },
   {
    "path": "web/js/api.js",
-   "sha256": "7adb07094eae6213a5c503bb27d734da68bd2d5ee12f3c0888da42011b27b34b",
-   "size": 6434
+   "sha256": "89331efe6c61fa067f929fc67f5aec4d6ee8842b0a9580825037a02b2f1d2b5c",
+   "size": 6628
   },
   {
    "path": "web/js/app.js",
@@ -31,8 +31,8 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "45df117da0daad80c9e691496e4b012ad8a313c435ab789eb218076585043d7c",
-   "size": 176334
+   "sha256": "383d63596b9409a1130f08719cdfd0cfb41551619a7c2cf2bce00b4a744bd878",
+   "size": 179337
   },
   {
    "path": "web/js/player.js",
@@ -93,8 +93,8 @@
   },
   {
    "path": "README.md",
-   "sha256": "279b6a8fa047c2633934571ddc032caf8e382c8869caa65d1cf8066c38554d35",
-   "size": 12568
+   "sha256": "2e40c9c30224349c12025353281783d954d7a60ac005256901a4087feea11295",
+   "size": 12589
   },
   {
    "path": "videograb/__init__.py",
@@ -118,8 +118,8 @@
   },
   {
    "path": "videograb/config.py",
-   "sha256": "83bf3ba16c6bf14a25b8ec1f3cee1402932d43372d8afd191e96c9ca18a198ac",
-   "size": 14643
+   "sha256": "cb8afc7af3fffe8d8be45862fc09933bd21fdcb600175bb29915a89e330d6ede",
+   "size": 15666
   },
   {
    "path": "videograb/convert.py",
@@ -293,8 +293,8 @@
   },
   {
    "path": "videograb/server.py",
-   "sha256": "c98e3fdbbc5f9df1f40ca01594211943a5249fe36f3fa55be9037a337284ac8d",
-   "size": 90117
+   "sha256": "c2ddb0034fb0c885c0bf8d3df4d836cec68a41da440697d77cea60cfd6b312c5",
+   "size": 94695
   },
   {
    "path": "videograb/sites/__init__.py",
@@ -363,8 +363,8 @@
   },
   {
    "path": "videograb/tasks.py",
-   "sha256": "82832f40dba6e91b0ebd5505756f2a19368afc349981b93f81d8940a20361ddc",
-   "size": 56589
+   "sha256": "a7848fec2a3cf3e3bb08f86d1245e911c5dca7f79eede23a310759c76aa58346",
+   "size": 56586
   },
   {
    "path": "videograb/titlebar.py",

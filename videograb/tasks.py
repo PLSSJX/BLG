@@ -602,7 +602,7 @@ class TaskManager:
             "quality": qn_short(task.qn), "engine": task.engine_used,
         }) or ("music" if info.media == "music" else "video"))
         # 音乐和视频分开放：音乐进 music_dir()，视频进 download_dir()
-        root = ctx.music_dir() if info.media == "music" else ctx.download_dir()
+        root = ctx.music_dir() if info.media == "music" else ctx.video_dir()
         # 重试时沿用上次的目录，断点续传才有意义；新任务才去申请新目录
         if task.directory and Path(task.directory).is_dir():
             directory = Path(task.directory)

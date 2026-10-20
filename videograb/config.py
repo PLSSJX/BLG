@@ -136,6 +136,7 @@ class Settings:
     download_dir: str = ""          # 留空 = exe 同级的 downloads 目录
     # 音乐单独放一个目录，别和视频混在一起。留空 = <download_dir>/音乐
     music_dir: str = ""
+    video_dir: str = ""
     # "native" = 系统标题栏；"custom" = 自绘标题栏（可调高度/配色/按钮大小）
     titlebar: str = "native"
     # 文档转 PDF 的两条通路。用户可以单独关掉某一条，也可以指定优先用哪条。
@@ -261,6 +262,28 @@ class Context:
                 return candidate
         DEFAULT_DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
         return DEFAULT_DOWNLOAD_DIR
+
+    def video_dir(self) -> Path:
+        """视频下载目录。留空就跟着下载目录走 <download_dir>/视频。
+
+        以前视频直接落在下载目录根上，和音乐、文献、文档转换混在一层，
+        打开文件夹看着就是"什么都在一起"。给视频一个对称的子目录，
+        这样 <下载目录> 下只有 视频 / 音乐 / documents / papers 几个分类。
+        """
+        configured = (self.settings.video_dir or "").strip()
+        if configured:
+            candidate = Path(configured)
+            if not candidate.is_absolute():
+                candidate = BASE_DIR / candidate
+            try:
+                if candidate.exists() or candidate.parent.exists():
+                    candidate.mkdir(parents=True, exist_ok=True)
+                    return candidate
+            except OSError:
+                pass
+        target = self.download_dir() / "视频"
+        target.mkdir(parents=True, exist_ok=True)
+        return target
 
     def music_dir(self) -> Path:
         """音乐下载目录。留空就跟着下载目录走 <download_dir>/音乐，

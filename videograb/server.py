@@ -440,6 +440,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "engines": describe(ctx)})
         if route == "/api/settings":
             return self._json({"ok": True, "settings": _public_settings(ctx)})
+
         if route == "/api/ping":
             # 单实例检测用：另一个进程靠它判断"这个端口上是不是已经有一个 MakiseToolkit"
             return self._json({"ok": True, "app": "MakiseToolkit", "version": __version__})
@@ -778,6 +779,10 @@ class Handler(BaseHTTPRequestHandler):
             target = Path(raw).resolve()
             roots = [ctx.download_dir().resolve()]
             try:
+                roots.append(ctx.video_dir().resolve())
+            except Exception:
+                pass
+            try:
                 roots.append((ctx.download_dir() / str(getattr(ctx.settings, "doc_dir", "documents"))).resolve())
             except Exception:
                 pass
@@ -1023,6 +1028,86 @@ class Handler(BaseHTTPRequestHandler):
             except _pl.PlaylistError as exc:
                 raise ApiError(str(exc)) from None
 
+        if route in ("/api/settings/move-preview", "/api/settings/move-apply"):
+            # 改下载目录时，问用户要不要把已有文件搬过去。
+            # 前端先调 move-preview 拿数量，用户点"迁移"再调 move-apply。
+            import os as _os
+            import shutil as _shutil
+            field = str(payload.get("field") or "download_dir")
+            if field not in ("download_dir", "music_dir"):
+                raise ApiError("只能迁移下载目录或音乐目录")
+            # 旧目录由前端传进来。不能读 ctx：设置页的「选择…」按钮会先把新目录
+            # 存进服务端，等用户点「保存」时 ctx 里已经是新值了，两下相等 →
+            # 永远判断成"没改过"，迁移询问就不会出现（实测就是这样）。
+            given_from = str(payload.get("from") or "").strip()
+            if given_from:
+                old_root = Path(given_from)
+            elif field == "download_dir":
+                old_root = ctx.download_dir()
+            else:
+                old_root = ctx.music_dir()
+            raw_new = str(payload.get("value") or "").strip()
+            if not raw_new:
+                # 留空 = 恢复默认目录，同样要迁移
+                raw_new = str(ctx.download_dir()) if field == "download_dir" else ""
+            new_root = (Path(raw_new) if raw_new else old_root)
+            try:
+                old_r = old_root.resolve()
+                new_r = new_root.resolve()
+            except OSError as exc:
+                raise ApiError("路径无法解析：" + str(exc)[:80]) from None
+            if old_r == new_r:
+                return self._json({"ok": True, "same": True, "files": 0, "bytes": 0,
+                                   "from": str(old_r), "to": str(new_r)})
+            # 互相包含时拒绝：会把文件搬进自己里面，越搬越深
+            if old_r in new_r.parents or new_r in old_r.parents:
+                raise ApiError("新旧目录不能是父子关系")
+            if not old_r.is_dir():
+                return self._json({"ok": True, "same": False, "files": 0, "bytes": 0,
+                                   "from": str(old_r), "to": str(new_r)})
+            total = 0
+            size = 0
+            for item in old_r.rglob("*"):
+                try:
+                    if item.is_file() and not item.is_symlink():
+                        total += 1
+                        size += item.stat().st_size
+                except OSError:
+                    continue
+            if route == "/api/settings/move-preview":
+                return self._json({"ok": True, "same": False, "files": total, "bytes": size,
+                                   "from": str(old_r), "to": str(new_r)})
+            # 真正搬：逐文件移动，保留相对路径；失败只记录，不中断
+            new_r.mkdir(parents=True, exist_ok=True)
+            moved = failed = moved_bytes = skipped = 0
+            skipped_names = []
+            errors = []
+            for item in list(old_r.rglob("*")):
+                try:
+                    if not item.is_file() or item.is_symlink():
+                        continue
+                    rel = item.relative_to(old_r)
+                    dest = new_r / rel
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    if dest.exists():
+                        # 同名就跳过，绝不动已有文件 —— 迁移是搬运，不是覆盖。
+                        # 覆盖掉的旧文件是恢复不了的，宁可留着让用户自己判断。
+                        skipped += 1
+                        if len(skipped_names) < 5:
+                            skipped_names.append(rel.name)
+                        continue
+                    size_now = item.stat().st_size
+                    _shutil.move(str(item), str(dest))
+                    moved += 1
+                    moved_bytes += size_now
+                except Exception as exc:
+                    failed += 1
+                    if len(errors) < 3:
+                        errors.append(item.name + ": " + str(exc)[:60])
+            return self._json({"ok": True, "moved": moved, "failed": failed,
+                               "skipped": skipped, "skipped_names": skipped_names,
+                               "bytes": moved_bytes, "errors": errors,
+                               "from": str(old_r), "to": str(new_r)})
         if route == "/api/credentials/check":
             from . import credentials as _cred
             site = str(payload.get("site") or "").strip().lower()
