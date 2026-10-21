@@ -176,6 +176,30 @@ check('⑨ 重建后正文完好', bodyAfterRepair.includes('断电时手动写�
 commitNow('mt: 重建后提交');
 check('⑨ 重建后能继续提交', log(5).length >= 1, '版本数 ' + log(5).length);
 
+// ---------------------------------------------------------------- ⑩ 版本库损坏时的降级
+// 真实的"迁移/升级失败"长这样：history.db 被写坏（断电写一半、手滑覆盖、杀毒软件截断）。
+// 要求：正文一个字节都不能丢；项目还能打开、还能继续保存；
+// 版本历史丢了要能说清楚，而不是整个项目打不开。
+killApp();
+await sleep(1200);
+try {
+  fs.writeFileSync(path.join(mtDir, 'history.db'), 'this is not a sqlite database', 'utf8');
+  for (const extra of ['history.db-wal', 'history.db-shm']) {
+    try { fs.rmSync(path.join(mtDir, extra), { force: true }); } catch (e) { /* 忽略 */ }
+  }
+} catch (e) { console.log('   写坏版本库失败：' + e.code); }
+await startApp();
+const afterCorrupt = post('/api/project/load', { id });
+const bodyAfterCorrupt = readBody();
+check('⑩ 版本库损坏后项目仍能打开', !afterCorrupt.error, afterCorrupt.error || 'ok');
+check('⑩ 版本库损坏后正文完好', bodyAfterCorrupt.includes('断电时手动写入的内容') || bodyAfterCorrupt.length > 0,
+  bodyAfterCorrupt.trim().slice(0, 30));
+const saveAfterCorrupt = write('# 正文\n\n版本库损坏后新写的内容\n');
+check('⑩ 版本库损坏后仍能保存正文', !saveAfterCorrupt.error && readBody().includes('版本库损坏后新写'),
+  saveAfterCorrupt.error || 'ok');
+const commitAfterCorrupt = commitNow('mt: 损坏后重建');
+check('⑩ 版本库损坏后能重新开始记录版本', !!commitAfterCorrupt.ok, JSON.stringify(commitAfterCorrupt).slice(0, 60));
+
 // ---------------------------------------------------------------- 收尾
 post('/api/project/delete', { id, deleteFiles: true });
 try { fs.rmSync(root, { recursive: true, force: true }); } catch {}

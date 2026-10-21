@@ -101,8 +101,17 @@ class Repo:
         if conn is None:
             conn = sqlite3.connect(str(self.db_path), timeout=15, isolation_level=None)
             conn.row_factory = sqlite3.Row
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
+            try:
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA synchronous=NORMAL")
+            except sqlite3.DatabaseError:
+                # 库坏了：必须先关上这个句柄，否则 Windows 下文件被占用，
+                # 后面想把坏库改名留档会直接失败（rename 返回 false）。
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                raise
             self._local.conn = conn
             self._conns.append(conn)
         return conn
@@ -129,10 +138,44 @@ class Repo:
             except Exception:
                 pass
 
+    def _quarantine_broken(self) -> bool:
+        """history.db 读不出来时把它改名留档，然后新建一个空库。
+
+        真实场景：断电写到一半、杀毒软件截断、用户手滑覆盖。
+        这时最要紧的是**正文不能丢**、项目还能继续存版本；
+        历史确实没了，但要把坏库留成 .broken-<时间> 供人工抢救，
+        而不是让项目从此打不开、永远提交失败。
+        """
+        broken = self.db_path.with_name(
+            self.db_path.name + ".broken-" + time.strftime("%Y%m%d-%H%M%S"))
+        try:
+            for suffix in ("", "-wal", "-shm"):
+                src = self.db_path.with_name(self.db_path.name + suffix)
+                if src.exists():
+                    src.replace(broken.with_name(broken.name + suffix))
+        except OSError:
+            return False
+        try:
+            self._local.conn = None
+        except Exception:
+            pass
+        try:
+            self._conns = []
+        except Exception:
+            pass
+        return True
+
     def init(self) -> None:
         with _LOCK:
-            conn = self._conn()
-            conn.executescript(SCHEMA)
+            try:
+                conn = self._conn()
+                conn.executescript(SCHEMA)
+            except sqlite3.DatabaseError:
+                # 库坏了：留档 → 新建 → 再来一次。正文不受影响（正文是普通文件）。
+                if not self._quarantine_broken():
+                    raise
+                conn = self._conn()
+                conn.executescript(SCHEMA)
             conn.execute("INSERT OR IGNORE INTO meta(k, v) VALUES('format', '1')")
             row = conn.execute("SELECT 1 FROM branches WHERE name='main'").fetchone()
             if row is None:
