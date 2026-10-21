@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Makise Toolkit · 项目画布</title>
-<link rel="stylesheet" href="css/style.css?v=5">
+<link rel="stylesheet" href="css/style.css?v=7">
 <style>
   /* 内嵌到 MT 主界面时，隐藏原型自己的左侧栏（MT 已经有导航栏了） */
   body.embed-mode .rail { display: none; }
@@ -11,10 +11,19 @@
   /* 内嵌时不要透明：透明会让外层底色透上来，文字发灰看不清 */
   body.embed-mode .slab { border-radius: 0; }
   body.embed-mode .view { padding: 18px 22px 24px; }
-  body.embed-mode { background: transparent; }
+  body.embed-mode { background: var(--md-surface); }
+  /* 内嵌时必须把高度撑满 iframe，否则底下会露出外层的灰带 */
+  html:has(body.embed-mode),
+  body.embed-mode,
+  body.embed-mode .shell { height: 100%; margin: 0; }
+  body.embed-mode .slab { min-height: 100%; }
 </style>
 <script>
-  if (location.search.indexOf('embed=1') >= 0) document.documentElement.dataset.embed = '1';
+  // 在 MT 里是嵌在 iframe 中的：点进项目后 URL 不再带 ?embed=1，
+  // 所以用 window.top !== window.self 判断，别再依赖查询参数。
+  if (location.search.indexOf('embed=1') >= 0 || window.top !== window.self) {
+    document.documentElement.dataset.embed = '1';
+  }
 </script>
 </head>
 <body>
@@ -163,14 +172,14 @@
     </div>
   </div>
 </div>
-<script src="js/data.js?v=5"></script>
-<script src="js/api.js?v=5"></script>
-<script src="js/md.js?v=5"></script>
+<script src="js/data.js?v=7"></script>
+<script src="js/api.js?v=7"></script>
+<script src="js/md.js?v=7"></script>
 <script>
   // 告诉 MT 主界面：已经打开具体项目了，左上角按钮要变成"退出项目"
   try { parent.postMessage({ type: 'mt-state', view: 'canvas' }, location.origin); } catch (e) {}
 </script>
-<script src="js/canvas.js?v=5"></script>
+<script src="js/canvas.js?v=7"></script>
 <script>
   if (document.documentElement.dataset.embed === '1') document.body.classList.add('embed-mode');
 </script>
