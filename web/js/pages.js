@@ -3554,6 +3554,42 @@ function buildLibraryCard() {
       it.file && it.exists !== false
         ? button('存到项目', { variant: 'text', onClick: () => saveToProject(it.file, it.title) })
         : null,
+      it.file && /\.pdf$/i.test(it.file) && it.exists !== false
+        ? button('OCR 识别', { variant: 'text', onClick: async (e) => {
+            const btn = e.currentTarget;
+            btn.disabled = true;
+            const old = btn.textContent;
+            btn.textContent = '识别中…';
+            try {
+              const r = await api.ocrRun(it.file, 0);
+              toast('识别完成：' + r.pages + ' 页，' + r.chars + ' 字 · 存到 ' + r.out, 9000);
+            } catch (err) {
+              // 没装渲染组件时引导安装，而不是丢一句报错
+              if (/pypdfium2|渲染组件/.test(err.message)) {
+                const yes = await dialog({
+                  title: '还差一个组件',
+                  body: '识别扫描件需要先把 PDF 页面画成图片，这个组件大约 4 MB，从 PyPI 下载，装好后不用再下。',
+                  confirm: '现在安装',
+                });
+                if (yes) {
+                  btn.textContent = '安装中…';
+                  try {
+                    await api.ocrInstall();
+                    const r2 = await api.ocrRun(it.file, 0);
+                    toast('识别完成：' + r2.chars + ' 字', 9000);
+                  } catch (e2) {
+                    toast('仍然失败：' + e2.message, 9000);
+                  }
+                }
+              } else {
+                toast('识别失败：' + err.message, 9000);
+              }
+            } finally {
+              btn.disabled = false;
+              btn.textContent = old;
+            }
+          } })
+        : null,
       button('移除', { variant: 'text', onClick: async () => {
         const yes = await dialog({ title: '从文献库移除？', body: '只去掉这条记录，PDF 文件不会删除。', confirm: '移除' });
         if (!yes) return;

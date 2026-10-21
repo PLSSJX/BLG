@@ -846,6 +846,29 @@ class Handler(BaseHTTPRequestHandler):
             got["library"] = entry
             return self._json(got)
 
+        if route == "/api/ocr/status":
+            from . import ocr as _ocr
+            return self._json(_ocr.status())
+
+        if route == "/api/ocr/install":
+            from . import ocr as _ocr, ApiError as _AE
+            try:
+                result = _ocr.install_component(_ocr.RENDERER_PACKAGE)
+            except _ocr.OcrError as exc:
+                raise ApiError(str(exc)) from None
+            return self._json({"ok": True, **result, "status": _ocr.status()})
+
+        if route == "/api/ocr/run":
+            from . import ocr as _ocr
+            target = str(payload.get("path") or "").strip()
+            if not target:
+                raise ApiError("没有指定 PDF")
+            try:
+                result = _ocr.ocr_pdf(target, limit=int(payload.get("limit") or 0))
+            except _ocr.OcrError as exc:
+                raise ApiError(str(exc)) from None
+            return self._json(result)
+
         if route == "/api/papers/library":
             from . import library as _lib
             data = _lib.load()
