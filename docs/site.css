@@ -144,3 +144,15 @@ code {
   background: rgba(127, 215, 196, .1); border-radius: 6px; padding: 1px 6px;
   font-family: "Cascadia Code", Consolas, monospace; font-size: .92em; color: var(--primary);
 }
+
+/* 统一滚动条：暗色页面里系统默认的亮色轨道很跳。
+   注意不能写 scrollbar-width —— Chromium 里它一出现，::-webkit-scrollbar 就失效。 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(127, 215, 196, .3);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(127, 215, 196, .55); background-clip: content-box; }

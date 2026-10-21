@@ -1,6 +1,6 @@
 {
  "version": "4.0.0",
- "generated": "2026-10-21 17:40:43 UTC",
+ "generated": "2026-10-21 23:34:30 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -138,8 +138,8 @@
   },
   {
    "path": "README.md",
-   "sha256": "2ada02dca34996d869fce5c749dfe5d76195ae19cfd9575b4780c79b0a060e8f",
-   "size": 13062
+   "sha256": "103b94a50a47ca6d18fc3cdfaac3d1a273287d331df500d00dbc7fd86aa1abff",
+   "size": 16118
   },
   {
    "path": "videograb/__init__.py",
@@ -476,5 +476,11 @@
    "sha256": "23602fd10c0396933edc298195f128c0410cad0ff0ce7d49c21799d0ee97cab1",
    "size": 13341
   }
- ]
+ ],
+ "installer": {
+  "name": "MakiseToolkit-Setup-4.0.0.exe",
+  "size": 128681174,
+  "sha256": "48dc51cf5e2a756c40402d023d80d66a787cdf971258f2def8b966c9ce3c0446",
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v4.0.0/MakiseToolkit-Setup-4.0.0.exe"
+ }
 }

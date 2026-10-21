@@ -16,6 +16,7 @@
       <a href="#features">功能</a>
       <a href="#shots">界面</a>
       <a href="#flow">工作流</a>
+      <a href="#safety">安全</a>
       <a href="#limits">边界</a>
       <a href="#download">下载</a>
     </nav>
@@ -129,6 +130,23 @@
   </div>
 </section>
 
+<section id="safety">
+  <div class="wrap">
+    <h2>丢稿这件事，是认真测过的</h2>
+    <p class="sub">论文工具最不能接受的是丢稿。下面这些不是「应该没问题」，是自动化脚本里跑过的。</p>
+    <table class="facts">
+      <tr><td>编辑中强制杀进程</td><td>重启后正文与版本历史都在</td></tr>
+      <tr><td>断电模拟（直接改盘 + 强杀）</td><td>内容不丢，还能继续提交</td></tr>
+      <tr><td>回档 → 再写 → 再回档</td><td>没有「幽灵内容」</td></tr>
+      <tr><td>15 次连续快速保存</td><td>正文是最新一次，版本没漏</td></tr>
+      <tr><td>100+ 个版本</td><td>时间线加载 30–40ms，回档 30–50ms</td></tr>
+      <tr><td>一键备份</td><td>zip 里含 <code>.mt/</code> 版本库与正文，解开就能用</td></tr>
+      <tr><td>附件</td><td>存的是副本，改它不影响原文件</td></tr>
+      <tr><td>版本库目录被删 / 文件损坏</td><td>自动重建或留档重建，正文不受影响</td></tr>
+    </table>
+  </div>
+</section>
+
 <section id="limits">
   <div class="wrap">
     <h2>它做不到什么</h2>
@@ -179,6 +197,7 @@
     </p>
   </div>
 </section>
+
 
 <section id="faq">
   <div class="wrap">
