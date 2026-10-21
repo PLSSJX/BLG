@@ -51,6 +51,24 @@ def _netease_node_alt(url: str) -> str:
     return ""
 
 
+class _GuardedRedirect(urllib.request.HTTPRedirectHandler):
+    """跟着 302 走之前先问一句：这个新地址还能不能去。
+
+    opener.open() 默认自动跟随重定向，而且不复核目标 ——
+    封面代理这种"跟着用户给的地址走"的接口，一个开放重定向就能把本机
+    引向 127.0.0.1 或内网地址。这里把每一跳都交给 guard 判断。
+    """
+
+    def __init__(self, guard):
+        super().__init__()
+        self._guard = guard
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if self._guard and not self._guard(newurl):
+            raise urllib.error.HTTPError(newurl, code, "重定向到不受信任的地址", headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 class HttpError(Exception):
     def __init__(self, status: int, url: str, body: bytes = b"", reason: str = ""):
         self.status = status
@@ -231,6 +249,7 @@ class HttpClient:
         byte_range: tuple[int, int] | None = None,
         allow_redirects: bool = True,
         allow_cookie: bool | None = None,
+        redirect_guard=None,
     ) -> HttpResult:
         settings = self.ctx.settings
 

@@ -389,7 +389,10 @@ def main() -> int:
     icon = make_icon()
 
     step("生成自检基线清单")
-    subprocess.run([sys.executable, str(ROOT / "make_manifest.py")], check=True)
+    # 打包进程序内部的那份不写 installer 字段：
+    # 安装包还没构建，写进去的地址必然是"上一代"的，发布后就成了错链。
+    # 真正的发布清单在 build_installer() 之后再生成一次（带 installer）。
+    subprocess.run([sys.executable, str(ROOT / "make_manifest.py"), "--no-installer"], check=True)
 
     if args.with_ffmpeg:
         ensure_ffmpeg()

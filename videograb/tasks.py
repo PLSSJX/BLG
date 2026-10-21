@@ -944,19 +944,23 @@ class TaskManager:
             data["phase"] = phase if p.phase != "完成" else f"{phase} · 完成"
             task.progress = data
 
-        downloader = Downloader(
-            ctx, source.url, dest,
-            size=getattr(source, "size", 0) or 0,
-            threads=settings.threads_per_task,
-            referer=referer,
-            on_progress=on_progress,
-            cancel_event=task.cancel_event,
-            label=phase,
-        )
         urls = [source.url] + list(getattr(source, "backups", []) or [])
         last_error: Exception | None = None
         for url in urls[:3]:
-            downloader.url = url
+            # 每个地址都新建一个 Downloader。
+            # 复用同一个对象时，上一轮的分片线程可能还卡在 net.request 里：
+            # run() 会把 _abort 清掉、_completed 清空、_done_bytes 归零，
+            # 旧线程继续按新 url/新 size 往同一个 dest 写 —— 文件看着"下完了"，
+            # 中间段却是坏数据，而且一声不响。宁可丢掉旧对象重新来过。
+            downloader = Downloader(
+                ctx, url, dest,
+                size=getattr(source, "size", 0) or 0,
+                threads=settings.threads_per_task,
+                referer=referer,
+                on_progress=on_progress,
+                cancel_event=task.cancel_event,
+                label=phase,
+            )
             try:
                 downloader.run()
                 return

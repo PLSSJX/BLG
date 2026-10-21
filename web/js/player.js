@@ -9,7 +9,48 @@ export const player = {
   shuffle: false,
   loop: 'off',        // off | one | all
   audio: null,
+  volume: (() => {
+    const v = Number(localStorage.getItem('mt.volume'));
+    return Number.isFinite(v) && v >= 0 && v <= 1 ? v : 0.8;
+  })(),
+  muted: localStorage.getItem('mt.muted') === '1',
 };
+
+function applyVolume() {
+  if (!player.audio) return;
+  player.audio.volume = player.volume;
+  player.audio.muted = player.muted;
+}
+
+export function setVolume(v) {
+  player.volume = Math.max(0, Math.min(1, v));
+  if (player.volume > 0) player.muted = false;
+  localStorage.setItem('mt.volume', String(player.volume));
+  localStorage.setItem('mt.muted', player.muted ? '1' : '0');
+  applyVolume();
+}
+
+export function toggleMute() {
+  player.muted = !player.muted;
+  localStorage.setItem('mt.muted', player.muted ? '1' : '0');
+  applyVolume();
+}
+
+/** 全局快捷键：空格播放/暂停、←/→ 退进 5 秒、M 静音。
+ *  输入框里打字时一律不抢键。 */
+export function bindPlayerShortcuts() {
+  window.addEventListener('keydown', (event) => {
+    const tag = (event.target && event.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || (event.target && event.target.isContentEditable)) return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    const audio = player.audio;
+    if (!audio) return;
+    if (event.code === 'Space') { event.preventDefault(); toggle(); }
+    else if (event.key === 'ArrowLeft') { event.preventDefault(); audio.currentTime = Math.max(0, audio.currentTime - 5); }
+    else if (event.key === 'ArrowRight') { event.preventDefault(); audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 5); }
+    else if (event.key === 'm' || event.key === 'M') { event.preventDefault(); toggleMute(); render(); }
+  });
+}
 
 function current() {
   return player.queue[player.index] || null;
@@ -167,6 +208,20 @@ export function render() {
       button('', { variant: 'text', iconName: audio && !audio.paused ? 'pause' : 'play_arrow',
         title: '播放/暂停', onClick: () => toggle() }),
       button('', { variant: 'text', iconName: 'chevron_right', title: '下一首', onClick: () => next(false) }),
+      // 音量：按钮静音 + 滑块调大小，值记在 localStorage 里
+      button('', {
+        variant: 'text',
+        iconName: player.muted || player.volume === 0 ? 'volume_off' : 'volume_up',
+        title: player.muted ? '取消静音 (M)' : '静音 (M)',
+        onClick: () => { toggleMute(); render(); },
+      }),
+      h('input', {
+        class: 'pb-volume', type: 'range', min: '0', max: '1', step: '0.01',
+        value: String(player.muted ? 0 : player.volume),
+        title: '音量',
+        oninput: (e) => { setVolume(Number(e.target.value)); },
+        onchange: () => render(),
+      }),
       // 图标库里没有 repeat / repeat_one / shuffle，只有 sync 和 refresh，
       // 所以图标在两者之间切换，同时用一个短文字标出当前模式 —— 光看图标猜不出来。
       button(LOOP_LABEL[player.loop] || '顺序', {
@@ -219,6 +274,7 @@ export function initPlayer() {
   audio.addEventListener('play', render);
   audio.addEventListener('pause', render);
   player.audio = audio;
+  applyVolume();
   render();
 }
 

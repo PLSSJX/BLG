@@ -56,6 +56,23 @@ function fallbackScheme(seedHex, dark) {
     onSecondaryContainer: dark ? tone(0.7) : tone(-0.65),
     inverseSurface: dark ? '#e6e6e6' : '#303030',
     inverseOnSurface: dark ? '#1b1b1b' : '#f4f4f4',
+    // 下面这些以前没定义：关掉"动态取色"后 applyTheme 会把它们补成同一个底色，
+    // 结果 danger 按钮字底同色、pill.err 直接看不见。这里按 Material 3 的语义补齐。
+    error: dark ? '#ffb4ab' : '#ba1a1a',
+    onError: dark ? '#690005' : '#ffffff',
+    errorContainer: dark ? '#93000a' : '#ffdad6',
+    onErrorContainer: dark ? '#ffdad6' : '#410002',
+    tertiary: dark ? tone(0.45) : tone(-0.45),
+    onTertiary: dark ? '#000' : '#fff',
+    tertiaryContainer: dark ? tone(-0.6) : tone(0.6),
+    onTertiaryContainer: dark ? tone(0.8) : tone(-0.7),
+    secondary: dark ? tone(0.35) : tone(-0.35),
+    onSecondary: dark ? '#000' : '#fff',
+    background: dark ? '#141414' : '#fafafa',
+    onBackground: dark ? '#e6e6e6' : '#1b1b1b',
+    inversePrimary: dark ? tone(-0.5) : tone(0.5),
+    scrim: '#000000',
+    shadow: '#000000',
   };
 }
 
@@ -97,8 +114,9 @@ export function applyTheme({ seed = '#4CAF50', mode = 'dark', dynamic = true } =
         if (typeof argb === 'number') value = hexFromArgb(argb);
       } catch { /* 该角色缺失时走降级 */ }
     }
-    if (!value) value = fallback[role] || (dark ? '#1f1f1f' : '#efefef');
-    root.style.setProperty('--md-' + kebab(role), value);
+    // 兜底：降级色板里也没有这个角色时，不要用同一个底色硬覆盖 ——
+    // 那样 danger 按钮/err 药丸会和背景同色，等于凭空"消失"。留着 :root 的默认值。
+    if (value) root.style.setProperty('--md-' + kebab(role), value);
   }
   // 降级色板里多出来的两个角色
   for (const [name, value] of Object.entries(fallback)) {

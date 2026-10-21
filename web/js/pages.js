@@ -8,6 +8,23 @@ import {
   escapeHtml, fmtSize, fmtDuration, fmtCount, fmtDate, busy, emptyState, mount, copyText } from './ui.js';
 import { applyTheme, THEME_MODES } from './theme.js';
 
+/** 异步操作回来后的安全重绘：用户已经切走就什么都不做。
+ *  注意不能静态 import app.js —— 两个模块互相引用，初始化顺序一乱就会
+ *  报 "Cannot access 'store' before initialization"。用运行时钩子转一手。 */
+/** 打开路径/目录：失败要说话，不能只往 error.log 里写一行。 */
+function safeOpen(target) {
+  return api.open(target).catch((err) => toast('打不开：' + err.message, 4000));
+}
+
+/** 在资源管理器里定位文件，同上。 */
+function safeReveal(target) {
+  return api.reveal(target).catch((err) => toast('定位失败：' + err.message, 4000));
+}
+
+function repaint(routeId) {
+  if (window.__mtRepaint) window.__mtRepaint(routeId);
+}
+
 /** 全局共享状态。 */
 export const store = {
   config: null,
@@ -467,7 +484,7 @@ function buildMusicLibraryCard() {
         }
       } }),
       button('定位', { variant: 'text', iconName: 'folder_open', title: '在资源管理器里打开它所在的位置', onClick: async () => {
-        try { await api.reveal(item.path); } catch (err) { toast('定位失败：' + err.message); }
+        try { await safeReveal(item.path); } catch (err) { toast('定位失败：' + err.message); }
       } }),
       // 图标库里没有 arrow_forward / skip_next，用 sort 表示"插进队列"，
       // 比 chevron 好 —— 后者看着像"进入下一页"。
@@ -497,7 +514,7 @@ function buildMusicLibraryCard() {
           } catch (err) { toast('导入失败：' + err.message); }
         } }),
         button('打开音乐目录', { variant: 'text', iconName: 'folder_open', onClick: async () => {
-          try { await api.open(libraryState.dir || undefined); } catch (err) { toast('打开失败：' + err.message); }
+          try { await safeOpen(libraryState.dir || undefined); } catch (err) { toast('打开失败：' + err.message); }
         } }),
         button('刷新', { variant: 'text', iconName: 'refresh', onClick: () => {
           libraryState.items = null; paint();
@@ -549,12 +566,19 @@ function buildSongGrid(pl) {
     : all;
   const searchBox = h('div', { class: 'search-field', style: { margin: '6px 0 2px' } },
     h('input', {
+      // 给一个唯一 id：页面里还有别的 .search-field（左栏音乐库、音频目录），
+      // 以前用 querySelector('.search-field input') 找回来的是别处的输入框，
+      // 于是输入第一个字符后焦点就被抢走了。
+      id: 'plSearch',
       class: 'input', placeholder: '在这个歌单里搜…', value: playlistState.query || '',
       oninput: (e) => {
         playlistState.query = e.target.value;
         const pos = e.target.selectionStart;
-        renderPlayer(document.getElementById('view'));
-        const box = document.querySelector('.search-field input');
+        const view = document.getElementById('view');
+        const scroll = view ? view.scrollTop : 0;
+        renderPlayer(view);
+        if (view) view.scrollTop = scroll;    // 别把滚动位置弄丢
+        const box = document.getElementById('plSearch');
         if (box) { box.focus(); try { box.setSelectionRange(pos, pos); } catch (err) {} }
       },
     }));
@@ -1010,7 +1034,14 @@ async function runParse() {
       store.musicInput = input;
       toast('这是音乐平台的链接，已跳到「音乐」页', 3600);
     }
-    (backToMusic ? renderMusic : renderHome)(view);
+    // 解析要几秒。用户可能已经点去别的页面了 —— 只有还在原地才重绘，
+    // 否则会把他正在看的页面覆盖掉（导航高亮和 hash 也还对不上）。
+    if (backToMusic) {
+      // 音乐链接：真的切到音乐页（导航高亮/hash 都要跟着变），而不是就地重画
+      if (window.__mtNavigate) window.__mtNavigate('music'); else repaint('home');
+    } else {
+      repaint('home');
+    }
     // 元数据先出来，再去取流，两段式让界面不至于长时间空白
     loadStreams();
   } catch (error) {
@@ -1049,7 +1080,7 @@ async function loadStreams() {
     }
     return;
   }
-  renderHome(document.getElementById('view'));
+  repaint('home');
 }
 
 function buildVideoCard() {
@@ -1309,7 +1340,7 @@ function buildDownloadCard() {
         { variant: 'text', iconName: 'folder_open', onClick: () => {
           // 音乐和视频分开放，这里要打开对应的那个
           const music = store.parsed?.info?.media === 'music';
-          api.open(music ? (store.config?.settings?.music_dir || '') : '');
+          safeOpen(music ? (store.config?.settings?.music_dir || '') : '');
         } })),
   );
 }
@@ -1485,7 +1516,8 @@ async function runProbe() {
       h('div', {}, '体检失败：' + error.message)));
     return;
   }
-  renderHome(document.getElementById('view'));
+  // 体检要十几秒，用户可能已经切走了 —— 别覆盖他正在看的页面
+  repaint('home');
 }
 
 function buildProbeResult() {
@@ -1531,6 +1563,10 @@ function buildProbeResult() {
 /* ================================================================ 追番（下载任务） */
 
 export function renderTasks(view) {
+  // 轮询会重画整页，这里先把"用户展开了哪些运行日志"记下来，重画后恢复，
+  // 否则点开日志最多 0.8 秒就自己合上。
+  const openedLogs = new Set(
+    [...view.querySelectorAll('details[data-task-log][open]')].map((el) => el.dataset.taskLog));
   clear(view);
   const page = h('div', { class: 'page' });
   const stats = store.taskStats || {};
@@ -1543,13 +1579,15 @@ export function renderTasks(view) {
       h('h1', { class: 'page-title' }, extrasOn ? '历史记录' : '文献资料'),
       h('div', { class: 'spacer' }),
       // 直接打开下载目录，不用先回解析页
-      extrasOn ? button('打开下载目录', { variant: 'text', iconName: 'folder_open', onClick: () => api.open() }) : null,
+      extrasOn ? button('打开下载目录', { variant: 'text', iconName: 'folder_open', onClick: () => safeOpen() }) : null,
       extrasOn ? button('清除已完成', { variant: 'text', iconName: 'delete', onClick: async () => {
+        // 和单个删除保持一致：先问再删
+        const ok = await confirmDialog('清除已完成的任务', '会从列表里移除所有已完成/已失败的记录。\n\n磁盘上的文件不会删。', '清除');
+        if (!ok) return;
         const result = await api.clearTasks();
         toast('已清除 ' + result.removed + ' 条记录');
         refreshTasks();
-      } }) : null,
-      extrasOn ? button('打开目录', { variant: 'text', iconName: 'folder_open', onClick: () => api.open() }) : null),
+      } }) : null),
     h('p', { class: 'page-sub' }, extrasOn
       ? '所有下载任务的历史记录，进行中的任务每 0.8 秒刷新一次进度。记录保存在 data/tasks.json，重启程序后依然在。'
       : '下载过的文献和入库的引用条目。搜索和下载在「文献」页，这里看已经拿到的。'),
@@ -1715,8 +1753,9 @@ function buildTaskCard(task) {
     mount(actions, button('重试', { variant: 'text', iconName: 'refresh', onClick: async () => {
       await api.retryTask(task.id); toast('已重新排队'); refreshTasks();
     } }));
-    mount(actions, button('打开目录', { variant: 'text', iconName: 'folder_open', onClick: () => {
-      api.open(task.directory);
+    mount(actions, button('打开目录', { variant: 'text', iconName: 'folder_open', onClick: async () => {
+      // 以前没有 catch：失败时界面毫无反应，只有 error.log 里有一行
+      try { await safeOpen(task.directory); } catch (err) { toast('打不开目录：' + err.message, 4000); }
     } }));
     // 视频任务抽出音轨存成音乐，之后就能在「播放」页听
     const vids = (task.files || []).filter((f) => f.kind === 'video' && /\.(mp4|mkv|webm|flv|ts|m4v)$/i.test(f.path || ''));
@@ -1819,7 +1858,11 @@ function buildTaskCard(task) {
       h('span', { html: icon('error_outline', 'outlined', 20) }), h('div', {}, task.error)) : null,
     h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' } },
       pill(label, variant), h('div', { class: 'spacer' }), actions),
-    task.log?.length ? h('details', { style: { marginTop: '8px' } },
+    task.log?.length ? h('details', {
+      style: { marginTop: '8px' },
+      dataset: { taskLog: task.id },
+      open: openedLogs.has(String(task.id)),
+    },
       h('summary', { style: { cursor: 'pointer', fontSize: '12px', color: 'var(--md-on-surface-variant)' } },
         '运行日志（' + task.log.length + ' 行）'),
       h('div', { class: 'log' }, task.log.join('\n'))) : null,
@@ -1870,16 +1913,18 @@ export function renderSettings(view) {
 
 /** 保存设置。返回是否成功 —— 调用方必须据此决定要不要改本地状态，
     否则保存失败时界面会显示"已保存"，用户粘贴的内容还被清空了。 */
-async function saveSetting(patch, rerender = true) {
+async function saveSetting(patch, rerender = false) {
   try {
     const result = await api.saveSettings(patch);
     store.config.settings = result.settings;
     if (patch.theme_seed !== undefined || patch.theme_mode !== undefined || patch.dynamic_color !== undefined) {
+      // 主题变更只需要重新算颜色：整页重建会把用户粘贴到一半的 Cookie/路径清空
       applyTheme({
         seed: result.settings.theme_seed,
         mode: result.settings.theme_mode,
         dynamic: result.settings.dynamic_color,
       });
+      rerender = false;
     }
     if (rerender) renderSettings(document.getElementById('view'));
     return true;
@@ -2123,7 +2168,7 @@ function buildDownloadCard2(settings) {
           toast('选择目录失败：' + error.message);
         }
       } }),
-      button('打开', { variant: 'tonal', iconName: 'folder_open', onClick: () => api.open(dir.value) }))),
+      button('打开', { variant: 'tonal', iconName: 'folder_open', onClick: () => safeOpen(dir.value) }))),
     dirHint,
     (() => {
       dir.addEventListener('change', async () => {
@@ -2184,10 +2229,10 @@ function buildDownloadCard2(settings) {
         });
       };
       return h('div', {},
-        mkRow('视频目录', 'video_dir', '留空 = 下载目录下的 video', () => api.pickDownloadDir(), (v) => api.open(v), (store.config.dirs || {}).video),
-        mkRow('音频目录', 'music_dir', '留空 = 下载目录下的 audio', () => api.pickMusicDir(), (v) => api.open(v), (store.config.dirs || {}).music),
-        mkRow('文档目录', 'doc_dir', '留空 = 下载目录下的 document', () => api.pickDownloadDir(), (v) => api.open(v), (store.config.dirs || {}).document),
-        mkRow('图片目录', 'image_dir', '留空 = 下载目录下的 image', () => api.pickDownloadDir(), (v) => api.open(v), (store.config.dirs || {}).image),
+        mkRow('视频目录', 'video_dir', '留空 = 下载目录下的 video', () => api.pickDownloadDir(), (v) => safeOpen(v), (store.config.dirs || {}).video),
+        mkRow('音频目录', 'music_dir', '留空 = 下载目录下的 audio', () => api.pickMusicDir(), (v) => safeOpen(v), (store.config.dirs || {}).music),
+        mkRow('文档目录', 'doc_dir', '留空 = 下载目录下的 document', () => api.pickDownloadDir(), (v) => safeOpen(v), (store.config.dirs || {}).document),
+        mkRow('图片目录', 'image_dir', '留空 = 下载目录下的 image', () => api.pickDownloadDir(), (v) => safeOpen(v), (store.config.dirs || {}).image),
         h('div', { class: 'card-desc', style: { marginTop: '4px', opacity: '.7' } },
           '所有输入框改完即保存。默认在下载目录下分 video / audio / document / image 四个子文件夹。'));
     })(),
@@ -2215,7 +2260,7 @@ function buildMusicDirCard(settings) {
           toast('音乐目录已改为：' + r.music_dir);
         } catch (error) { toast('选择失败：' + error.message); }
       } }),
-      button('打开', { variant: 'tonal', iconName: 'folder_open', onClick: () => api.open(input.value) })),
+      button('打开', { variant: 'tonal', iconName: 'folder_open', onClick: () => safeOpen(input.value) })),
     h('div', { class: 'btn-row', style: { marginTop: '10px' } },
       button('保存', { onClick: () => saveSetting({ music_dir: input.value.trim() }, false) })),
   );
@@ -3283,7 +3328,7 @@ export function renderDoc(view) {
                   h('div', { style: { fontSize: '11px', opacity: '.6' } },
                     '.' + d.source + ' → .' + d.target + ' · ' + fmtSize(d.size))),
                 button('定位', { variant: 'text', iconName: 'folder_open',
-                  onClick: () => api.reveal(d.output) })))),
+                  onClick: () => safeReveal(d.output) })))),
             (results.failed && results.failed.length)
               ? h('div', { class: 'hint-box', style: { marginTop: '10px' } },
                   h('span', { html: icon('error_outline', 'outlined', 20) }),
@@ -3355,7 +3400,7 @@ export function renderClip(view) {
                 button('剪辑', { variant: 'text', iconName: 'play_arrow',
                   onClick: () => openVideo(p, nameOf(p)) }),
                 button('定位', { variant: 'text', iconName: 'folder_open',
-                  onClick: () => api.reveal(p) }))))
+                  onClick: () => safeReveal(p) }))))
           : h('div', { class: 'card-desc', style: { marginTop: '10px' } }, '还没有选择本地视频。')),
       card(
         h('div', { class: 'card-title', html: icon('movie', 'outlined', 20) + '<span>已下载的视频</span>' }),
@@ -3375,7 +3420,7 @@ export function renderClip(view) {
                 button('剪辑', { variant: 'text', iconName: 'play_arrow',
                   onClick: () => openVideo(f.path, f.name) }),
                 button('定位', { variant: 'text', iconName: 'folder_open',
-                  onClick: () => api.reveal(f.path) }))),
+                  onClick: () => safeReveal(f.path) }))),
             downloaded.length > 6
               ? button(clipState.videosExpanded
                   ? '收起'

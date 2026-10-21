@@ -3,7 +3,7 @@ import { api, setToken } from './api.js';
 import { icon } from './icons.js';
 import { h, clear, toast, dialog, button } from './ui.js';
 import { applyTheme, prefersDark } from './theme.js';
-import { initPlayer } from './player.js';
+import { initPlayer, bindPlayerShortcuts } from './player.js';
 import { mountAskButton, bindAskShortcut } from './ask.js';
 import {
   store, renderHome, renderMusic, renderPlayer, renderImage, renderDoc, renderClip,
@@ -276,6 +276,20 @@ async function navigate(id) {
   setPolling();
 }
 
+/** 当前路由 id（pages.js 用它判断异步结果回来时用户还在不在原页面）。 */
+export function routeNow() { return current; }
+
+// pages.js 需要"跳页"但直接 import navigate 会形成循环依赖，
+// 这里用运行时钩子转一手（初始化时不存在也不影响，调用时已经挂好了）。
+window.__mtNavigate = (id) => navigate(id);
+window.__mtRepaint = (routeId) => { if (current === routeId) paint(); };
+
+/** 异步操作回来后的安全重绘：用户已经切走就什么都不做。
+ *  以前直接 renderXxx(view)，解析几秒后回来会把用户正在看的页面覆盖掉。 */
+export function repaintIf(routeId) {
+  if (current === routeId) paint();
+}
+
 /** 只重画 DOM，不发请求。轮询时保住滚动位置，否则页面会一直跳回顶部。 */
 function paint() {
   const view = document.getElementById('view');
@@ -326,17 +340,36 @@ function setPolling() {
   const active = (store.tasks || []).some(
     (t) => t.status === 'running' || t.status === 'merging' || t.status === 'queued');
   const wanted = current === 'tasks' || active;
+  // 窗口被最小化/切到后台时没必要每 0.8 秒拉一次全量
+  const hidden = document.hidden;
+  const gap = hidden ? 5000 : 800;
   if (wanted && !pollTimer) {
-    pollTimer = setInterval(pollTasks, 800);
+    pollTimer = setInterval(pollTasks, gap);
   } else if (!wanted && pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
   }
 }
 
+document.addEventListener('visibilitychange', () => {
+  if (!pollTimer) return;
+  clearInterval(pollTimer);
+  pollTimer = null;
+  setPolling();
+});
+
+let pollInFlight = false;
+
 let lastStatuses = {};
 
 async function pollTasks() {
+  // 上一次还没回来就别叠请求：慢机器上会越叠越多，晚到的旧响应还会覆盖新状态
+  if (pollInFlight) return;
+  pollInFlight = true;
+  try { await pollTasksOnce(); } finally { pollInFlight = false; }
+}
+
+async function pollTasksOnce() {
   await refreshTasks();
   // 任务从"在跑"变成"完成/失败"时，通知正在看歌单详情的页面刷一次。
   // 放在轮询里而不是渲染里 —— 渲染函数不能有副作用，否则会无限循环。
@@ -349,8 +382,10 @@ async function pollTasks() {
     lastStatuses[t.id] = t.status;
   }
   if (justFinished) document.dispatchEvent(new CustomEvent('task-finished'));
+  // 签名只比"看起来会变的东西"：以前带上 log.length，
+  // 日志多一行就整页重建 —— 用户展开的运行日志 0.8 秒后自己被合上。
   const signature = JSON.stringify((store.tasks || []).map(
-    (t) => [t.id, t.status, Math.round(t.percent || 0), (t.files || []).length, (t.log || []).length]));
+    (t) => [t.id, t.status, Math.round(t.percent || 0), (t.files || []).length, t.speed_text || '']));
   if (current === 'tasks' && signature !== lastSignature) {
     lastSignature = signature;
     paint();
@@ -397,7 +432,8 @@ async function openQuickSearch() {
 /* ------------------------------------------------------------ 启动 */
 async function boot() {
   buildNavigation();
-  initPlayer();     // 底部播放条，先建好，之后任何页面都能直接播
+  initPlayer();
+  bindPlayerShortcuts();     // 底部播放条，先建好，之后任何页面都能直接播
   mountAskButton(); // 右下角「问 AI」圆钮，任何页面都能呼出
   bindAskShortcut();
 

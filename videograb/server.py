@@ -1805,9 +1805,31 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "engines": describe(ctx)})
 
         if route == "/api/open":
-            target = payload.get("path") or str(ctx.download_dir())
+            # 这里以前接受任意 path，_open_in_explorer 还会 mkdir + startfile，
+            # 等于给页面开了个"在任意位置建目录并交给 shell"的口子（UNC 路径还会触发 SMB 连接）。
+            # 现在只认受管目录：下载 / 视频 / 图片 / 文档 / 音乐，以及它们的子路径。
+            raw = str(payload.get("path") or "").strip()
+            if raw.startswith("\\\\"):          # UNC，直接拒绝
+                raise ApiError("不支持网络路径")
+            target = Path(raw).resolve() if raw else ctx.download_dir().resolve()
+            roots = []
+            for _getter in ("download_dir", "video_dir", "image_dir", "music_dir", "doc_root"):
+                try:
+                    roots.append(getattr(ctx, _getter)().resolve())
+                except Exception:
+                    pass
+            inside = False
+            for root in roots:
+                try:
+                    target.relative_to(root)
+                    inside = True
+                    break
+                except ValueError:
+                    continue
+            if not inside:
+                raise ApiError("只能打开程序自己的下载/文档/音乐目录")
             return self._json({"ok": True,
-                               "detail": _open_in_explorer(target, bool(payload.get("reveal")))})
+                               "detail": _open_in_explorer(str(target), bool(payload.get("reveal")))})
 
         if route == "/api/update/check":
             from .updater import check_update
@@ -1968,13 +1990,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._error("只允许代理受支持平台的图片地址", 403)
         try:
             # 这是"跟着用户给的地址走"的请求，绝不能带上 B 站登录态
-            res = self.ctx.net.request(url, retries=2, referer=referer, allow_cookie=False)
+            res = self.ctx.net.request(
+                url, retries=2, referer=referer, allow_cookie=False,
+                # 每一跳都要还在支持列表里：否则一个开放重定向就能把本机引向
+                # 127.0.0.1 / 内网地址，响应体还会原样回传给页面
+                redirect_guard=lambda new_url: bool(self._cover_referer(
+                    (urlparse(new_url).hostname or "").lower())))
         except Exception as exc:
             return self._error(f"取图失败：{exc}", 502)
         content_type = res.header("Content-Type") or "image/jpeg"
         if not content_type.startswith("image/"):
             content_type = "image/jpeg"
-        self._send(200, res.body, content_type,
+        # 大小上限：封面正常几十 KB，几 MB 的一定不是封面。
+        # 没有上限时，一个被引向大文件的重定向就能把内存吃光。
+        body = res.body or b""
+        if len(body) > 8 * 1024 * 1024:
+            return self._error("图片太大，已拒绝", 413)
+        self._send(200, body, content_type,
                    cache="public, max-age=86400")
 
     # ---------------- 本地文件播放（支持 Range） ----------------

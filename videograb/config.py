@@ -253,10 +253,22 @@ class Context:
     def update(self, patch: dict) -> Settings:
         """就地更新配置，忽略未知字段。"""
         valid = set(asdict(self.settings).keys())
+        rejected = []
         for key, value in (patch or {}).items():
-            if key in valid:
-                setattr(self.settings, key, value)
+            if key not in valid:
+                continue
+            # 明显不对的类型直接拒绝，且不落盘（坏值会连带把 /api/state 弄挂）
+            if key in _STRING_FIELDS and not isinstance(value, (str, int, float, bool, type(None))):
+                rejected.append(key)
+                continue
+            setattr(self.settings, key, value)
         _normalize(self.settings)
+        if rejected:
+            try:
+                from .log import log_error
+                log_error("config.update", ValueError("忽略了类型不对的字段: " + ", ".join(rejected)))
+            except Exception:
+                pass
         if any(k in (patch or {}) for k in
                ("sessdata", "bili_jct", "proxy", "user_agent",
                 "ncm_cookie", "qqmusic_cookie", "kugou_cookie", "kuwo_cookie")):
@@ -377,6 +389,16 @@ def _migrate_privacy(settings: Settings) -> Settings:
     return settings, True
 
 
+# 这些字段在代码各处都会 .strip() / Path()，一旦被写成数字或数组，
+# /api/state 会永久 500、界面白屏，只能删 config.json 才能救回来。
+_STRING_FIELDS = (
+    "download_dir", "proxy", "user_agent", "sessdata", "bili_jct",
+    "ncm_cookie", "qqmusic_cookie", "kugou_cookie", "kuwo_cookie",
+    "titlebar", "quality", "theme", "theme_seed", "ai_base_url",
+    "ai_api_key", "ai_model", "ai_active",
+)
+
+
 def _normalize(settings: Settings) -> Settings:
     """把数值字段夹到合法区间；转不动的就回落到默认值。"""
     for name, (low, high, default) in _NUMERIC_FIELDS.items():
@@ -388,6 +410,20 @@ def _normalize(settings: Settings) -> Settings:
         except (TypeError, ValueError):
             value = default
         setattr(settings, name, max(low, min(high, value)))
+    for name in _STRING_FIELDS:
+        if not hasattr(settings, name):
+            continue
+        raw = getattr(settings, name)
+        if raw is None:
+            setattr(settings, name, "")
+        elif not isinstance(raw, str):
+            # 数字/布尔能救就救，数组/对象一律丢弃（宁可丢一项设置也别白屏）
+            if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+                setattr(settings, name, str(raw))
+            elif isinstance(raw, bool):
+                setattr(settings, name, "true" if raw else "")
+            else:
+                setattr(settings, name, "")
     settings, _ = _migrate_privacy(settings)
     return settings
 

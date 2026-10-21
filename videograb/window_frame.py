@@ -191,14 +191,22 @@ def blank_icon() -> int:
 
 
 def titlebar_icon_cleared(hwnd: int) -> bool:
-    """查一下标题栏图标到底还在不在（WM_GETICON 返回 0 表示没有了）。"""
+    """标题栏图标是否已经被换成我们塞进去的那块透明图标。
+
+    注意判据：clear_titlebar 塞进去的是**非零**的透明图标句柄，
+    以前这里拿「句柄为 0」当"清干净了"，永远不成立 ——
+    于是 apply_when_ready 会空转满 40 秒，4Hz 反复重设边框（启动期闪烁的根因）。
+    """
     if os.name != "nt" or not hwnd:
         return False
     try:
         user32 = ctypes.windll.user32
         small = user32.SendMessageW(ctypes.c_void_p(hwnd), WM_GETICON, ICON_SMALL, 0)
         big = user32.SendMessageW(ctypes.c_void_p(hwnd), WM_GETICON, ICON_BIG, 0)
-        return not small and not big
+        if not small and not big:
+            return True                     # 真没有图标，也算清干净
+        blank = blank_icon()
+        return bool(blank) and small in (blank, 0) and big in (blank, 0)
     except OSError:
         return False
 

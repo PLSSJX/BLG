@@ -732,7 +732,11 @@ body.mode-oled {
 .player-bar .pb-time { font-size: 12px; opacity: .75; font-variant-numeric: tabular-nums; }
 .player-bar .pb-progress { flex: 2; height: 4px; border-radius: 2px; background: var(--md-outline-variant); cursor: pointer; position: relative; }
 .player-bar .pb-progress > i { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--md-primary); border-radius: 2px; }
-.player-bar .pb-buttons { display: flex; align-items: center; gap: 2px; }
+.player-bar .pb-volume {
+  width: 88px; height: 22px; flex: none; cursor: pointer;
+  accent-color: var(--md-primary);
+}
+.pb-buttons { display: flex; align-items: center; gap: 2px; }
 .player-bar .pb-buttons .btn { min-width: 36px; padding: 6px; }
 .player-bar .btn.active { color: var(--md-primary); }
 body.has-player .slab { padding-bottom: 74px; }

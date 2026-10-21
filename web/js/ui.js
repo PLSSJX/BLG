@@ -101,7 +101,12 @@ export function switchRow(name, hint, on, onChange) {
 }
 
 export function field(label, control) {
-  return h('div', { class: 'field' }, h('label', {}, label), control);
+  // 点标签要能聚焦到控件：给控件补一个 id，label 用 for 指过去
+  const id = 'f' + Math.random().toString(36).slice(2, 9);
+  if (control && control.tagName && !control.id) control.id = id;
+  return h('div', { class: 'field' },
+    h('label', { for: (control && control.id) || id }, label),
+    control);
 }
 
 export function card(...children) {
@@ -125,7 +130,8 @@ export function toast(message, ms) {
     ms = Math.min(12000, 2600 + Math.max(0, text.length - 40) * 55);
   }
   const host = document.getElementById('toastHost');
-  const node = h('div', { class: 'toast' }, text);
+  // role=status + aria-live：读屏软件能听到提示，不只是"看得见"
+  const node = h('div', { class: 'toast', role: 'status', 'aria-live': 'polite' }, text);
   host.append(node);
   setTimeout(() => {
     node.style.transition = 'opacity 200ms, transform 200ms';
@@ -139,12 +145,33 @@ export function toast(message, ms) {
 export function dialog({ title, body, confirm = '确定', cancel = '取消', danger = false }) {
   return new Promise((resolve) => {
     const host = document.getElementById('dialogHost');
+    // 记住打开前的焦点，关闭时还回去 —— 键盘用户不会"掉"到页面背后
+    const previous = document.activeElement;
+    const onKey = (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); close(false); return; }
+      if (event.key !== 'Tab') return;
+      // 焦点陷阱：Tab 在对话框里循环
+      const items = [...node.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+        .filter((el) => !el.disabled && el.offsetParent !== null);
+      if (!items.length) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
     const close = (value) => {
       host.classList.remove('open');
+      document.removeEventListener('keydown', onKey, true);
       clear(host);
+      try { if (previous && previous.focus) previous.focus(); } catch (e) { /* 忽略 */ }
       resolve(value);
     };
-    const node = h('div', { class: 'dialog' },
+    const node = h('div', {
+      class: 'dialog',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-label': title || '对话框',
+    },
       h('h3', {}, title),
       typeof body === 'string' ? h('p', {}, body) : body,
       h('div', { class: 'actions' },
@@ -153,6 +180,12 @@ export function dialog({ title, body, confirm = '确定', cancel = '取消', dan
     clear(host).append(node);
     host.classList.add('open');
     host.onclick = (event) => { if (event.target === host) close(false); };
+    document.addEventListener('keydown', onKey, true);
+    // 打开就把焦点放在"确认"上，回车可以直接按
+    try {
+      const ok = node.querySelector('.actions .btn:last-child') || node;
+      if (ok && ok.focus) ok.focus();
+    } catch (e) { /* 忽略 */ }
   });
 }
 

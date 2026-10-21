@@ -108,6 +108,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="生成自检基线清单")
     parser.add_argument("--notes", default="", help="更新说明，会显示在界面上")
     parser.add_argument("--print", action="store_true", help="只打印不写文件")
+    parser.add_argument("--no-installer", action="store_true",
+                        help="不写 installer 字段（打包进程序内部的那份用它）")
     args = parser.parse_args()
 
     runtime = collect(RUNTIME_FILES, RUNTIME_DIRS)
@@ -121,7 +123,7 @@ def main() -> int:
         "files": runtime,
         "source_files": source,
     }
-    installer = find_installer()
+    installer = {} if args.no_installer else find_installer()
     if installer:
         manifest["installer"] = installer
 
