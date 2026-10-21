@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -83,7 +84,7 @@ def collect(paths: list[str], dirs: list[str]) -> list[dict]:
     return entries
 
 
-def find_installer() -> dict:
+def find_installer(tag: str = "") -> dict:
     """如果 dist 里已经有安装包，就把它的信息一起写进清单。
 
     发布时要先跑安装包构建、再跑本脚本，这样清单里的哈希才是对的。
@@ -100,7 +101,8 @@ def find_installer() -> dict:
         "size": setup.stat().st_size,
         "sha256": sha256(setup),
         # 发布资源走 GitHub Release；仓库文件走 jsDelivr（更新源里已处理）
-        "url": f"https://github.com/{REPO}/releases/download/v{__version__}/{setup.name}",
+        # 标签可能是 v4.0.0，也可能是 v4.0.0-snapshot —— 按 __version__ 硬拼会在快照版上 404
+        "url": f"https://github.com/{REPO}/releases/download/{tag or 'v' + __version__}/{setup.name}",
     }
 
 
@@ -108,6 +110,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="生成自检基线清单")
     parser.add_argument("--notes", default="", help="更新说明，会显示在界面上")
     parser.add_argument("--print", action="store_true", help="只打印不写文件")
+    parser.add_argument("--tag", default=os.environ.get("MT_RELEASE_TAG", ""),
+                        help="发布标签，默认 v<version>；快照版要传 v4.0.0-snapshot")
     parser.add_argument("--no-installer", action="store_true",
                         help="不写 installer 字段（打包进程序内部的那份用它）")
     args = parser.parse_args()
@@ -123,7 +127,7 @@ def main() -> int:
         "files": runtime,
         "source_files": source,
     }
-    installer = {} if args.no_installer else find_installer()
+    installer = {} if args.no_installer else find_installer(args.tag)
     if installer:
         manifest["installer"] = installer
 

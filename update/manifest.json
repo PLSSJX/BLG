@@ -1,6 +1,6 @@
 {
  "version": "4.0.0",
- "generated": "2026-10-21 23:34:30 UTC",
+ "generated": "2026-10-21 23:53:52 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -118,8 +118,8 @@
   },
   {
    "path": "make_manifest.py",
-   "sha256": "7c4367c2c1849c534f04c34e693efa626e3d7906e97be116347f76422e8299c2",
-   "size": 4790
+   "sha256": "49b72a8a40eaddb2cef139cfce360a3b488257b6ce10cd3ed97e5f7cd379f0a4",
+   "size": 5127
   },
   {
    "path": "create_shortcut.py",
@@ -481,6 +481,6 @@
   "name": "MakiseToolkit-Setup-4.0.0.exe",
   "size": 128681174,
   "sha256": "48dc51cf5e2a756c40402d023d80d66a787cdf971258f2def8b966c9ce3c0446",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v4.0.0/MakiseToolkit-Setup-4.0.0.exe"
+  "url": "https://github.com/PLSSJX/BLG/releases/download/v4.0.0-snapshot/MakiseToolkit-Setup-4.0.0.exe"
  }
 }

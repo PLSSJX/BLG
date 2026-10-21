@@ -29,5 +29,7 @@ Write-Host "上传安装包 $name（122 MB，可能要几分钟）…"
 $upHeaders = @{ Authorization = "Bearer $($env:GITHUB_TOKEN)"; "Content-Type" = "application/octet-stream" }
 $asset = Invoke-RestMethod -Method Post -Uri $upload -Headers $upHeaders -InFile $Installer
 Write-Host "上传完成：$($asset.browser_download_url)"
+# 清单里的安装包地址必须和这个标签一致，否则自动更新会 404
+Write-Host "提醒：给 make_manifest.py 传 --tag $Tag 重新生成清单，再提交 update/manifest.json"
 Write-Host ""
 Write-Host "别忘了把 dist\MakiseToolkit-Setup-4.0.0.exe 的 sha256 更新到 update/manifest.json（构建时已自动写入）。"
