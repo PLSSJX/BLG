@@ -1254,7 +1254,8 @@ body.has-titlebar .rail, body.has-titlebar .page-wrap { top: 44px; }
   transition: transform 180ms ease;
 }
 .chat-panel.open { transform: none; }
-body.chat-open .ask-fab-host { right: 402px; }
+/* 抽屉打开时把圆钮藏起来：它就在旁边，留着反而碍事，也挡住了抽屉入口 */
+body.chat-open .ask-fab-host { display: none; }
 
 .chat-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 8px; font-size: 15px; }
 .chat-icon { display: inline-flex; color: var(--md-primary); }
