@@ -200,6 +200,7 @@ input { font: inherit; }
 }
 .node {
   position: absolute;
+  z-index: 4;              /* 必须压在连线上面，否则虚线会从节点身上穿过去 */
   transform: translate(-50%, -50%);
   transition: left 460ms var(--ease-ios), top 460ms var(--ease-ios),
               box-shadow 160ms, background 160ms, border-color 160ms;
@@ -510,6 +511,8 @@ input { font: inherit; }
   font-style: italic;
   pointer-events: none;   /* 占位文字不要挡住节点点击 */
 }
+
+#edges { z-index: 3; }
 
 /* 文字单独一层，压在节点上面；只让文字本身可点，不挡拖动 */
 .edge-labels { z-index: 6; pointer-events: none; overflow: visible; }

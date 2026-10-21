@@ -218,6 +218,9 @@ function ensureNodeEl(data) {
     });
     el.addEventListener('click', (e) => {
       e.stopPropagation();
+      // 刚拖完的那一下不要再当成"点击"，否则会在拖完立刻弹出编辑栏。
+      // 用时间戳而不是布尔标志：click 和 mouseup 的先后顺序在合成事件里不保证。
+      if (Date.now() - lastDragMovedAt < 300) return;
       const id = el.dataset.id;          // 以元素身上的 id 为准，别用闭包里的旧对象
       if (linkModeFrom) { finishLink(id); return; }
       select(id);
@@ -340,6 +343,7 @@ function render() {
     startEdgeFollow();
   });
   renderStage();
+  autoFitSoon();      // 数据/布局变了就重新适配（用户手动平移/缩放过就不打扰）
 }
 
 /* 节点尺寸：先用估算值排版，渲染完拿真实 DOM 尺寸回填。
@@ -919,16 +923,12 @@ saveBtn.addEventListener('click', async () => {
 });
 
 /* 双击画布空白处新建浮空节点（导图模式下也能加节点） */
+// 双击空白处不再创建节点。
+// 以前双击画布会凭空多一个「新节点」—— 想拖动背景时手一抖就多出来一个，
+// 还得手动删掉。要加节点请用底部「＋ 添加节点」或节点上的＋号。
 canvas.addEventListener('dblclick', (e) => {
   if (e.target.closest('.node')) return;
-  const p = toCanvas(e.clientX, e.clientY);
-  const node = { id: 'n' + Date.now(), title: '新节点', parent: null, axis: null, floating: true,
-                 x: p.x, y: p.y };
-  graph.nodes.push(node);
-  markDirty();
-  render();
-  ensureNodeVisible(node);
-  openEditor(node);
+  e.preventDefault();
 });
 
 /* ---------------------------------------------------------- 拖拽 */
@@ -1074,7 +1074,7 @@ window.addEventListener('click', closeCtxMenu);
 window.addEventListener('blur', closeCtxMenu);
 
 /** 把视图缩放到刚好框住所有节点 */
-function fitView(padding = 60) {
+function fitView(padding = 80) {
   // 编辑栏可以拖得很宽，画布就会变得很窄。
   // 这里必须用"能放下全图"的缩放，否则节点会被挤出可视区；
   // 只在放得下的前提下才尽量放大（最大 1.3 倍）。
@@ -1083,7 +1083,12 @@ function fitView(padding = 60) {
   if (!list.length) { view = { x: 0, y: 0, scale: 1 }; applyView(); return; }
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const n of list) {
-    const s = sizeOf(n);
+    // 优先用真实 DOM 尺寸：估算值对长摘要/长标题会偏小，
+    // 按估算算出来的缩放会把边缘节点挤出画布几个像素。
+    const dom = nodeEl(n.id);
+    const s = dom && dom.offsetWidth
+      ? { w: dom.offsetWidth, h: dom.offsetHeight }
+      : sizeOf(n);
     minX = Math.min(minX, n.x - s.w / 2);
     minY = Math.min(minY, n.y - s.h / 2);
     maxX = Math.max(maxX, n.x + s.w / 2);
@@ -1344,6 +1349,7 @@ canvas.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
   if (e.target.closest('.node')) return;
   panState = { sx: e.clientX, sy: e.clientY, ox: view.x, oy: view.y };
+  userAdjustedView = true;
   canvas.style.cursor = 'grabbing';
 });
 window.addEventListener('mousemove', (e) => {
@@ -1372,6 +1378,7 @@ canvas.addEventListener('wheel', (e) => {
   const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
   const next = Math.min(2.5, Math.max(0.35, view.scale * factor));
   if (next === view.scale) return;
+  userAdjustedView = true;
   view.scale = next;
   const after = toCanvas(e.clientX, e.clientY);
   view.x += (after.x - before.x) * view.scale;
@@ -1387,10 +1394,21 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('keyup', (e) => {
   lastModifiers.alt = e.altKey; lastModifiers.shift = e.shiftKey; lastModifiers.ctrl = e.ctrlKey || e.metaKey;
 });
+let lastDragMovedAt = 0;
+
 function startDrag(e, data) {
   if (e.button !== 0) return;
   data = byId(data.id) || data;
   if (e.target.classList && e.target.classList.contains('branch-handle')) return;
+  // 先选中、再拖动：没选中的节点按下时只选中它，不跟着指针跑。
+  // 这样"点一下看内容"和"按住拖位置"不会互相打架。
+  const el0 = nodeEl(data.id);
+  if (el0 && !el0.classList.contains('selected')) {
+    select(data.id);
+    const live0 = byId(data.id);
+    if (live0) openEditor(live0);
+    return;
+  }
   e.preventDefault();
   select(data.id);
   const p0 = toCanvas(e.clientX, e.clientY);
@@ -1410,6 +1428,7 @@ function onDrag(e) {
   if (el) { el.style.left = x + 'px'; el.style.top = y + 'px'; }
   if (!dragState.moved && Math.hypot(x - dragState.startX, y - dragState.startY) > 4) {
     dragState.moved = true;
+    lastDragMovedAt = Date.now();   // 这一下是拖动，不是点击
   }
   drawEdges();
   const live = byId(dragState.data.id);
@@ -1548,6 +1567,7 @@ function hideReparentHint() {
 
 function endDrag() {
   window.removeEventListener('mousemove', onDrag);
+
   const st = dragState;
   dragState = null;
   clearPreview();
@@ -2732,16 +2752,7 @@ async function bootAsync() {
     // 首次进项目时把内容框进视野，省得用户一进来啥也看不到
     if (!window.__autoFitted) {
       window.__autoFitted = true;
-      setTimeout(() => {
-        const rect = canvas.getBoundingClientRect();
-        const off = [graph.trunk, ...graph.nodes].some((n) => {
-          if (!n || typeof n.x !== 'number') return false;
-          const s = sizeOf(n);
-          return n.x - s.w / 2 < 0 || n.x + s.w / 2 > rect.width ||
-                 n.y - s.h / 2 < 0 || n.y + s.h / 2 > rect.height;
-        });
-        if (off) fitView();
-      }, 260);
+      // 适配交给 autoFitSoon（render 之后自动做），这里不再插一脚
     }
     const h = await api.head(projectId);
     if (h.known && h.head && h.known !== h.head) {
@@ -3057,13 +3068,22 @@ document.getElementById('historyHost').addEventListener('click', (e) => {
   if (e.target.id === 'historyHost') e.currentTarget.classList.remove('open');
 });
 
+// 自动适配的状态要在第一次 render 之前就位（let 有暂时性死区）
+let userAdjustedView = false;
+let autoFitTimer = 0;
+function autoFitSoon() {
+  if (userAdjustedView) return;
+  clearTimeout(autoFitTimer);
+  autoFitTimer = setTimeout(() => {
+    try { fitView(false); } catch (e) { /* 忽略 */ }
+  }, 80);
+}
+
 select(null);
 showEditorEmpty();
 render();
 bootAsync();
-// 右侧常驻编辑栏占掉一块宽度：等布局稳定后再把图适配进剩余区域，
-// 否则右边几个节点会被编辑栏挡住。
-setTimeout(() => { try { fitView(false); } catch (e) {} }, 400);
+
 initWatchUI();
 initMarkdownEditor();
 // 任何编辑框的输入都算"脏"，此时 Ctrl+Z 交给文本撤销
