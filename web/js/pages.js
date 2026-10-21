@@ -5,7 +5,7 @@ import { icon } from './icons.js';
 import { saveToProject } from './project-link.js';
 import {
   h, clear, card, button, chip, switchRow, field, pill, toast, dialog,
-  escapeHtml, fmtSize, fmtDuration, fmtCount, fmtDate, busy, emptyState, mount } from './ui.js';
+  escapeHtml, fmtSize, fmtDuration, fmtCount, fmtDate, busy, emptyState, mount, copyText } from './ui.js';
 import { applyTheme, THEME_MODES } from './theme.js';
 
 /** 全局共享状态。 */
@@ -1601,6 +1601,7 @@ export function renderTasks(view) {
     ),
     buildBigjpgHistoryCard(),
     buildPaperDownloadsCard(),
+    buildLibraryCard(),
   );
 
   const tasks = store.tasks || [];
@@ -1845,7 +1846,8 @@ export function renderSettings(view) {
       buildToolsCard(),
       buildSitesCard(),
       buildUpdateCard(),
-      buildProgramCard()),
+      buildProgramCard(),
+      buildToolboxCard(settings)),
   );
   mount(view, page);
 }
@@ -2277,6 +2279,44 @@ function buildExtrasCard(settings) {
       (v) => saveSetting({ write_subtitle: v }, false)),
     switchRow('NFO 元数据', '生成 Kodi / Jellyfin 可识别的 .nfo', settings.write_nfo === true,
       (v) => saveSetting({ write_nfo: v }, false)),
+  );
+}
+
+/** 附加工具箱开关。
+ *
+ *  这个程序的主线是论文写作：项目（思维导图 + 可回档）、文档转换、文献检索。
+ *  视频下载 / 音乐 / 剪辑 / 图片放大这些媒体工具只是附带的，默认不显示 ——
+ *  打开后左侧导航才会多出那几个入口。
+ */
+function buildToolboxCard(settings) {
+  const on = settings.extras_enabled === true;
+  return card(
+    h('div', { class: 'card-title', html: icon('extension', 'outlined', 20) + '<span>附加工具箱</span>' }),
+    h('div', { class: 'card-desc' },
+      '视频下载、音乐、剪辑、图片放大。这些是媒体处理工具，和论文写作没有直接关系，默认不显示在左侧。'),
+    switchRow('启用附加工具箱', '打开后左侧导航会多出「解析 / 音乐 / 播放 / 剪辑 / 图片」五个入口', on,
+      async (value) => {
+        if (value) {
+          const ok = await dialog({
+            title: '启用附加工具箱',
+            body: [
+              '这些功能是媒体下载与处理，与论文写作无关。',
+              '',
+              '下载受版权保护的内容请自行确认合法性，本程序不提供任何绕过付费或加密的能力。',
+              '',
+              '确定 = 打开，左侧会多出五个入口',
+              '取消 = 保持现在的样子',
+            ].join('\n'),
+            confirm: '打开',
+          });
+          if (!ok) { renderSettings(document.getElementById('view')); return; }
+        }
+        await saveSetting({ extras_enabled: value }, false);
+        window.dispatchEvent(new CustomEvent('toolbox-changed'));
+        renderSettings(document.getElementById('view'));
+      }),
+    h('div', { class: 'hint', style: { marginTop: '8px' } },
+      '关掉它不影响已经下载的文件，也不会删任何数据；文献、文档、项目、历史记录始终可用。'),
   );
 }
 
@@ -3463,6 +3503,87 @@ function buildPaperDownloadsCard() {
       try { paint(data); } catch (e) { /* 渲染失败不影响其它任务列表 */ }
     }).catch(() => {});
   }
+  return card(holder);
+}
+
+/** 文献库：下载即入库的条目，能一键复制各种引用格式。 */
+function buildLibraryCard() {
+  const holder = h('div', {});
+  const state = { items: [], styles: {}, style: 'gbt7714' };
+
+  const paint = () => {
+    clear(holder);
+    const styleRow = h('div', { class: 'chip-row', style: { marginTop: '8px' } },
+      ...Object.entries(state.styles).map(([key, label]) => chip(label, {
+        active: state.style === key,
+        onClick: () => { state.style = key; paint(); },
+      })));
+
+    const rows = state.items.slice(0, 50).map((it) => h('div', {
+      style: { display: 'flex', gap: '8px', alignItems: 'center', padding: '7px 0',
+               borderTop: '1px solid var(--md-outline-variant)', borderTopWidth: '.5px' },
+    },
+      h('div', { style: { flex: '1', minWidth: '0' } },
+        h('div', { style: { fontSize: '13px', whiteSpace: 'nowrap', overflow: 'hidden',
+                            textOverflow: 'ellipsis' }, title: it.title }, it.title || '(无标题)'),
+        h('div', { class: 'card-desc', style: { margin: '2px 0 0' } },
+          [it.authors, it.year, it.venue, it.doi ? 'DOI ' + it.doi : ''].filter(Boolean).join(' · ') || '—')),
+      h('button', { class: 'btn text', onclick: async (e) => {
+        let text = '';
+        try {
+          const r = await api.paperCite(it.id, state.style);
+          text = r.text || '';
+        } catch (err) {
+          toast('生成引用失败：' + err.message, 8000);
+          return;
+        }
+        if (await copyText(text)) {
+          toast('已复制引用：' + text.slice(0, 40) + '…', 6000);
+        } else {
+          // 剪贴板被拒时，把文字摆出来让用户自己选
+          await dialog({
+            title: '复制不了，手动选择吧',
+            body: text,
+            confirm: '知道了',
+            cancel: null,
+          });
+        }
+        e.currentTarget.blur();
+      } }, '复制引用'),
+      it.file && it.exists !== false
+        ? button('存到项目', { variant: 'text', onClick: () => saveToProject(it.file, it.title) })
+        : null,
+      button('移除', { variant: 'text', onClick: async () => {
+        const yes = await dialog({ title: '从文献库移除？', body: '只去掉这条记录，PDF 文件不会删除。', confirm: '移除' });
+        if (!yes) return;
+        await api.paperLibraryRemove(it.id);
+        load();
+      } })));
+
+    mount(holder,
+      h('div', { class: 'card-title', html: icon('bookmark', 'outlined', 20) + '<span>文献库</span>' }),
+      h('div', { class: 'card-desc' },
+        state.items.length
+          ? '共 ' + state.items.length + ' 篇。选一种格式，点「复制引用」就能粘进参考文献。'
+          : '还没有入库的文献。在「文献」页搜索并下载全文，会自动进库。'),
+      state.items.length ? styleRow : null,
+      state.items.length ? h('div', { style: { maxHeight: '300px', overflow: 'auto' } }, ...rows) : null);
+  };
+
+  const load = async () => {
+    try {
+      const data = await api.paperLibrary();
+      state.items = data.items || [];
+      state.styles = data.styles || {};
+      paint();
+    } catch (e) {
+      clear(holder);
+      mount(holder, h('div', { class: 'card-desc' }, '文献库读取失败：' + e.message));
+    }
+  };
+
+  paint();
+  load();
   return card(holder);
 }
 

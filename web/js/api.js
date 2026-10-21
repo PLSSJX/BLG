@@ -40,8 +40,11 @@ export const api = {
   state: () => get('/api/state'),
   // 自绘标题栏的三个按钮
   paperSearch: (query, opts) => post('/api/papers/search', Object.assign({ query }, opts || {})),
-  paperDownload: (url, name) => post('/api/papers/download', { url, name }),
+  paperDownload: (url, name, meta) => post('/api/papers/download', { url, name, meta: meta || {} }),
   paperList: () => post('/api/papers/list', {}),
+  paperLibrary: () => post('/api/papers/library', {}),
+  paperCite: (id, style) => post('/api/papers/cite', { id, style }),
+  paperLibraryRemove: (id) => post('/api/papers/library/remove', { id }),
   playlistImport: (input, limit, only) => post('/api/playlist/import', { input, limit, only }),
   playlistCancel: (site, id) => post('/api/playlist/cancel', { site, id }),
   playlistRetrySong: (site, id, url) => post('/api/playlist/retry-song', { site, id, url }),

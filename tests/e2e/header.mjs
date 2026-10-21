@@ -40,6 +40,11 @@ const ev = async (x) => { const r = await send('Runtime.evaluate', { expression:
 const fab = async () => await ev("(()=>{const f=document.getElementById('railSearch');return (f.dataset.mode||'-')+'|'+f.title;})()");
 const framePath = async () => await ev("document.querySelector('.projects-frame').contentWindow.location.pathname");
 
+// 默认页现在是项目列表（附加工具箱默认关闭），先去别的页面再验证返回箭头
+check('默认页是项目列表', (await ev('location.hash')) === '#projects', await ev('location.hash'));
+check('列表页是加号', (await fab()).startsWith('new'), await fab());
+await ev("location.hash = '#settings'");
+await new Promise((r) => setTimeout(r, 2000));
 check('别的页面是返回箭头', (await fab()).startsWith('back'), await fab());
 await ev("document.getElementById('railSearch').click()");
 await new Promise((r) => setTimeout(r, 2500));

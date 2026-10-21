@@ -209,3 +209,31 @@ export function emptyState(iconName, title, text) {
 export function skeleton(height = 20, width = '100%', radius = 8) {
   return h('div', { class: 'skeleton', style: { height: height + 'px', width, borderRadius: radius + 'px' } });
 }
+
+
+/** 复制文本到剪贴板。
+ *
+ *  WebView2 里 navigator.clipboard 有可能被拒绝（没有用户手势 / 权限），
+ *  所以退回到 execCommand，两条都不行才算失败 —— 调用方再弹个可手动复制的框。
+ */
+export async function copyText(text) {
+  const value = String(text == null ? '' : text);
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch (e) { /* 走下面的兜底 */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = value;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:-1000px;left:0;opacity:0';
+    document.body.append(ta);
+    ta.select();
+    ta.setSelectionRange(0, value.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch (e) {
+    return false;
+  }
+}

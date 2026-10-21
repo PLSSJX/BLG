@@ -11,21 +11,32 @@ import {
 } from './pages.js';
 
 // 通道体检已经并进解析页，所以这里不再有独立的「通道」入口
+// extras: true 表示"附加工具箱"里的页面 —— 设置里没打开时不显示、也不可进
 const ROUTES = [
   { id: 'projects', label: '项目', icon: 'folder_open', render: renderProjects },
-  { id: 'home', label: '解析', icon: 'search', render: renderHome },
-  // 图标名必须是 icons.js 里真实存在的：queue_music 没有，之前整条入口渲染成空白
-  { id: 'music', label: '音乐', icon: 'music_note', render: renderMusic },
-  { id: 'player', label: '播放', icon: 'headphones', render: renderPlayer },
-  { id: 'clip', label: '剪辑', icon: 'videocam', render: renderClip },
   { id: 'doc', label: '文档', icon: 'description', render: renderDoc },
-  { id: 'image', label: '图片', icon: 'image', render: renderImage },
   { id: 'papers', label: '文献', icon: 'science', render: renderPapers },
   { id: 'tasks', label: '历史记录', icon: 'history', render: renderTasks },
+  { id: 'home', label: '解析', icon: 'search', render: renderHome, extras: true },
+  // 图标名必须是 icons.js 里真实存在的：queue_music 没有，之前整条入口渲染成空白
+  { id: 'music', label: '音乐', icon: 'music_note', render: renderMusic, extras: true },
+  { id: 'player', label: '播放', icon: 'headphones', render: renderPlayer, extras: true },
+  { id: 'clip', label: '剪辑', icon: 'videocam', render: renderClip, extras: true },
+  { id: 'image', label: '图片', icon: 'image', render: renderImage, extras: true },
   { id: 'settings', label: '设置', icon: 'settings', render: renderSettings },
 ];
 
-let current = 'home';
+/** 附加工具箱开着吗 */
+function extrasOn() {
+  return store.config?.settings?.extras_enabled === true;
+}
+
+/** 当前可见的路由 */
+function visibleRoutes() {
+  return ROUTES.filter((r) => !r.extras || extrasOn());
+}
+
+let current = 'projects';
 let pollTimer = null;
 let lastSignature = '';
 
@@ -38,7 +49,7 @@ function buildNavigation() {
   const bottomHost = document.getElementById('bottomBar');
   clear(railHost); clear(bottomHost);
 
-  for (const route of ROUTES) {
+  for (const route of visibleRoutes()) {
     const make = (forBottom) => {
       const node = h('button', {
         class: 'destination' + (current === route.id ? ' active' : ''),
@@ -233,7 +244,9 @@ async function ensureData() {
 
 async function navigate(id) {
   if (id !== 'projects') projectView = 'list';
-  if (!ROUTES.some((r) => r.id === id)) id = 'home';
+  const target = ROUTES.find((r) => r.id === id);
+  // 附加工具箱关着的时候，那几个页面直接当不存在
+  if (!target || (target.extras && !extrasOn())) id = 'projects';
   current = id;
   if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);
   markActive();
@@ -415,8 +428,10 @@ async function boot() {
     });
   }
 
-  current = (location.hash || '#home').slice(1);
-  if (!ROUTES.some((r) => r.id === current)) current = 'home';
+  current = (location.hash || '#projects').slice(1);
+  const startRoute = ROUTES.find((r) => r.id === current);
+  if (!startRoute || (startRoute.extras && !extrasOn())) current = 'projects';
+  if (location.hash !== '#' + current) history.replaceState(null, '', '#' + current);
   markActive();
   await refreshTasks();
   paint();
@@ -425,7 +440,7 @@ async function boot() {
   // 深链：/?input=BV1xx411c7mD#home 打开即自动解析，方便把链接当书签或分享出去
   const params = new URLSearchParams(location.search);
   const deep = params.get('input') || params.get('url') || params.get('bv');
-  if (deep) {
+  if (deep && extrasOn()) {
     store.input = deep.trim();
     navigate('home');
     setTimeout(() => document.querySelector('.search-field .btn')?.click(), 120);
@@ -433,11 +448,18 @@ async function boot() {
 }
 
 document.addEventListener('navigate', (event) => { navigate(event.detail); });
+// 设置页里开了/关了附加工具箱：导航要立刻重建
+window.addEventListener('toolbox-changed', () => {
+  buildNavigation();
+  const route = ROUTES.find((r) => r.id === current);
+  if (route && route.extras && !extrasOn()) navigate('projects');
+  else { markActive(); paint(); }
+});
 document.addEventListener('tasks-changed', () => {
   refreshTasks().then(() => { if (current === 'tasks') paint(); setPolling(); });
 });
 window.addEventListener('hashchange', () => {
-  const id = (location.hash || '#home').slice(1);
+  const id = (location.hash || '#projects').slice(1);
   if (id !== current) navigate(id);
 });
 

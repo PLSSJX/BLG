@@ -818,7 +818,55 @@ class Handler(BaseHTTPRequestHandler):
                 got = download_pdf(url, dest, str(payload.get("name") or ""))
             except PaperError as exc:
                 raise ApiError(str(exc)) from None
+
+            # 下载即入库：把搜索结果里的元数据一起存下来，
+            # 之后能直接生成引用、能挂到项目节点上。
+            entry = {}
+            try:
+                from . import library as _lib
+                meta = payload.get("meta") or {}
+                entry = {
+                    "title": str(meta.get("title") or got.get("name") or ""),
+                    "authors": meta.get("authors") or meta.get("author") or "",
+                    "year": meta.get("year") or "",
+                    "venue": meta.get("venue") or meta.get("journal") or "",
+                    "doi": meta.get("doi") or "",
+                    "volume": meta.get("volume") or "",
+                    "issue": meta.get("issue") or "",
+                    "pages": meta.get("pages") or "",
+                    "source": meta.get("source") or "",
+                    "url": meta.get("url") or url,
+                    "oa": meta.get("oa"),
+                    "file": str(got.get("path") or ""),
+                    "size": got.get("size") or 0,
+                }
+                entry = _lib.add(entry)
+            except Exception as exc:          # 入库失败不能影响下载本身
+                entry = {"error": str(exc)[:120]}
+            got["library"] = entry
             return self._json(got)
+
+        if route == "/api/papers/library":
+            from . import library as _lib
+            data = _lib.load()
+            items = data.get("items") or []
+            for item in items:
+                path = item.get("file") or ""
+                item["exists"] = bool(path) and __import__("os").path.isfile(path)
+            return self._json({"items": items, "styles": _lib.STYLES, "total": len(items)})
+
+        if route == "/api/papers/cite":
+            from . import library as _lib
+            entry = _lib.find(str(payload.get("id") or ""))
+            if not entry:
+                raise ApiError("文献库里没有这一条")
+            return self._json({"text": _lib.citation(entry, str(payload.get("style") or "gbt7714")),
+                               "style": str(payload.get("style") or "gbt7714")})
+
+        if route == "/api/papers/library/remove":
+            from . import library as _lib
+            ok = _lib.remove(str(payload.get("id") or ""))
+            return self._json({"ok": ok})
 
         if route == "/api/papers/search":
             from .papers import search as _paper_search, PaperError

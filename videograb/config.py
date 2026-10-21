@@ -139,6 +139,10 @@ class Settings:
     video_dir: str = ""
     image_dir: str = ""
     # "native" = 系统标题栏；"custom" = 自绘标题栏（可调高度/配色/按钮大小）
+    # 附加工具箱（视频下载 / 音乐 / 剪辑 / 图片放大）。
+    # 默认关：这个程序的主线是论文写作，媒体工具只是附带的，
+    # 打开后左侧导航会多出那几个入口。
+    extras_enabled: bool = False
     titlebar: str = "native"
     # 文档转 PDF 的两条通路。用户可以单独关掉某一条，也可以指定优先用哪条。
     doc_office: bool = True
