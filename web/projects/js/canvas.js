@@ -279,7 +279,7 @@ function render() {
         e.stopPropagation();
         window.MTApi.openFile(projectId, data.file)
           .then(() => toastMsg('已用系统程序打开 ' + data.file))
-          .catch((err) => alert('打开失败：' + err.message));
+          .catch((err) => mtAlert('打开失败：' + err.message));
       };
     }
     const docRow = el.querySelector('.docrow');
@@ -289,7 +289,7 @@ function render() {
         const a = data.assets[0];
         window.MTApi.openFile(projectId, a.path)
           .then(() => toastMsg('已打开 ' + a.name))
-          .catch((err) => alert('打开失败：' + err.message));
+          .catch((err) => mtAlert('打开失败：' + err.message));
       };
     }
     const badge = el.querySelector('.asset-badge');
@@ -373,12 +373,42 @@ function mtDialog(opts) {
     okBtn.onclick = () => close(true);
     cancelBtn.onclick = () => close(false);
     host.onclick = (e) => { if (e.target === host) close(false); };
-    setTimeout(() => okBtn.focus(), 30);
+    host.querySelector('.mt-modal-box').setAttribute('tabindex', '-1');
+    setTimeout(() => host.querySelector('.mt-modal-box').focus(), 30);
   });
 }
 
 function mtAlert(title, body) {
+  // 单参数时当作正文，标题用「提示」
+  if (body === undefined) return mtDialog({ title: '提示', body: String(title), okText: '知道了', cancelText: '关闭' });
   return mtDialog({ title, body, okText: '知道了', cancelText: '关闭' });
+}
+
+/** 带输入框的对话框，返回输入值；取消返回 null */
+function mtPrompt(title, defaultValue, opts) {
+  const o = opts || {};
+  return new Promise((resolve) => {
+    const host = document.createElement('div');
+    host.className = 'mt-modal';
+    host.innerHTML = '<div class="mt-modal-box"><div class="mt-modal-title"></div>' +
+      '<div class="mt-modal-body"></div>' +
+      '<input class="input mt-modal-input">' +
+      '<div class="mt-modal-row"><button class="btn text" data-act="cancel"></button>' +
+      '<button class="btn" data-act="ok"></button></div></div>';
+    host.querySelector('.mt-modal-title').textContent = title || '请输入';
+    const bodyEl = host.querySelector('.mt-modal-body');
+    if (o.body) bodyEl.textContent = o.body; else bodyEl.style.display = 'none';
+    const input = host.querySelector('.mt-modal-input');
+    input.value = defaultValue === undefined ? '' : String(defaultValue);
+    host.querySelector('[data-act="ok"]').textContent = o.okText || '确定';
+    host.querySelector('[data-act="cancel"]').textContent = o.cancelText || '取消';
+    document.body.append(host);
+    const close = (v) => { host.remove(); resolve(v); };
+    host.querySelector('[data-act="ok"]').onclick = () => close(input.value);
+    host.querySelector('[data-act="cancel"]').onclick = () => close(null);
+    host.onclick = (e) => { if (e.target === host) close(null); };
+    setTimeout(() => { input.focus(); input.select(); }, 40);
+  });
 }
 
 /* 编辑框里有没有未保存的输入：有的话 Ctrl+Z 交给浏览器的文本撤销，
@@ -417,8 +447,18 @@ function pushUndo(label, extra) {
 function updateUndoButtons() {
   const u = document.getElementById('undoBtn');
   const r = document.getElementById('redoBtn');
-  if (u) { u.disabled = !undoStack.length; u.title = undoStack.length ? '撤销：' + undoStack[undoStack.length - 1].label : '没有可撤销的操作'; }
-  if (r) { r.disabled = !redoStack.length; r.title = redoStack.length ? '恢复：' + redoStack[redoStack.length - 1].label : '没有可恢复的操作'; }
+  // 不用 disabled：禁用状态点了完全没反应，用户会以为坏了。
+  // 改成变淡 + 点了给一句提示。
+  if (u) {
+    u.disabled = false;      // HTML 里写了 disabled 属性，不清掉按钮永远是禁用的（点了没反应）
+    u.classList.toggle('is-empty', !undoStack.length);
+    u.title = undoStack.length ? '撤销：' + undoStack[undoStack.length - 1].label : '没有可撤销的操作';
+  }
+  if (r) {
+    r.disabled = false;
+    r.classList.toggle('is-empty', !redoStack.length);
+    r.title = redoStack.length ? '恢复：' + redoStack[redoStack.length - 1].label : '没有可恢复的操作';
+  }
 }
 
 function applySnapshot(snap) {
@@ -643,8 +683,8 @@ function drawEdges() {
   }
 }
 
-document.getElementById('stageAddText').addEventListener('click', () => {
-  const title = prompt('文本框标题', '新文本框');
+document.getElementById('stageAddText').addEventListener('click', async () => {
+  const title = await mtPrompt('文本框标题', '新文本框');
   if (title === null) return;
   graph.staged.push({ id: 's' + Date.now(), title: (title || '').trim() || '新文本框' });
   markDirty();
@@ -668,7 +708,7 @@ document.getElementById('stageAddFile').addEventListener('click', async () => {
     render();
     toastMsg('已复制到项目：' + r.path + '，拖到画布上即可挂到节点');
   } catch (e) {
-    alert('选择文件失败：' + e.message);
+    mtAlert('选择文件失败：' + e.message);
   } finally {
     btn.textContent = old;
     btn.disabled = false;
@@ -720,11 +760,22 @@ function renderStage() {
 /* ---------------------------------------------------------- 操作 */
 /** 问一句这个新节点算主干还是分支；取消返回 null */
 function askNodeKind() {
-  const answer = prompt('这个节点算哪一类？\n\n输入 1 = 主干节点（横着接在右边）\n输入 2 = 分支节点（挂在下面）\n留空 = 暂不决定', '1');
-  if (answer === null) return null;
-  if (answer.trim() === '2') return 'v';
-  if (answer.trim() === '1') return 'h';
-  return 'h';
+  // 不用 prompt 了：两个按钮点一下就行，比让用户敲 1/2 清楚
+  return new Promise((resolve) => {
+    const host = document.createElement('div');
+    host.className = 'mt-modal';
+    host.innerHTML = '<div class="mt-modal-box"><div class="mt-modal-title">新节点算什么？</div>' +
+      '<div class="mt-modal-body">主干节点：横着接在右边，延续主线\n分支节点：挂在下面，另起一段</div>' +
+      '<div class="mt-modal-row"><button class="btn text" data-act="main">主干</button>' +
+      '<button class="btn text" data-act="branch">分支</button>' +
+      '<button class="btn" data-act="cancel">取消</button></div></div>';
+    document.body.append(host);
+    const close = (v) => { host.remove(); resolve(v); };
+    host.querySelector('[data-act="main"]').onclick = () => close('h');
+    host.querySelector('[data-act="branch"]').onclick = () => close('v');
+    host.querySelector('[data-act="cancel"]').onclick = () => close(null);
+    host.onclick = (e) => { if (e.target === host) close(null); };
+  });
 }
 
 function addChild(parentId, axis) {
@@ -881,9 +932,9 @@ canvas.addEventListener('dblclick', (e) => {
 /* ---------------------------------------------------------- 拖拽 */
 /* ---------------------------------------------------------- 线的右键菜单
    结构线（父子）和关联线都可以加说明、也可以直接断开。 */
-function editEdgeLabel(kind, target) {
+async function editEdgeLabel(kind, target) {
   const current = kind === 'link' ? (target.link.label || '') : (target.node.edgeLabel || '');
-  const next = prompt('给这条线加个说明（留空则清除）', current);
+  const next = await mtPrompt('给这条线加个说明', current, { body: '留空表示清除说明', okText: '保存' });
   if (next === null) return;
   pushUndo('修改线的说明');
   const text = next.trim().slice(0, 24);
@@ -990,7 +1041,7 @@ function showCtxMenu(x, y, node) {
       at('打开正文文件', '', () => {
         window.MTApi.openFile(projectId, node.file)
           .then(() => toastMsg('已打开 ' + node.file))
-          .catch((e) => alert('打开失败：' + e.message));
+          .catch((e) => mtAlert('打开失败：' + e.message));
       });
     }
     at('关联到其它节点…', '', () => openLinkMode(node));
@@ -1174,7 +1225,7 @@ function showAssetPopover(node, anchorEl) {
     row.title = '点一下用系统程序打开';
     row.onclick = () => window.MTApi.openFile(projectId, a.path)
       .then(() => toastMsg('已打开 ' + a.name))
-      .catch((e) => alert('打不开：' + e.message));
+      .catch((e) => mtAlert('打不开：' + e.message));
     if (/\.(md|txt|json|csv|ya?ml)$/i.test(a.name)) {
       const edit = document.createElement('button');
       edit.className = 'mini-btn';
@@ -1226,7 +1277,7 @@ async function openAssetEditor(assetPath, name) {
   try {
     const r = await window.MTApi.assetRead(projectId, assetPath);
     text = r.text;
-  } catch (e) { alert('打不开：' + e.message); return; }
+  } catch (e) { mtAlert('打不开：' + e.message); return; }
 
   const host = document.createElement('div');
   host.id = 'assetEditor';
@@ -1250,7 +1301,7 @@ async function openAssetEditor(assetPath, name) {
       await window.MTApi.assetWrite(projectId, assetPath, ta.value);
       closeAssetEditor();
       toastMsg('已保存 ' + name);
-    } catch (e) { alert('保存失败：' + e.message); }
+    } catch (e) { mtAlert('保存失败：' + e.message); }
   };
 }
 
@@ -1584,7 +1635,7 @@ canvas.addEventListener('drop', (e) => {
   const fail = (msg) => {
     graph.staged.push(item);   // 挂不上就把条目放回去，别让用户白忙
     markDirty(); render();
-    alert('挂文件失败：' + msg);
+    mtAlert('挂文件失败：' + msg);
   };
   (async () => {
     try {
@@ -1645,12 +1696,13 @@ async function refreshBranchPanel() {
         co.className = 'btn text'; co.style.height = '26px'; co.textContent = '切换';
         co.onclick = async () => {
           try { await window.MTApi.checkout(projectId, b); await reloadProject(); await refreshBranchPanel(); }
-          catch (e) { alert('切换失败：' + e.message); }
+          catch (e) { mtAlert('切换失败：' + e.message); }
         };
         const mg = document.createElement('button');
         mg.className = 'btn text'; mg.style.height = '26px'; mg.textContent = '合并到此';
         mg.onclick = async () => {
-          if (!confirm('把 ' + b + ' 合并到 ' + cur + '？')) return;
+          const okMerge = await mtDialog({ title: '合并分支', body: '把 ' + b + ' 合并到 ' + cur + '？', okText: '合并' });
+          if (!okMerge) return;
           try {
             const r = await window.MTApi.merge(projectId, b);
             if (r.merged) {
@@ -1666,14 +1718,14 @@ async function refreshBranchPanel() {
               await mtAlert('没有合并', r.message || '两边没有可合并的改动');
             }
             await refreshBranchPanel();
-          } catch (e) { alert('合并失败：' + e.message); }
+          } catch (e) { await mtAlert('合并失败', e.message); }
         };
         row.append(co, mg);
         const del = document.createElement('button');
         del.className = 'btn text'; del.style.height = '26px'; del.style.color = '#ffb4ab';
         del.textContent = '删除';
         del.onclick = async () => {
-          const force = confirm('删除分支 ' + b + '？\n\n如果它还有没有合并的版本，会再问你一次。');
+          const force = await mtDialog({ title: '删除分支', body: '删除分支 ' + b + '？\n\n如果它还有没合并的版本，会再问你一次。', okText: '删除', danger: true });
           if (!force) return;
           try {
             await window.MTApi.branchDelete(projectId, b, false);
@@ -1682,14 +1734,14 @@ async function refreshBranchPanel() {
           } catch (e) {
             // 未合并会被拦住：再问一次是否强制
             if (String(e.message).includes('没合并')) {
-              if (!confirm('分支 ' + b + ' 还有没有合并的版本，强制删除会丢掉这些版本。\n确定吗？')) return;
+              if (!(await mtDialog({ title: '强制删除', body: '分支 ' + b + ' 还有没合并的版本，强制删除会丢掉这些版本。\n确定吗？', okText: '强制删除', danger: true }))) return;
               try {
                 await window.MTApi.branchDelete(projectId, b, true);
                 toastMsg('已强制删除 ' + b);
                 await refreshBranchPanel();
-              } catch (e2) { alert('删除失败：' + e2.message); }
+              } catch (e2) { await mtAlert('删除失败', e2.message); }
             } else {
-              alert('删除失败：' + e.message);
+              mtAlert('删除失败：' + e.message);
             }
           }
         };
@@ -1717,7 +1769,7 @@ async function refreshBranchPanel() {
           b.className = 'btn text'; b.style.height = '26px'; b.textContent = label;
           b.onclick = async () => {
             try { await window.MTApi.resolve(projectId, f, side); await refreshBranchPanel(); }
-            catch (e) { alert('处理失败：' + e.message); }
+            catch (e) { mtAlert('处理失败：' + e.message); }
           };
           row.append(b);
         }
@@ -1727,9 +1779,9 @@ async function refreshBranchPanel() {
       abort.className = 'btn text';
       abort.textContent = '放弃这次合并';
       abort.onclick = async () => {
-        if (!confirm('放弃合并，回到合并之前的状态？')) return;
+        if (!(await mtDialog({ title: '放弃合并', body: '放弃这次合并，回到合并之前的状态？', okText: '放弃', danger: true }))) return;
         try { await window.MTApi.mergeAbort(projectId); await reloadProject(); await refreshBranchPanel(); }
-        catch (e) { alert('取消失败：' + e.message); }
+        catch (e) { mtAlert('取消失败：' + e.message); }
       };
       box.append(abort);
     }
@@ -1817,7 +1869,7 @@ async function openMergeEditor(file) {
     document.getElementById('mergeTitle').textContent = '处理冲突：' + file;
     document.getElementById('mergeHost').classList.add('open');
     renderMergeBlocks();
-  } catch (e) { alert('读取失败：' + e.message); }
+  } catch (e) { mtAlert('读取失败：' + e.message); }
 }
 
 document.getElementById('mergeCancel').addEventListener('click', () => {
@@ -1833,7 +1885,7 @@ document.getElementById('mergeSave').addEventListener('click', async () => {
     if ((r.remaining || []).length) {
       toastMsg('还剩 ' + r.remaining.length + ' 个文件有冲突');
     } else {
-      const finish = confirm('所有冲突都处理完了。\n\n现在就完成这次合并吗？');
+      const finish = await mtDialog({ title: '完成合并', body: '所有冲突都处理完了。\n\n现在就完成这次合并吗？', okText: '完成合并' });
       if (finish) {
         const m = await window.MTApi.mergeFinish(projectId);
         await reloadProject();
@@ -1841,7 +1893,7 @@ document.getElementById('mergeSave').addEventListener('click', async () => {
       }
     }
     await refreshBranchPanel();
-  } catch (e) { alert('保存失败：' + e.message); }
+  } catch (e) { mtAlert('保存失败：' + e.message); }
 });
 
 async function reloadProject() {
@@ -1873,7 +1925,7 @@ document.getElementById('createBranch').addEventListener('click', async () => {
     document.getElementById('newBranch').value = '';
     await reloadProject();
     await refreshBranchPanel();
-  } catch (e) { alert('新建失败：' + e.message); }
+  } catch (e) { mtAlert('新建失败：' + e.message); }
 });
 
 /* 摘要自动同步开关：关掉后外部改文件不会动节点摘要，点「同步摘要」才更新 */
@@ -1933,7 +1985,7 @@ async function checkBeforeExit() {
 
   // 有文件被占用：先老老实实说清楚，别假装能保存
   if (locked.length) {
-    alert('还不能保存，因为下面这些文件正被其它程序打开：\n\n  '
+    await mtAlert('还不能保存', '下面这些文件正被其它程序打开：\n\n  '
       + locked.slice(0, 5).join('\n  ')
       + (locked.length > 5 ? '\n  …还有 ' + (locked.length - 5) + ' 个' : '')
       + '\n\n请先在 Word / WPS / 记事本等程序里关闭它们，再回来保存。');
@@ -1942,8 +1994,11 @@ async function checkBeforeExit() {
 
   const names = (st && st.changed ? st.changed : []).filter((x) => !x.startsWith('.mt/'));
   const detail = names.length ? '\n\n待保存：' + names.slice(0, 5).join('、') + (names.length > 5 ? ' 等 ' + names.length + ' 个' : '') : '';
-  const go = confirm('还有改动没有保存。' + detail
-    + '\n\n确定 = 现在保存并退出\n取消 = 留在当前页');
+  const go = await mtDialog({
+    title: '还有改动没有保存',
+    body: (detail ? detail.replace(/^\n\n/, '') + '\n\n' : '') + '确定 = 现在保存并退出\n取消 = 留在当前页',
+    okText: '保存并退出', cancelText: '留在当前页',
+  });
   if (!go) return { ok: false, reason: 'cancel' };
 
   try {
@@ -1953,12 +2008,12 @@ async function checkBeforeExit() {
       links: graph.links, freeLayout: graph.freeLayout,
     }, 'mt: 离开前保存');
     if (!r.committed) {
-      alert('保存失败：' + (r.reason || '没有改动') + '\n\n（不会谎报成功，文件仍然保留在项目里）');
+      mtAlert('保存失败：' + (r.reason || '没有改动') + '\n\n（不会谎报成功，文件仍然保留在项目里）');
       return { ok: false, reason: 'not-committed' };
     }
     return { ok: true };
   } catch (e) {
-    alert('保存失败：' + e.message + '\n\n请处理后重试，或先留在页面里。');
+    mtAlert('保存失败：' + e.message + '\n\n请处理后重试，或先留在页面里。');
     return { ok: false, reason: 'error' };
   }
 }
@@ -2129,7 +2184,7 @@ function renderAssets(node) {
     open.className = 'btn text'; open.style.height = '24px'; open.textContent = '打开';
     open.onclick = async () => {
       try { await window.MTApi.openFile(projectId, a.path); toastMsg('已用系统程序打开 ' + a.name); }
-      catch (e) { alert('打开失败：' + e.message); }
+      catch (e) { mtAlert('打开失败：' + e.message); }
     };
     const chk = document.createElement('button');
     chk.className = 'btn text'; chk.style.height = '24px'; chk.textContent = '校验';
@@ -2137,19 +2192,22 @@ function renderAssets(node) {
     chk.onclick = async () => {
       try {
         const r = await window.MTApi.hash(projectId, a.path);
-        alert(a.name + '\n\n大小：' + r.size + ' 字节\nSHA-256：\n' + r.sha256);
-      } catch (e) { alert('校验失败：' + e.message); }
+        mtAlert(a.name + '\n\n大小：' + r.size + ' 字节\nSHA-256：\n' + r.sha256);
+      } catch (e) { mtAlert('校验失败：' + e.message); }
     };
     const del = document.createElement('button');
     del.className = 'btn text'; del.style.height = '24px'; del.style.color = '#ffb4ab'; del.textContent = '移除';
     del.onclick = async () => {
-      const purge = confirm('移除「' + a.name + '」？\n\n确定 = 连项目里的副本一起删\n取消 = 只去掉记录，文件留着');
+      const purge = await mtDialog({
+    title: '移除挂载', body: '移除「' + a.name + '」？\n\n确定 = 连项目里的副本一起删\n取消 = 只去掉记录，文件留着',
+    okText: '连同文件一起删', cancelText: '只去掉记录', danger: true,
+  });
       try {
         const r = await window.MTApi.assetRemove(projectId, node.id, a.path, purge);
         node.assets = r.node.assets || [];
         renderAssets(node);
         toastMsg(purge ? '已移除并删除副本' : '已移除记录');
-      } catch (e) { alert('移除失败：' + e.message); }
+      } catch (e) { await mtAlert('移除失败', e.message); }
     };
     row.append(open, chk, del);
     host.append(row);
@@ -2174,7 +2232,7 @@ document.getElementById('pickBtn').addEventListener('click', async () => {
     render();
     toastMsg('已复制到项目：' + res.asset.path);
   } catch (e) {
-    alert('挂文件失败：' + e.message);
+    mtAlert('挂文件失败：' + e.message);
   } finally {
     btn.textContent = old;
     btn.disabled = false;
@@ -2185,7 +2243,7 @@ document.getElementById('attachBtn').addEventListener('click', async () => {
   const node = editingId ? byId(editingId) : null;
   if (!node) return;
   const source = document.getElementById('assetPath').value.trim();
-  if (!source) { alert('先填要挂的文件路径'); return; }
+  if (!source) { mtAlert('先填要挂的文件路径'); return; }
   try {
     const r = await window.MTApi.attach(projectId, node.id, source);
     node.assets = r.node.assets || [];
@@ -2193,7 +2251,7 @@ document.getElementById('attachBtn').addEventListener('click', async () => {
     renderAssets(node);
     markDirty(true);
     toastMsg('已复制到项目：' + r.asset.path);
-  } catch (e) { alert('挂文件失败：' + e.message); }
+  } catch (e) { mtAlert('挂文件失败：' + e.message); }
 });
 
 async function openEditor(data) {
@@ -2340,13 +2398,13 @@ function closeEditor() {
 async function mergeIntoParent(node) {
   if (!node) return;
   await saveGraphNow();   // 先把最新结构写给服务端
-  if (node.id === graph.trunk.id) { alert('主干不能并入别的节点'); return; }
-  if (!node.parent) { alert('这个节点是浮空的，先把它接到某个节点下面才能并入'); return; }
+  if (node.id === graph.trunk.id) { mtAlert('主干不能并入别的节点'); return; }
+  if (!node.parent) { mtAlert('这个节点是浮空的，先把它接到某个节点下面才能并入'); return; }
   const hasAny = (n) => n.file || (n.assets && n.assets.length);
-  if (!hasAny(node)) { alert('这个节点既没有正文也没有挂文件，先写点内容或挂个文件再来并入'); return; }
+  if (!hasAny(node)) { mtAlert('这个节点既没有正文也没有挂文件，先写点内容或挂个文件再来并入'); return; }
   const kids = graph.nodes.filter((n) => n.parent === node.id);
   const empty = kids.filter((n) => !hasAny(n));
-  if (empty.length) { alert('子节点「' + empty[0].title + '」也是空的，先补内容或删掉它'); return; }
+  if (empty.length) { mtAlert('子节点「' + empty[0].title + '」也是空的，先补内容或删掉它'); return; }
   if (online && window.MTApi) {
     const keepFiles = {};
     const gather = [node, ...graph.nodes.filter((n) => n.parent === node.id)];
@@ -2374,17 +2432,17 @@ async function mergeIntoParent(node) {
     markDirty(false);
     render();
     toastMsg('已并入父节点，' + r.merged + ' 个文件变成挂件');
-  } catch (e) { alert('并入失败：' + e.message); }
+  } catch (e) { mtAlert('并入失败：' + e.message); }
 }
 
 document.getElementById('editorOpenFile').addEventListener('click', async () => {
   const node = editingId ? byId(editingId) : null;
   if (!node) return;
-  if (!node.file) { alert('这个节点还没有正文文件，先保存一次正文'); return; }
+  if (!node.file) { mtAlert('这个节点还没有正文文件，先保存一次正文'); return; }
   try {
     await window.MTApi.openFile(projectId, node.file);
     toastMsg('已用系统程序打开 ' + node.file);
-  } catch (e) { alert('打开失败：' + e.message); }
+  } catch (e) { mtAlert('打开失败：' + e.message); }
 });
 
 document.getElementById('editorMerge').addEventListener('click', () => {
@@ -2423,7 +2481,7 @@ document.getElementById('editorDelete').addEventListener('click', async () => {
   const node = editingId ? byId(editingId) : null;
   if (!node) { closeEditor(); return; }
   await saveGraphNow();   // 同上：服务端删的是磁盘上的结构
-  if (node.id === graph.trunk.id) { alert('主干不能删除'); return; }
+  if (node.id === graph.trunk.id) { mtAlert('主干不能删除'); return; }
 
   // 先数清楚会删掉多少（含所有层级）
   const doomed = new Set();
@@ -2492,12 +2550,12 @@ document.getElementById('editorDelete').addEventListener('click', async () => {
             markDirty(false);
             render();
             toastMsg('已撤销这次删除');
-          } catch (e) { alert('撤销失败：' + e.message); }
+          } catch (e) { mtAlert('撤销失败：' + e.message); }
         }, 10000);
       } else {
         toastMsg(msg + (r.commit && r.commit.error ? '（保存失败：' + r.commit.error + '）' : ''));
       }
-    } catch (e) { alert('删除失败：' + e.message); }
+    } catch (e) { mtAlert('删除失败：' + e.message); }
     return;
   }
   // 离线：只改内存
@@ -2763,12 +2821,16 @@ function openHistory() {
           b.textContent = '只还原这个文件';
           b.onclick = async (ev) => {
             ev.stopPropagation();
-            if (!confirm('把 ' + f + ' 恢复到 ' + c.short + ' 这个版本？\n\n只会改这一个文件。')) return;
+            const okFile = await mtDialog({
+            title: '恢复单个文件', body: '把 ' + f + ' 恢复到 ' + c.short + ' 这个版本？\n\n只会改这一个文件。',
+            okText: '恢复',
+          });
+          if (!okFile) return;
             try {
               const rr = await window.MTApi.restore(projectId, c.sha, [f]);
               await applyGraphFromServer(rr);
               toastMsg('已恢复 ' + f);
-            } catch (e) { alert('恢复失败：' + e.message); }
+            } catch (e) { await mtAlert('恢复失败', e.message); }
           };
           line.append(b);
           box.append(line);
@@ -2808,18 +2870,22 @@ async function reportSkippedFiles(resp, shortSha) {
 
 /** 整份回到某个版本 */
 async function rollbackToCommit(c) {
-  const msg = '把整个项目回到版本 ' + c.short + '？\n\n'
-    + '版本说明：' + (c.subject || '(无)') + '\n\n'
-    + '确定 = 把所有文件恢复到那个版本的样子（会改动磁盘文件）\n'
-    + '取消 = 什么都不做';
-  if (!confirm(msg)) return;
+  const ok = await mtDialog({
+    title: '回到这个版本',
+    body: '把整个项目回到 ' + c.short + '？\n\n'
+      + '版本说明：' + (c.subject || '(无)') + '\n\n'
+      + '确定 = 把所有文件恢复到那个版本的样子（会改动磁盘文件）\n'
+      + '取消 = 什么都不做',
+    okText: '回到这个版本',
+  });
+  if (!ok) return;
   try {
     const r = await window.MTApi.restore(projectId, c.sha, []);
     await applyGraphFromServer(r);
     await reportSkippedFiles(r, c.short);
     toastMsg('已整体回到 ' + c.short + '，确认无误后点「保存版本」记成一个新版本', 6000);
   } catch (e) {
-    alert('恢复失败：' + e.message);
+    mtAlert('恢复失败：' + e.message);
   }
 }
 

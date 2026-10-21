@@ -106,6 +106,19 @@ check('拖宽后节点仍在可视区', await ev("(()=>{const box=document.getEl
 await ev("(async()=>{const h=document.getElementById('editorResizer');h.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));await new Promise(r=>setTimeout(r,250));})()");
 check('双击恢复默认宽度', (await ev("Math.round(document.getElementById('editorHost').getBoundingClientRect().width)")) === 400);
 
+// 弹窗必须是主题样式（不能是浏览器原生 confirm）
+await ev("window.__native=0; window.confirm=()=>{window.__native++;return false;}; window.alert=()=>{window.__native++;}; window.prompt=()=>{window.__native++;return null;};")
+await ev("document.getElementById('history').click()");
+await new Promise((r) => setTimeout(r, 2200));
+await ev("(()=>{const b=[...document.querySelectorAll('#historyHost .history-acts button')].find(x=>x.textContent==='回到这个版本'); if(b) b.click();})()");
+await new Promise((r) => setTimeout(r, 800));
+check('回滚确认是主题对话框', await ev("!!document.querySelector('.mt-modal')"));
+check('没有弹浏览器原生确认框', (await ev('window.__native')) === 0, '原生调用 ' + (await ev('window.__native')) + ' 次');
+await ev("document.querySelector('.mt-modal [data-act=\"cancel\"]')?.click()");
+await new Promise((r) => setTimeout(r, 400));
+await ev("document.getElementById('historyClose')?.click()");
+await new Promise((r) => setTimeout(r, 400));
+
 check('历史面板', (await ev("document.querySelector('#historyHost h3')?.textContent")) === '版本历史');
 check('有导出按钮', (await ev("!!document.getElementById('historyExport')")) === true);
 check('有版本条目', (await ev("document.querySelectorAll('.history-item').length")) >= 1);

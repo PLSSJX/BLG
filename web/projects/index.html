@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Makise Toolkit · 项目</title>
-<link rel="stylesheet" href="css/style.css?v=9">
+<link rel="stylesheet" href="css/style.css?v=13">
 <style>
   /* 内嵌到 MT 主界面时，隐藏原型自己的左侧栏（MT 已经有导航栏了） */
   body.embed-mode .rail { display: none; }
@@ -55,7 +55,7 @@
   </div>
 </div>
 
-<script src="js/data.js?v=9"></script>
+<script src="js/data.js?v=13"></script>
 <style>
 /* 没有项目时的引导：暗色、箭头指向左上角 */
 .empty-hint {
@@ -88,7 +88,7 @@
     }
   });
 </script>
-<script src="js/api.js?v=9"></script>
+<script src="js/api.js?v=13"></script>
 <script>
 const MTD = window.MTData;
 
@@ -149,14 +149,14 @@ host.onclick = (e) => { if (e.target === host) host.classList.remove('open'); };
 document.getElementById('confirm').onclick = async () => {
   const name = document.getElementById('projectName').value.trim();
   const path = document.getElementById('projectPath').value.trim();
-  if (!name || !path) { alert('名称和路径都要填'); return; }
+  if (!name || !path) { await askDialog({ title: '还差一点', body: '项目名和文件夹路径都要填。', okText: '知道了', cancelText: '关闭' }); return; }
   try {
     const p = MTOnline ? await MTApi.create(name, path) : MTD.createProject(name, path);
     host.classList.remove('open');
     await render();
     if (p && p.id) location.href = 'project.html?id=' + encodeURIComponent(p.id) + '&embed=1';
   } catch (e) {
-    alert('创建失败：' + e.message);
+    await askDialog({ title: '创建失败', body: e.message, okText: '知道了', cancelText: '关闭' });
   }
 };
 
@@ -187,7 +187,7 @@ function askDialog(opts) {
     host.querySelector('[data-act="ok"]').onclick = () => close(opts.input !== undefined ? input.value : true);
     host.querySelector('[data-act="cancel"]').onclick = () => close(opts.input !== undefined ? null : false);
     host.onclick = (e) => { if (e.target === host) close(opts.input !== undefined ? null : false); };
-    setTimeout(() => (opts.input !== undefined ? input : host.querySelector('[data-act="ok"]')).focus(), 40);
+    setTimeout(() => (opts.input !== undefined ? input : host.querySelector('.mt-modal-box')).focus(), 40);
   });
 }
 

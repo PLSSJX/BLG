@@ -894,3 +894,20 @@ body.editing .slab { margin-right: var(--editor-w); }  /* 给右侧栏让位，�
 body.resizing-editor #editorResizer::after { opacity: .9; }
 body.resizing-editor { cursor: col-resize; user-select: none; }
 body.resizing-editor iframe { pointer-events: none; }
+
+
+/* 撤销/恢复按钮：空栈时变淡，但还能点 —— 点了会告诉用户"没有可撤销的操作" */
+.icon-btn.is-empty { opacity: .45; }
+.icon-btn.is-empty:hover { opacity: .7; color: var(--md-on-surface); }
+
+/* 应用内对话框里的输入框 */
+.mt-modal-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 2px;
+}
+.mt-modal-box .btn[data-act="main"],
+.mt-modal-box .btn[data-act="branch"] { min-width: 68px; }
+
+.mt-modal-box:focus { outline: none; }
+.mt-modal-box .btn:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 2px; }
