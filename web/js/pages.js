@@ -2421,7 +2421,8 @@ function buildUpdateCard() {
         h('div', { class: 'kv' }, h('span', {}, '当前版本'), h('span', {}, r.current)),
         h('div', { class: 'kv' }, h('span', {}, '最新版本'), h('span', {}, r.latest)),
         h('div', { class: 'kv' }, h('span', {}, '更新源'), h('span', {}, r.source)),
-        r.generated ? h('div', { class: 'kv' }, h('span', {}, '清单生成于'), h('span', {}, r.generated)) : null);
+        r.generated ? h('div', { class: 'kv' }, h('span', {}, '清单生成于'), h('span', {}, r.generated)) : null,
+        r.elapsed ? h('div', { class: 'kv' }, h('span', {}, '检查耗时'), h('span', {}, r.elapsed + ' 秒')) : null);
       // 所有节点先攒齐再一次性写入：之前连着 clear(result) 三次，
       // 后面的会依次把前面的版本行、更新说明抹掉。
       const blocks = [

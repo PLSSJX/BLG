@@ -16,6 +16,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -112,6 +113,42 @@ def fetch_from(source: dict, relative: str, timeout: int = 30) -> bytes:
 def source_base(source: dict) -> str:
     """给界面显示用的源地址。"""
     return source["base"]
+
+
+def fetch_manifest_deadline(total: float = 8.0) -> tuple[dict, str]:
+    """并行问所有更新源，谁先给出有效清单就用谁。
+
+    串行问的代价实测是 30 秒（第一个源超时 12 秒、第二个又超时 12 秒），
+    界面上看起来就是"检查更新卡死"。并行之后最坏也只等 total 秒。
+    """
+    import threading
+
+    results: list = []
+    lock = threading.Lock()
+
+    def ask(source):
+        try:
+            raw = fetch_from(source, MANIFEST_PATH, timeout=int(total))
+            payload = json.loads(raw.decode("utf-8"))
+            if isinstance(payload, dict) and "files" in payload:
+                with lock:
+                    results.append((payload, source_base(source)))
+        except Exception:
+            pass
+
+    threads = [threading.Thread(target=ask, args=(s,), daemon=True) for s in SOURCES]
+    for t in threads:
+        t.start()
+    deadline = time.time() + total
+    for t in threads:
+        t.join(max(0.0, deadline - time.time()))
+        if results:
+            break
+    if not results:
+        raise UpdaterError("更新源都连不上（" + str(int(total)) + " 秒内）")
+    # 有多个结果时取版本号最高的：jsDelivr 的 @main 有缓存，可能还是旧清单
+    results.sort(key=lambda item: _version_tuple(str(item[0].get("version") or "")), reverse=True)
+    return results[0]
 
 
 def fetch_manifest() -> tuple[dict, str]:
@@ -260,7 +297,7 @@ def repair(prefer_remote: bool = True, progress=None) -> dict:
     remote_note = ""
     if prefer_remote:
         try:
-            remote, _ = fetch_manifest()
+            remote, _ = fetch_manifest_deadline(6.0)
             if _version_tuple(remote.get("version")) > _version_tuple(manifest.get("version")):
                 remote_note = ("远端已经是 v%s，比本地的 v%s 新，"
                                "建议先在「更新与自检」里检查更新并安装新版本。"
@@ -374,7 +411,17 @@ def _version_tuple(text: str) -> tuple:
 
 
 def check_update(prefer_remote: bool = True) -> dict:
-    manifest, source = load_manifest(prefer_remote)
+    if prefer_remote:
+        try:
+            manifest, source = fetch_manifest_deadline(8.0)
+        except UpdaterError:
+            # 连不上就退回随包清单：至少能告诉用户"当前版本"，不要转圈 30 秒
+            bundled = bundled_manifest()
+            if bundled is None:
+                raise
+            manifest, source = bundled, "本地清单（联网失败）"
+    else:
+        manifest, source = load_manifest(False)
     latest = str(manifest.get("version") or "").strip()
     current = __version__
     has_update = bool(latest) and _version_tuple(latest) > _version_tuple(current)
