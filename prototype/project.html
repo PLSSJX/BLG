@@ -3,12 +3,14 @@
 <head>
 <meta charset="utf-8">
 <title>Makise Toolkit · 项目画布</title>
-<link rel="stylesheet" href="css/style.css?v=2">
+<link rel="stylesheet" href="css/style.css?v=5">
 <style>
   /* 内嵌到 MT 主界面时，隐藏原型自己的左侧栏（MT 已经有导航栏了） */
   body.embed-mode .rail { display: none; }
   body.embed-mode .shell { height: 100%; }
+  /* 内嵌时不要透明：透明会让外层底色透上来，文字发灰看不清 */
   body.embed-mode .slab { border-radius: 0; }
+  body.embed-mode .view { padding: 18px 22px 24px; }
   body.embed-mode { background: transparent; }
 </style>
 <script>
@@ -59,11 +61,11 @@
       </div>
 
       <div class="toolbar">
-        <button class="btn tonal" id="autoToggle" title="关闭后改动只累积，不会自动保存">自动保存：开</button>
+        <button class="btn tonal" id="autoToggle" title="关闭后改动只累积，不会自动保存">自动保存</button>
         <span id="watchStatus" style="font-size:12px;color:var(--md-on-surface-variant)">监听中</span>
         <span class="dirty-dot" id="dot"></span>
         <button class="btn" id="save" disabled>保存版本</button>
-        <button class="btn tonal" id="autoSummary">摘要同步：开</button>
+        <button class="btn tonal" id="autoSummary">摘要同步</button>
         <button class="btn tonal" id="branchBtn">分支：main</button>
         <button class="btn tonal" id="history">历史</button>
         <div class="grow"></div>
@@ -101,7 +103,8 @@
     <h3>版本历史</h3>
     <div class="hint">按时间从新到旧排列，按天分组。可以整份回到某个版本，也可以只还原单个文件。</div>
     <div id="historyList" style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px"></div>
-    <div class="row"><button class="btn text" id="historyExport" title="用系统 git 打开这份历史">导出为 Git 仓库</button>
+    <div class="row"><button class="btn text" id="historyGc" title="清理没有被任何版本引用的旧数据">清理历史数据</button>
+      <button class="btn text" id="historyExport" title="用系统 git 打开这份历史">导出为 Git 仓库</button>
       <button class="btn text" id="historyClose">关闭</button></div>
   </div>
 </div>
@@ -160,10 +163,14 @@
     </div>
   </div>
 </div>
-<script src="js/data.js?v=2"></script>
-<script src="js/api.js?v=2"></script>
-<script src="js/md.js?v=2"></script>
-<script src="js/canvas.js?v=2"></script>
+<script src="js/data.js?v=5"></script>
+<script src="js/api.js?v=5"></script>
+<script src="js/md.js?v=5"></script>
+<script>
+  // 告诉 MT 主界面：已经打开具体项目了，左上角按钮要变成"退出项目"
+  try { parent.postMessage({ type: 'mt-state', view: 'canvas' }, location.origin); } catch (e) {}
+</script>
+<script src="js/canvas.js?v=5"></script>
 <script>
   if (document.documentElement.dataset.embed === '1') document.body.classList.add('embed-mode');
 </script>

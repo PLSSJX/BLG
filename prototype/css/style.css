@@ -724,7 +724,7 @@ body.editing .slab { margin-right: 432px; }         /* 给右侧栏让位，别�
 #editorHost {
   position: fixed;
   top: 0; right: 0; bottom: 0; left: auto;        /* left:auto 才能真正贴右边 */
-  width: 432px;
+  width: 400px;
   display: block !important;      /* 常驻，不再隐藏 */
   background: transparent;
   pointer-events: none;           /* 空白处不挡画布 */
@@ -856,3 +856,13 @@ body.editing .slab { margin-right: 432px; }         /* 给右侧栏让位，别�
 #editorHost:not(.has-node) .editor-empty { display: flex !important; }
 #editorHost.has-node .editor { display: flex !important; }
 #editorHost.has-node .editor-empty { display: none !important; }
+
+
+/* 底部工具栏：按钮不许拆行，放不下就整排换行 */
+.toolbar {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+.toolbar > * { flex: 0 0 auto; }
+.toolbar .btn { white-space: nowrap; }
+#watchStatus { white-space: nowrap; }

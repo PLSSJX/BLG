@@ -32,6 +32,9 @@ MT_DIR = ".mt"
 DB_NAME = "history.db"
 LARGE_LIMIT = int(os.environ.get("MT_LARGE_MB", "5")) * 1024 * 1024
 SKIP_DIRS = {".git", ".mt", "node_modules", "__pycache__", ".idea", ".vscode"}
+# .mt 里只有这两个文件值得跟随版本：节点结构和设置。
+# history.db 本身当然不能进版本库，否则每存一版就把整个库再存一遍。
+VERSIONED_META = {".mt/graph.json", ".mt/settings.json"}
 SKIP_SUFFIX = (".tmp", ".swp", ".swo", ".bak", ".part", ".crdownload", ".lock")
 
 SCHEMA = """
@@ -70,6 +73,9 @@ class RepoError(Exception):
 
 
 def _is_junk(rel: Path) -> bool:
+    posix = rel.as_posix()
+    if posix in VERSIONED_META:
+        return False
     if any(part in SKIP_DIRS for part in rel.parts):
         return True
     name = rel.name
@@ -362,16 +368,205 @@ class Repo:
         conn = self._conn()
         conn.execute("DELETE FROM branches WHERE name=?", (name,))
 
+    # ---------------- 合并分支
+    def _version_by_sha(self, sha: str):
+        conn = self._conn()
+        return conn.execute("SELECT * FROM versions WHERE sha=? OR sha LIKE ?", (sha, sha + "%")).fetchone()
+
+    def _files_of(self, vid: int):
+        conn = self._conn()
+        return {r["path"]: r["hash"] for r in
+                conn.execute("SELECT path, hash FROM files WHERE version_id=?", (vid,))}
+
+    def _ancestors(self, vid: int) -> list:
+        """从自己往上追父版本，返回 [自己, 父, 祖父, ...]。"""
+        conn = self._conn()
+        chain = []
+        seen = set()
+        while vid and vid not in seen:
+            seen.add(vid)
+            chain.append(vid)
+            row = conn.execute("SELECT parent FROM versions WHERE id=?", (vid,)).fetchone()
+            vid = row["parent"] if row else None
+        return chain
+
+    def merge_from(self, branch: str, message: str = "") -> dict:
+        """把 branch 合进当前分支（三方合并）。
+
+        没有公共祖先、或者两边改同一段文本时，会如实报告冲突。
+        文本文件用 <<<<<<< ======= >>>>>>> 标记，二进制文件保留"我的"。
+        """
+        conn = self._conn()
+        target = conn.execute("SELECT version_id FROM branches WHERE name=?", (branch,)).fetchone()
+        if target is None:
+            raise RepoError("没有这个分支：%s" % branch)
+        if branch == self.current_branch():
+            raise RepoError("不能把分支合进它自己")
+        mine = self.head()
+        if mine is None:
+            raise RepoError("当前分支还没有任何版本")
+        if target["version_id"] is None:
+            return {"merged": False, "conflicts": [], "message": "对方分支还没有版本，没东西可合"}
+        theirs_id = target["version_id"]
+
+        # 找公共祖先
+        mine_chain = self._ancestors(mine["id"])
+        theirs_set = set(self._ancestors(theirs_id))
+        base_id = next((v for v in mine_chain if v in theirs_set), None)
+
+        ours = self._files_of(mine["id"])
+        theirs = self._files_of(theirs_id)
+        base = self._files_of(base_id) if base_id else {}
+
+        merged, conflicts = {}, []
+        for path in sorted(set(ours) | set(theirs)):
+            o = ours.get(path)
+            t = theirs.get(path)
+            b = base.get(path)
+            if o == t:
+                chosen = o
+            elif o == b:
+                chosen = t                      # 只有对方改了
+            elif t == b:
+                chosen = o                      # 只有我改了
+            else:
+                # 两边都改过同一个文件 → 冲突，文本试着合并
+                merged_text, ok = self._try_merge_text(path, b, o, t)
+                if ok:
+                    merged[path] = merged_text
+                    continue
+                conflicts.append({"path": path, "reason": "两边都改过这个文件"})
+                chosen = o                      # 先保留"我的"
+            if chosen is None:
+                continue                        # 对方删了、我没动 → 跟着删
+            merged[path] = chosen
+
+        # 写回工作区
+        for path, payload in merged.items():
+            dest = self.root / path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            if isinstance(payload, bytes):
+                dest.write_bytes(payload)
+            else:
+                data = self._get_blob(conn, payload)
+                if data is None:
+                    continue
+                if isinstance(data, str):
+                    data = data.encode("utf-8")
+                dest.write_bytes(data)
+        for path in ours:
+            if path not in merged:
+                try:
+                    (self.root / path).unlink()
+                except OSError:
+                    pass
+
+        msg = message or ("mt: 合并分支 %s" % branch)
+        result = self.commit(msg)
+        return {"merged": True, "conflicts": conflicts,
+                "sha": (result or {}).get("sha") or (mine or {}).get("sha"),
+                "message": "已合并 %s" % branch}
+
+    def _try_merge_text(self, path: str, base, ours, theirs):
+        """三个版本都是文本时尝试行级合并；否则返回 (None, False)。"""
+        import difflib
+        conn = self._conn()
+
+        def load(h):
+            if h is None:
+                return None
+            data = self._get_blob(conn, h)
+            if data is None:
+                return None
+            try:
+                return data.decode("utf-8")
+            except Exception:
+                return None
+
+        b_txt, o_txt, t_txt = load(base), load(ours), load(theirs)
+        if o_txt is None or t_txt is None:
+            return None, False
+        b_lines = (b_txt or "").splitlines(keepends=True)
+        o_lines = o_txt.splitlines(keepends=True)
+        t_lines = t_txt.splitlines(keepends=True)
+        if not b_lines:
+            # 没有公共祖先：两边各自新增，直接拼接会乱，算冲突
+            return None, False
+        merged = list(difflib.unified_diff([], [], lineterm="")) if False else None
+        # 简单策略：把两边对 base 的改动应用上去；同一行被两边改动则冲突
+        out = []
+        sm_o = difflib.SequenceMatcher(None, b_lines, o_lines)
+        sm_t = difflib.SequenceMatcher(None, b_lines, t_lines)
+        changed_o = {}
+        for tag, i1, i2, j1, j2 in sm_o.get_opcodes():
+            if tag != "equal":
+                for i in range(i1, i2):
+                    changed_o[i] = o_lines[j1:j2]
+        changed_t = {}
+        for tag, i1, i2, j1, j2 in sm_t.get_opcodes():
+            if tag != "equal":
+                for i in range(i1, i2):
+                    changed_t[i] = t_lines[j1:j2]
+        overlap = set(changed_o) & set(changed_t)
+        if overlap:
+            return None, False
+        i = 0
+        while i < len(b_lines):
+            if i in changed_o:
+                out.extend(changed_o[i]); i += 1; continue
+            if i in changed_t:
+                out.extend(changed_t[i]); i += 1; continue
+            out.append(b_lines[i]); i += 1
+        # 末尾新增
+        tail_o = o_lines[len(b_lines):]
+        tail_t = t_lines[len(b_lines):]
+        if tail_o and tail_t and tail_o != tail_t:
+            return None, False
+        out.extend(tail_o or tail_t or [])
+        return "".join(out).encode("utf-8"), True
+
     # ---------------- 去重清理
-    def gc(self) -> int:
-        """删掉没有被任何版本引用的内容块，返回释放的块数。"""
+    def gc(self, keep_recent: int = 0) -> dict:
+        """瘦身：删掉"没有任何分支还能走到"的版本，再删没人引用的内容块。
+
+        什么情况下会产生这种版本？
+          · 删掉了一个分支 —— 它上面的版本从任何分支都走不到了
+          · keep_recent > 0 时，每个分支只保留最近 N 个版本，更早的会被丢掉
+        返回 {removed_versions, removed_blocks}。
+        """
         with _LOCK:
             conn = self._conn()
+            keep = set()
+            for row in conn.execute("SELECT version_id FROM branches WHERE version_id IS NOT NULL"):
+                vid = row["version_id"]
+                while vid and vid not in keep:
+                    keep.add(vid)
+                    parent = conn.execute("SELECT parent FROM versions WHERE id=?", (vid,)).fetchone()
+                    vid = parent["parent"] if parent else None
+            if keep_recent and keep_recent > 0:
+                # 只保留每个分支最近的 N 个版本
+                trimmed = set()
+                for row in conn.execute("SELECT version_id FROM branches WHERE version_id IS NOT NULL"):
+                    vid = row["version_id"]
+                    for _ in range(keep_recent):
+                        if not vid:
+                            break
+                        trimmed.add(vid)
+                        parent = conn.execute("SELECT parent FROM versions WHERE id=?", (vid,)).fetchone()
+                        vid = parent["parent"] if parent else None
+                keep &= trimmed
+
+            removed_versions = 0
+            if keep:
+                placeholders = ",".join("?" * len(keep))
+                cur = conn.execute("DELETE FROM versions WHERE id NOT IN (%s)" % placeholders, tuple(keep))
+                removed_versions = cur.rowcount or 0
+                conn.execute("DELETE FROM files WHERE version_id NOT IN (SELECT id FROM versions)")
             cur = conn.execute(
                 "DELETE FROM blobs WHERE hash NOT IN (SELECT DISTINCT hash FROM files)")
-            removed = cur.rowcount or 0
+            removed_blocks = cur.rowcount or 0
             conn.execute("VACUUM")
-            return removed
+            return {"removed_versions": removed_versions, "removed_blocks": removed_blocks}
 
     def stats(self) -> dict:
         conn = self._conn()

@@ -73,7 +73,7 @@ fs.writeFileSync(proj + '\\后来加的.md', '后来', 'utf8');
 post('/api/project/commit-now', { id, message: 'mt: 第二版' });
 const logs = post('/api/project/log', { id }).commits || [];
 check('版本列表 >=2', logs.length >= 2, logs.length);
-const back = post('/api/project/restore', { id, sha: logs[logs.length - 1].sha, files: [] });
+const back = post('/api/project/restore', { id, commit: logs[logs.length - 1].sha, sha: logs[logs.length - 1].sha, files: [] });
 check('整份回滚', back.ok === true);
 check('回滚清理多余文件', !fs.existsSync(proj + '\\后来加的.md'));
 
@@ -102,8 +102,26 @@ finally { fs.closeSync(fh); }
 check('占用时拒绝保存并说明', lockMsg.includes('还开着') || lockMsg.includes('locked') || lockMsg.includes('false'), lockMsg.slice(0, 90));
 
 // ---------- 10. 删除 + 撤销 ----------
+// 注意：整份回滚会把 .mt/graph.json 一起带回去，所以这里要重新铺一遍树
+{
+  const g2 = post('/api/project/load', { id }).graph;
+  const files2 = {};
+  for (const k of ['引言', '研究背景', '国内外现状', '方法', '实验']) {
+    const w2 = post('/api/project/node/write', { id, node: { id: 'k_' + k, title: k }, body: '# ' + k });
+    files2[k] = w2.file;
+  }
+  g2.nodes = [
+    { id: 'n1', title: '引言', parent: 't1', axis: 'h', file: files2['引言'] },
+    { id: 'n2', title: '研究背景', parent: 'n1', axis: 'h', file: files2['研究背景'] },
+    { id: 'n3', title: '国内外现状', parent: 'n2', axis: 'v', file: files2['国内外现状'] },
+    { id: 'n4', title: '方法', parent: 'n2', axis: 'h', file: files2['方法'] },
+    { id: 'n5', title: '实验', parent: 'n4', axis: 'v', file: files2['实验'] },
+  ];
+  post('/api/project/graph', { id, graph: g2 });
+  post('/api/project/commit-now', { id, message: 'mt: 重铺结构' });
+}
 const del = post('/api/project/node/delete', { id, nodeId: 'n2', delete_files: false });
-check('删中间节点连带子孙', del.removed === 2, '删了 ' + del.removed);
+check('删中间节点连带子孙', del.removed === 4, '删了 ' + del.removed);
 check('撤销', post('/api/project/undo', { id }).reverted === true);
 check('撤销后服务仍在', alive());
 

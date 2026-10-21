@@ -708,15 +708,27 @@ def api_restore(payload: dict) -> dict:
     path = project_dir(item)
     sha = str(payload.get("commit") or "HEAD~1")
     files = payload.get("files") or []
+    if not USE_REAL_GIT:
+        # 快照库能告诉我们哪些文件因为太大没存内容、回滚时被跳过
+        repo = git_compat.repo_for(path)
+        try:
+            real_sha = git_compat.resolve_rev(repo, sha)
+            result = repo.restore(real_sha, files or None)
+        except (RepoError, git_compat.GitCompatError) as exc:
+            raise ApiError(str(exc)) from None
+        _reload_after_restore(item)
+        return {"ok": True, "restored": result.get("restored") or [],
+                "skipped": result.get("skipped") or []}
+
     if files:
         safe = []
         for rel in files:
             target = ensure_inside(path, str(rel))
             safe.append(str(target.relative_to(path)).replace("\\", "/"))
         run_git(path, "checkout", sha, "--", *safe)
-        return {"ok": True, "restored": safe}
+        return {"ok": True, "restored": safe, "skipped": []}
     run_git(path, "checkout", sha, "--", ".")
-    return {"ok": True, "restored": "全部文件"}
+    return {"ok": True, "restored": "全部文件", "skipped": []}
 
 
 def _reload_after_restore(item: dict) -> None:
@@ -1061,7 +1073,9 @@ def api_node_write(payload: dict) -> dict:
         rel = unique_path(path, safe_filename(str(node.get("title") or "未命名")))
     target = ensure_inside(path, rel)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(body, encoding="utf-8")
+    # 按字节写：用 write_text 会被 Windows 的换行转换改成 CRLF，
+    # 导致"同样的内容"和编辑器里看到的不一致，历史里也会误判成改动。
+    target.write_bytes(body.encode("utf-8"))
     return {"file": str(target.relative_to(path)).replace("\\", "/"),
             "summary": summarize(body)}
 
@@ -1122,6 +1136,17 @@ def api_merge(payload: dict) -> dict:
     branch = str(payload.get("branch") or "").strip()
     if not branch:
         raise ApiError("没有指定要合并的分支")
+
+    if not USE_REAL_GIT:
+        # 快照库自己做三方合并
+        repo = git_compat.repo_for(path)
+        try:
+            result = repo.merge_from(branch)
+        except RepoError as exc:
+            raise ApiError(str(exc)) from None
+        _reload_after_restore(item)
+        return result
+
     try:
         run_git(path, "merge", "--no-edit", branch)
         return {"merged": True, "conflicts": []}
@@ -1157,6 +1182,9 @@ def api_resolve(payload: dict) -> dict:
 def api_merge_state(payload: dict) -> dict:
     item = find_project(str(payload.get("id") or ""))
     path = project_dir(item)
+    if not USE_REAL_GIT:
+        # 快照模式：冲突在合并时一次性报出来，不存在"合到一半卡住"的状态
+        return {"merging": False, "conflicts": [], "snapshot": True}
     raw = run_git(path, "status", "--porcelain")
     conflicts = [ln[3:].strip() for ln in raw.splitlines()
                  if "U" in ln[:2] or ln[:2] in ("AA", "DD")]
@@ -1167,6 +1195,8 @@ def api_merge_state(payload: dict) -> dict:
 def api_merge_abort(payload: dict) -> dict:
     item = find_project(str(payload.get("id") or ""))
     path = project_dir(item)
+    if not USE_REAL_GIT:
+        return {"aborted": False, "message": "快照模式不会卡在合并中，无需中止"}
     run_git(path, "merge", "--abort")
     return {"aborted": True}
 
@@ -1625,7 +1655,7 @@ def api_asset_write(payload: dict) -> dict:
         raise ApiError("没有指定文件")
     target = ensure_inside(path, rel)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(str(payload.get("text") or ""), encoding="utf-8")
+    target.write_bytes(str(payload.get("text") or "").encode("utf-8"))
     return {"path": rel, "saved": True, "created": True}
 
 
@@ -1829,6 +1859,20 @@ def api_export_git(payload: dict) -> dict:
     return result
 
 
+def api_gc(payload: dict) -> dict:
+    """清理没有被任何版本引用的内容块，顺便报一下前后占用。"""
+    item = find_project(str(payload.get("id") or ""))
+    path = project_dir(item)
+    repo = git_compat.repo_for(path)
+    before = repo.stats()
+    keep_recent = int(payload.get("keep_recent") or 0)
+    result = repo.gc(keep_recent=keep_recent)
+    after = repo.stats()
+    return {"removed_versions": result["removed_versions"],
+            "removed_blocks": result["removed_blocks"],
+            "before": before, "after": after}
+
+
 def api_history_stats(payload: dict) -> dict:
     item = find_project(str(payload.get("id") or ""))
     path = project_dir(item)
@@ -1889,6 +1933,7 @@ ROUTES = {
     "/api/project/merge-finish": api_merge_finish,
     "/api/project/export-git": api_export_git,
     "/api/project/history-stats": api_history_stats,
+    "/api/project/gc": api_gc,
 }
 
 

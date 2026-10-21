@@ -2,10 +2,25 @@
    有 server.py 在跑就走真 git；没有就退回本地假数据，页面照样能看。 */
 const BASE = '';
 
+/* 在 MT 里运行时，写操作要带 X-MakiseToolkit-Token（防跨站调用） */
+let TOKEN = '';
+async function ensureToken() {
+  if (TOKEN) return TOKEN;
+  try {
+    const r = await fetch('/api/state');
+    const d = await r.json();
+    TOKEN = (d && d.api_token) || '';
+  } catch (e) { TOKEN = ''; }
+  return TOKEN;
+}
+
 async function call(path, body) {
+  const token = await ensureToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) headers['X-MakiseToolkit-Token'] = token;
   const r = await fetch(BASE + path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(body || {}),
   });
   const data = await r.json().catch(() => ({ ok: false, error: '响应不是 JSON' }));
@@ -17,9 +32,9 @@ let alive = null;
 async function available() {
   if (alive !== null) return alive;
   try {
-    const r = await fetch(BASE + '/api/git-version');
-    const d = await r.json();
-    alive = !!d.ok;
+    const st = await fetch(BASE + '/api/state');
+    const d = await st.json();
+    alive = !!(d && d.ok);      // MT 内置了项目管理，只要应用在跑就可用
   } catch (e) {
     alive = false;
   }
@@ -35,6 +50,9 @@ window.MTApi = {
   commit: (id, graph, message) => call('/api/project/commit', { id, graph, message }),
   status: (id) => call('/api/project/status', { id }),
   log: (id) => call('/api/project/log', { id }),
+  historyStats: (id) => call('/api/project/history-stats', { id }),
+  gcProject: (id) => call('/api/project/gc', { id }),
+  exportGit: (id) => call('/api/project/export-git', { id }),
   restore: (id, commit, files) => call('/api/project/restore', { id, commit, files }),
   head: (id) => call('/api/project/head', { id }),
   remember: (id) => call('/api/project/remember', { id }),

@@ -1652,8 +1652,18 @@ async function refreshBranchPanel() {
           if (!confirm('把 ' + b + ' 合并到 ' + cur + '？')) return;
           try {
             const r = await window.MTApi.merge(projectId, b);
-            if (r.merged) { toastMsg('已合并 ' + b); await reloadProject(); }
-            else { toastMsg('有冲突，需要处理'); }
+            if (r.merged) {
+              await reloadProject();
+              if (r.conflicts && r.conflicts.length) {
+                await mtAlert('合并完成，但有冲突', '这些文件两边都改过，已经先保留「当前分支」的内容：\n\n  '
+                  + r.conflicts.map((x) => x.path).join('\n  ')
+                  + '\n\n需要的话可以从版本历史里把另一边的版本取回来。');
+              } else {
+                toastMsg('已合并 ' + b);
+              }
+            } else {
+              await mtAlert('没有合并', r.message || '两边没有可合并的改动');
+            }
             await refreshBranchPanel();
           } catch (e) { alert('合并失败：' + e.message); }
         };
@@ -2726,6 +2736,16 @@ async function applyGraphFromServer(resp) {
   render();
 }
 
+/** 回滚时有些文件因为太大没有存内容，这里如实告诉用户 */
+async function reportSkippedFiles(resp, shortSha) {
+  const skipped = (resp && resp.skipped) || [];
+  if (!skipped.length) return;
+  await mtAlert('这些大文件没有还原', '回到 ' + shortSha + ' 时，下面这些文件被跳过了：\n\n  '
+    + skipped.slice(0, 12).join('\n  ')
+    + (skipped.length > 12 ? '\n  …还有 ' + (skipped.length - 12) + ' 个' : '')
+    + '\n\n它们超过 5MB，历史里只记了文件名和大小，没有存内容，所以没法还原。磁盘上的当前文件没有动。');
+}
+
 /** 整份回到某个版本 */
 async function rollbackToCommit(c) {
   const msg = '把整个项目回到版本 ' + c.short + '？\n\n'
@@ -2736,11 +2756,60 @@ async function rollbackToCommit(c) {
   try {
     const r = await window.MTApi.restore(projectId, c.sha, []);
     await applyGraphFromServer(r);
+    await reportSkippedFiles(r, c.short);
     toastMsg('已整体回到 ' + c.short + '，确认无误后点「保存版本」记成一个新版本', 6000);
   } catch (e) {
     alert('恢复失败：' + e.message);
   }
 }
+
+/** 清理没有被任何版本引用的内容块 */
+async function cleanHistory() {
+  let stats = null;
+  try { stats = (await window.MTApi.historyStats(projectId)).stats; } catch (e) { /* 拿不到统计也能清 */ }
+  const ok = await mtDialog({
+    title: '清理历史数据',
+    body: '历史库里目前有 ' + (stats ? stats.versions : '?') + ' 个版本、'
+      + (stats ? (stats.bytes / 1024 / 1024).toFixed(2) + ' MB 内容' : '若干内容') + '。\n\n'
+      + '清理会删掉「已经删掉的分支」留在历史库里的版本，以及没有人引用的内容块。'
+      + '当前分支上的版本一个都不会少，项目里的文件也不会被改。',
+    okText: '清理',
+  });
+  if (!ok) return;
+  try {
+    const r = await window.MTApi.gcProject(projectId);
+    const freed = Math.max(0, (r.before.bytes - r.after.bytes) / 1024);
+    await mtAlert('清理完成', freed > 0
+      ? '释放了 ' + freed.toFixed(1) + ' KB，删掉 ' + (r.removed_versions || 0) + ' 个孤立版本、'
+        + r.removed_blocks + ' 个没人引用的内容块。\n\n现在占用 '
+        + (r.after.bytes / 1024 / 1024).toFixed(2) + ' MB。'
+      : '没有可清理的内容（所有内容块都还有版本在用）。');
+  } catch (e) {
+    await mtAlert('清理失败', e.message);
+  }
+}
+
+/** 把快照历史导出成真正的 git 仓库 */
+async function exportGit() {
+  const ok = await mtDialog({
+    title: '导出为 Git 仓库',
+    body: '会在项目旁边建一个「项目名-git」的文件夹，把这套历史重放成真正的 git 提交。\n\n'
+      + '需要系统里装了 Git；原来的项目不受影响。',
+    okText: '导出',
+  });
+  if (!ok) return;
+  try {
+    const r = await window.MTApi.exportGit(projectId);
+    await mtAlert('导出完成', '共导出 ' + r.exported + ' 个版本。\n\n位置：\n' + r.target);
+  } catch (e) {
+    await mtAlert('导出失败', e.message);
+  }
+}
+
+const gcBtnEl = document.getElementById('historyGc');
+if (gcBtnEl) gcBtnEl.onclick = () => cleanHistory();
+const exportBtnEl = document.getElementById('historyExport');
+if (exportBtnEl) exportBtnEl.onclick = () => exportGit();
 
 document.getElementById('historyClose').addEventListener('click', () => {
   document.getElementById('historyHost').classList.remove('open');
