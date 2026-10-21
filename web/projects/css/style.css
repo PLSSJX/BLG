@@ -719,12 +719,13 @@ input { font: inherit; }
 }
 
 
-/* ---------- 编辑面板常驻右侧 ---------- */
-body.editing .slab { margin-right: 432px; }         /* 给右侧栏让位，别挤压内部布局 */
+/* ---------- 编辑面板常驻右侧（宽度可拖动） ---------- */
+:root { --editor-w: 400px; }                        /* 拖动时改这个变量 */
+body.editing .slab { margin-right: var(--editor-w); }  /* 给右侧栏让位，别挤压内部布局 */
 #editorHost {
   position: fixed;
   top: 0; right: 0; bottom: 0; left: auto;        /* left:auto 才能真正贴右边 */
-  width: 400px;
+  width: var(--editor-w);
   display: block !important;      /* 常驻，不再隐藏 */
   background: transparent;
   pointer-events: none;           /* 空白处不挡画布 */
@@ -866,3 +867,30 @@ body.editing .slab { margin-right: 432px; }         /* 给右侧栏让位，别�
 .toolbar > * { flex: 0 0 auto; }
 .toolbar .btn { white-space: nowrap; }
 #watchStatus { white-space: nowrap; }
+
+
+/* 面板左边缘的拖动手柄：改宽窄 */
+#editorResizer {
+  pointer-events: auto;
+  position: absolute;
+  left: -3px; top: 0; bottom: 0;
+  width: 9px;
+  cursor: col-resize;
+  z-index: 3;
+  background: transparent;
+}
+#editorResizer::after {
+  content: '';
+  position: absolute;
+  left: 3px; top: 50%;
+  width: 3px; height: 42px;
+  transform: translateY(-50%);
+  border-radius: 3px;
+  background: var(--md-outline-variant);
+  opacity: 0;
+  transition: opacity 140ms;
+}
+#editorResizer:hover::after,
+body.resizing-editor #editorResizer::after { opacity: .9; }
+body.resizing-editor { cursor: col-resize; user-select: none; }
+body.resizing-editor iframe { pointer-events: none; }

@@ -95,6 +95,17 @@ check('删除生效', afterDelete === beforeDelete - 1, beforeDelete + '→' + a
 
 await ev("document.getElementById('history').click()");
 await new Promise((r) => setTimeout(r, 2200));
+// 编辑栏宽度可拖动
+check('有拖动手柄', await ev("!!document.getElementById('editorResizer')"));
+const w0 = await ev("Math.round(document.getElementById('editorHost').getBoundingClientRect().width)");
+await ev("(async()=>{const h=document.getElementById('editorResizer');const r=h.getBoundingClientRect();const y=r.top+r.height/2;const x0=r.left+4;h.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,clientX:x0,clientY:y}));window.dispatchEvent(new MouseEvent('mousemove',{bubbles:true,clientX:x0-180,clientY:y}));window.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,clientX:x0-180,clientY:y}));await new Promise(r2=>setTimeout(r2,250));})()");
+const w1 = await ev("Math.round(document.getElementById('editorHost').getBoundingClientRect().width)");
+check('拖动后变宽', w1 > w0 + 100, w0 + '→' + w1);
+check('宽度记进了 localStorage', (await ev("localStorage.getItem('mt.editorWidth')")) === String(w1));
+check('拖宽后节点仍在可视区', await ev("(()=>{const box=document.getElementById('wrap').getBoundingClientRect();return [...document.querySelectorAll('.node')].every(n=>{const r=n.getBoundingClientRect();return r.left>=box.left-2&&r.right<=box.right+2;});})()"));
+await ev("(async()=>{const h=document.getElementById('editorResizer');h.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));await new Promise(r=>setTimeout(r,250));})()");
+check('双击恢复默认宽度', (await ev("Math.round(document.getElementById('editorHost').getBoundingClientRect().width)")) === 400);
+
 check('历史面板', (await ev("document.querySelector('#historyHost h3')?.textContent")) === '版本历史');
 check('有导出按钮', (await ev("!!document.getElementById('historyExport')")) === true);
 check('有版本条目', (await ev("document.querySelectorAll('.history-item').length")) >= 1);

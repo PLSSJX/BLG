@@ -1022,8 +1022,9 @@ window.addEventListener('blur', closeCtxMenu);
 
 /** 把视图缩放到刚好框住所有节点 */
 function fitView(padding = 60) {
-  // 右侧常驻编辑栏会吃掉一块宽度，全图适配时把最小缩放抬到 0.62，
-  // 再小字就看不清了（0.3 时正文只有 6px）。
+  // 编辑栏可以拖得很宽，画布就会变得很窄。
+  // 这里必须用"能放下全图"的缩放，否则节点会被挤出可视区；
+  // 只在放得下的前提下才尽量放大（最大 1.3 倍）。
   const list = [graph.trunk, ...graph.nodes]
     .filter((n) => n && !n.floating && typeof n.x === 'number' && typeof n.y === 'number');
   if (!list.length) { view = { x: 0, y: 0, scale: 1 }; applyView(); return; }
@@ -1038,8 +1039,8 @@ function fitView(padding = 60) {
   const rect = canvas.getBoundingClientRect();
   const bw = Math.max(1, maxX - minX);
   const bh = Math.max(1, maxY - minY);
-  const scale = Math.min(1.3, Math.max(0.62,
-    Math.min((rect.width - padding * 2) / bw, (rect.height - padding * 2) / bh)));
+  const need = Math.min((rect.width - padding * 2) / bw, (rect.height - padding * 2) / bh);
+  const scale = Math.min(1.3, Math.max(0.2, need));
   view.scale = scale;
   view.x = (rect.width - bw * scale) / 2 - minX * scale;
   view.y = (rect.height - bh * scale) / 2 - minY * scale;
@@ -2261,6 +2262,65 @@ function markEditorDirty(on) {
   if (tag) tag.style.display = on ? 'inline' : 'none';
 }
 
+/* ---------------------------------------------------------- 编辑栏宽度
+   按住左边那根细线拖动就能改宽窄，双击恢复默认；宽度记在 localStorage 里。 */
+const EDITOR_MIN = 320;
+const EDITOR_MAX = 760;
+const EDITOR_DEFAULT = 400;
+
+function applyEditorWidth(px) {
+  const w = Math.max(EDITOR_MIN, Math.min(EDITOR_MAX, Math.round(px)));
+  document.documentElement.style.setProperty('--editor-w', w + 'px');
+  try { localStorage.setItem('mt.editorWidth', String(w)); } catch (e) { /* 隐身模式忽略 */ }
+  return w;
+}
+
+function currentEditorWidth() {
+  const raw = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--editor-w'), 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : EDITOR_DEFAULT;
+}
+
+function initEditorResizer() {
+  try {
+    const saved = parseInt(localStorage.getItem('mt.editorWidth') || '', 10);
+    if (Number.isFinite(saved)) applyEditorWidth(saved);
+  } catch (e) { /* 忽略 */ }
+
+  const handle = document.getElementById('editorResizer');
+  if (!handle) return;
+  let startX = 0;
+  let startW = 0;
+  let dragging = false;
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragging = true;
+    startX = e.clientX;
+    startW = currentEditorWidth();
+    document.body.classList.add('resizing-editor');
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    // 面板贴右边：鼠标往左移 = 变宽
+    applyEditorWidth(startW + (startX - e.clientX));
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove('resizing-editor');
+    try { fitView(false); } catch (err) { /* 画布还没准备好就算了 */ }
+  });
+
+  handle.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    applyEditorWidth(EDITOR_DEFAULT);
+    try { fitView(false); } catch (err) { /* 忽略 */ }
+  });
+}
+
 /** 面板回到"没选节点"的状态（面板本身还在） */
 function showEditorEmpty() {
   editorHost.classList.remove('has-node');
@@ -2805,6 +2865,8 @@ async function exportGit() {
     await mtAlert('导出失败', e.message);
   }
 }
+
+initEditorResizer();
 
 const gcBtnEl = document.getElementById('historyGc');
 if (gcBtnEl) gcBtnEl.onclick = () => cleanHistory();
