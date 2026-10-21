@@ -1,9 +1,13 @@
 # Makise Toolkit
 
-> 一个把「视频下载 / 音乐管理 / 文档转换 / 视频剪辑」装进同一个窗口的本地工具。
-> 界面复刻 [Kazumi](https://github.com/Predidit/Kazumi) 的视觉语言，Material 3 风格。
+> 以**思维导图**的方式写论文：节点就是章节，保存就是版本，改坏了随时回到任意一版。
+> 文档转换、文献检索与引用、扫描件 OCR、可选 AI 助手都在同一个窗口里，全部在本机完成。
 
-**v3.6.0** · Windows 10/11 x64 · 全部处理都在本机完成，不上传任何文件
+**v4.0.0 快照版（snapshot）** · Windows 10/11 x64
+
+> ⚠️ 这是 4.0 的快照版，**不是稳定版**。功能已经能日常使用，但还没经过长时间验证，
+> 建议先在**新项目**上试用，重要论文请同时保留一份普通文件夹备份。
+> 稳定版请看 [Releases](https://github.com/PLSSJX/BLG/releases)。
 
 ![播放页](docs/screenshots/12-player.png)
 

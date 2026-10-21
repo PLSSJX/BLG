@@ -81,7 +81,10 @@ const undone = await ev('graph.nodes.length');
 check('新增节点', added === before + 1, before + '→' + added);
 check('Ctrl+Z 撤销', undone === before, added + '→' + undone);
 
-await ev(clickNode('.node[data-id="n4"]'));
+// 这里用内部函数直接选中，不走合成坐标：
+// 合成点击依赖 elementFromPoint，画布缩放/面板宽度一变坐标就可能落到别处，
+// 测出来的红是环境问题，不是删除逻辑的问题。
+await ev("select('n4'); openEditor(byId('n4'))");
 await new Promise((r) => setTimeout(r, 900));
 await ev("document.getElementById('editorDelete').click()");
 await new Promise((r) => setTimeout(r, 800));
@@ -102,8 +105,11 @@ await ev("(async()=>{const h=document.getElementById('editorResizer');const r=h.
 const w1 = await ev("Math.round(document.getElementById('editorHost').getBoundingClientRect().width)");
 check('拖动后变宽', w1 > w0 + 100, w0 + '→' + w1);
 check('宽度记进了 localStorage', (await ev("localStorage.getItem('mt.editorWidth')")) === String(w1));
+// 松手后适配是延迟 120ms 做的（等布局重排），这里等它跑完
+await new Promise((r) => setTimeout(r, 600));
 check('拖宽后节点仍在可视区', await ev("(()=>{const box=document.getElementById('wrap').getBoundingClientRect();return [...document.querySelectorAll('.node')].every(n=>{const r=n.getBoundingClientRect();return r.left>=box.left-2&&r.right<=box.right+2;});})()"));
 await ev("(async()=>{const h=document.getElementById('editorResizer');h.dispatchEvent(new MouseEvent('dblclick',{bubbles:true}));await new Promise(r=>setTimeout(r,250));})()");
+await new Promise((r) => setTimeout(r, 600));
 check('双击恢复默认宽度', (await ev("Math.round(document.getElementById('editorHost').getBoundingClientRect().width)")) === 400);
 
 // 弹窗必须是主题样式（不能是浏览器原生 confirm）

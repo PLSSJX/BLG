@@ -344,6 +344,13 @@ function render() {
   });
   renderStage();
   autoFitSoon();      // 数据/布局变了就重新适配（用户手动平移/缩放过就不打扰）
+  // 布局有 460ms 的过渡动画，渲染那一瞬间节点还在路上，
+  // 这时画出来的连线会是错的（悬空、穿节点）。等动画结束再补画一次。
+  clearTimeout(window.__edgeSettleTimer);
+  window.__edgeSettleTimer = setTimeout(() => {
+    if (dragState || panState) return;   // 正在拖就别抢
+    try { drawEdges(); } catch (e) { /* 忽略 */ }
+  }, 480);
 }
 
 /* 节点尺寸：先用估算值排版，渲染完拿真实 DOM 尺寸回填。
@@ -1083,8 +1090,10 @@ function fitView(padding = 80) {
   // 编辑栏可以拖得很宽，画布就会变得很窄。
   // 这里必须用"能放下全图"的缩放，否则节点会被挤出可视区；
   // 只在放得下的前提下才尽量放大（最大 1.3 倍）。
+  // 浮空节点也要算进来：它们同样占地方，漏掉就会出现
+  // "适配之后还有节点在可视区外面"的情况。
   const list = [graph.trunk, ...graph.nodes]
-    .filter((n) => n && !n.floating && typeof n.x === 'number' && typeof n.y === 'number');
+    .filter((n) => n && typeof n.x === 'number' && typeof n.y === 'number');
   if (!list.length) { view = { x: 0, y: 0, scale: 1 }; applyView(); return; }
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const n of list) {
@@ -1099,7 +1108,10 @@ function fitView(padding = 80) {
     maxX = Math.max(maxX, n.x + s.w / 2);
     maxY = Math.max(maxY, n.y + s.h / 2);
   }
-  const rect = canvas.getBoundingClientRect();
+  // 注意：不能量 #canvas —— 它自己带 transform: scale，量出来的是缩放后的尺寸，
+  // 每适配一次就小一圈（实测 0.53 → 0.22 一路缩下去）。要用外层未缩放的容器。
+  const wrapEl = document.getElementById('wrap');
+  const rect = (wrapEl || canvas).getBoundingClientRect();
   const bw = Math.max(1, maxX - minX);
   const bh = Math.max(1, maxY - minY);
   const need = Math.min((rect.width - padding * 2) / bw, (rect.height - padding * 2) / bh);
@@ -1113,7 +1125,7 @@ function fitView(padding = 80) {
   // 复核一遍：模型尺寸和真实 DOM 尺寸对不上时（比如摘要还没渲染出来），
   // 上面算的缩放会让边上的节点露在外面。溢出就缩一点再来。
   for (let tries = 0; tries < 6; tries++) {
-    const box = canvas.getBoundingClientRect();
+    const box = (document.getElementById('wrap') || canvas).getBoundingClientRect();
     let overflow = false;
     for (const n of list) {
       const el = nodeEl(n.id);
@@ -2094,17 +2106,16 @@ window.addEventListener('message', (event) => {
   if (btn) btn.click();
 });
 
-window.addEventListener('beforeunload', (e) => {
+// 不再用浏览器原生的 beforeunload 弹窗（那个"是否离开网站"和整套界面不是一个风格）。
+// 离开时尽力保存一次：刷新/关闭窗口没必要拦住用户，正文本来就在磁盘上，
+// 没保存的是版本快照，丢了也只是少一个版本，不会丢稿。
+window.addEventListener('pagehide', () => {
   const uncommitted = lastStatus && lastStatus.changed && lastStatus.changed.length;
-  const locked = lastStatus && lastStatus.locked && lastStatus.locked.length;
   if (!dirty && !uncommitted) return;
-  if (locked) {
-    // 有文件被占用：浏览器只会弹默认文案，这里至少让控制台/提示带上原因
-    console.warn('还有文件被其它程序占用，无法保存：' + lastStatus.locked.join('、'));
-  }
-  e.preventDefault();
-  e.returnValue = '还有没保存的改动';
-  return e.returnValue;
+  try {
+    // 同步发不出去异步请求，这里只把状态落成草稿，下次打开会提示
+    localStorage.setItem('mt.dirtyDraft.' + (projectId || ''), String(Date.now()));
+  } catch (e) { /* 忽略 */ }
 });
 
 document.querySelectorAll('#layoutSwitch button').forEach((btn) => {
@@ -2431,7 +2442,11 @@ function initEditorResizer() {
     if (!dragging) return;
     dragging = false;
     document.body.classList.remove('resizing-editor');
-    try { fitView(false); } catch (err) { /* 画布还没准备好就算了 */ }
+    // 等画布真的变窄/变宽之后再适配：鼠标松开的这一瞬间，
+    // .slab 的 margin-right 还没重排完，立刻算会按旧宽度算，节点就会被判越界。
+    setTimeout(() => {
+      try { fitView(false); } catch (err) { /* 画布还没准备好就算了 */ }
+    }, 120);
   });
 
   handle.addEventListener('dblclick', (e) => {
@@ -3096,10 +3111,37 @@ if (recentBtn) recentBtn.onclick = () => attachFromRecent();
 const askBtn = document.getElementById('editorAsk');
 if (askBtn) askBtn.onclick = () => askAI();
 
+/** 打开项目文件夹，并把"能动什么、不能动什么"说清楚。 */
+async function openProjectFolder() {
+  const ok = await mtDialog({
+    title: '打开项目文件夹',
+    body: '这里就是你的项目文件夹，正文、附件、版本库都在里面。\n\n'
+      + '【随便改没问题】\n'
+      + '· .md 正文文件：用 Typora / VS Code 改，回来程序会认\n'
+      + '· 附件（assets/ 下的文件）：改名、替换都行，下次挂载会重新认\n'
+      + '· 新增普通文件：不会影响程序\n\n'
+      + '【别动，动了会出问题】\n'
+      + '· .mt/ 目录（版本库 history.db）：删了历史就没了，改坏了项目可能打不开\n'
+      + '· .mt/graph.json：这是节点结构，改坏会导致节点对不上文件\n'
+      + '· 直接把 .md 文件删掉：节点还在，但打开时正文是空的\n\n'
+      + '要现在打开吗？',
+    okText: '打开文件夹',
+  });
+  if (!ok) return;
+  try {
+    await window.MTApi.shellOpen(projectPath, false);
+  } catch (e) {
+    await mtAlert('打不开', e.message);
+  }
+}
+
 const gcBtnEl = document.getElementById('historyGc');
 if (gcBtnEl) gcBtnEl.onclick = () => cleanHistory();
 const exportBtnEl = document.getElementById('historyExport');
 if (exportBtnEl) exportBtnEl.onclick = () => exportGit();
+
+const folderBtn = document.getElementById('openFolder');
+if (folderBtn) folderBtn.onclick = () => openProjectFolder();
 
 document.getElementById('historyClose').addEventListener('click', () => {
   document.getElementById('historyHost').classList.remove('open');

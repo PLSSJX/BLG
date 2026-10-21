@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Makise Toolkit · 项目画布</title>
-<link rel="stylesheet" href="css/style.css?v=28">
+<link rel="stylesheet" href="css/style.css?v=32">
 <style>
   /* 内嵌到 MT 主界面时，隐藏原型自己的左侧栏（MT 已经有导航栏了） */
   body.embed-mode .rail { display: none; }
@@ -41,6 +41,7 @@
           <div class="path" id="pPath"></div>
         </div>
         <div style="flex:1"></div>
+        <button class="btn text" id="openFolder" title="打开项目所在文件夹（对话框里说明哪些操作安全）">打开文件夹</button>
         <div class="undo-group">
           <button class="icon-btn" id="undoBtn" title="撤销 (Ctrl+Z)" disabled>↶</button>
           <button class="icon-btn" id="redoBtn" title="恢复 (Ctrl+Shift+Z)" disabled>↷</button>
@@ -175,9 +176,9 @@
     </div>
   </div>
 </div>
-<script src="js/data.js?v=28"></script>
-<script src="js/api.js?v=28"></script>
-<script src="js/md.js?v=28"></script>
+<script src="js/data.js?v=32"></script>
+<script src="js/api.js?v=32"></script>
+<script src="js/md.js?v=32"></script>
 <script>
   // 告诉 MT 主界面：已经打开具体项目了，左上角按钮要变成"退出项目"
   try {
@@ -188,7 +189,7 @@
       title: (document.getElementById('pName') || {}).textContent || '' }, location.origin);
   } catch (e) {}
 </script>
-<script src="js/canvas.js?v=28"></script>
+<script src="js/canvas.js?v=32"></script>
 <script>
   if (document.documentElement.dataset.embed === '1') document.body.classList.add('embed-mode');
 </script>
