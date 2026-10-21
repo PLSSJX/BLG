@@ -911,3 +911,37 @@ body.resizing-editor iframe { pointer-events: none; }
 
 .mt-modal-box:focus { outline: none; }
 .mt-modal-box .btn:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 2px; }
+
+
+/* 「从最近结果挂文件」的列表 */
+.mt-pick-box { width: min(520px, 94vw); }
+.mt-pick-list {
+  max-height: 320px; overflow: auto; display: flex; flex-direction: column; gap: 4px;
+  margin: 6px 0 2px;
+}
+.mt-pick-item {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  background: var(--md-surface-container-high); border: 1px solid transparent;
+  color: var(--md-on-surface); font: inherit;
+}
+.mt-pick-item:hover { border-color: var(--md-primary); }
+.mt-pick-name { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mt-pick-sub { font-size: 11px; opacity: .6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 暂存区每项的移除按钮：做成真按钮，键盘也能按 */
+.stage-del {
+  margin-left: auto;
+  opacity: .55;
+  padding: 0 5px;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.stage-del:hover { opacity: 1; background: rgba(255, 255, 255, .08); }
+.stage-del:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 1px; opacity: 1; }

@@ -739,10 +739,12 @@ function renderStage() {
     }
     el.draggable = true;
     el.addEventListener('dragstart', (e) => e.dataTransfer.setData('text/plain', item.id));
-    const del = document.createElement('span');
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'stage-del';
     del.textContent = '×';
     del.title = '从暂存区移除';
-    del.style.cssText = 'margin-left:auto;opacity:.5;padding:0 4px';
+    del.setAttribute('aria-label', '从暂存区移除 ' + item.title);
     del.onclick = async (ev) => {
       ev.stopPropagation();
       graph.staged = graph.staged.filter((s) => s.id !== item.id);
@@ -2379,6 +2381,63 @@ function initEditorResizer() {
   });
 }
 
+/** 从最近完成的任务里挑一个文件挂到当前节点 */
+async function attachFromRecent() {
+  if (!editingId) { toastMsg('先选一个节点'); return; }
+  let tasks = [];
+  try {
+    const r = await fetch('/api/tasks').then((x) => x.json());
+    tasks = (r.tasks || []).filter((t) => t.status === 'done' && (t.files || []).length);
+  } catch (e) {
+    mtAlert('读取失败', e.message);
+    return;
+  }
+  const files = [];
+  for (const t of tasks.slice(0, 30)) {
+    for (const f of t.files) {
+      if (f && f.path && ['video', 'audio', 'cover', 'subtitle', 'document'].includes(f.kind)) {
+        files.push({ path: f.path, name: f.name || f.path, task: t.title || '' });
+      }
+    }
+  }
+  if (!files.length) {
+    await mtAlert('没有可用的结果', '最近没有已完成的下载或转换任务。\n\n你也可以用「挂文件」直接选一个磁盘上的文件。');
+    return;
+  }
+  const picked = await new Promise((resolve) => {
+    const host = document.createElement('div');
+    host.className = 'mt-modal';
+    const box = document.createElement('div');
+    box.className = 'mt-modal-box mt-pick-box';
+    box.innerHTML = '<div class="mt-modal-title">从最近的结果挂文件</div>'
+      + '<div class="mt-modal-body">点一项就会复制进项目并挂到当前节点。</div>'
+      + '<div class="mt-pick-list"></div>'
+      + '<div class="mt-modal-row"><button class="btn text" data-act="cancel">取消</button></div>';
+    const list = box.querySelector('.mt-pick-list');
+    for (const f of files.slice(0, 40)) {
+      const row = document.createElement('button');
+      row.className = 'mt-pick-item';
+      row.innerHTML = '<span class="mt-pick-name"></span><span class="mt-pick-sub"></span>';
+      row.querySelector('.mt-pick-name').textContent = f.name;
+      row.querySelector('.mt-pick-sub').textContent = f.task;
+      row.onclick = () => { host.remove(); resolve(f); };
+      list.append(row);
+    }
+    box.querySelector('[data-act="cancel"]').onclick = () => { host.remove(); resolve(null); };
+    host.onclick = (e) => { if (e.target === host) { host.remove(); resolve(null); } };
+    host.append(box);
+    document.body.append(host);
+  });
+  if (!picked) return;
+  try {
+    await window.MTApi.attach(projectId, editingId, picked.path);
+    await reloadProject();
+    toastMsg('已挂上：' + picked.name);
+  } catch (e) {
+    await mtAlert('挂载失败', e.message);
+  }
+}
+
 /** 面板回到"没选节点"的状态（面板本身还在） */
 function showEditorEmpty() {
   editorHost.classList.remove('has-node');
@@ -2933,6 +2992,9 @@ async function exportGit() {
 }
 
 initEditorResizer();
+
+const recentBtn = document.getElementById('editorRecent');
+if (recentBtn) recentBtn.onclick = () => attachFromRecent();
 
 const gcBtnEl = document.getElementById('historyGc');
 if (gcBtnEl) gcBtnEl.onclick = () => cleanHistory();

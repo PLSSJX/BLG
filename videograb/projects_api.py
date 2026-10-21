@@ -1859,6 +1859,52 @@ def api_export_git(payload: dict) -> dict:
     return result
 
 
+def api_targets(_payload: dict) -> dict:
+    """给「存到项目」选择器用：一次返回所有项目和它们的节点树。
+
+    节点树按父子顺序展开，带 depth，前端直接平铺成下拉列表就行。
+    """
+    out = []
+    for item in load_registry():
+        try:
+            path = project_dir(item)
+            graph = locked_read_graph(path)
+        except Exception:
+            continue     # 目录没了 / 结构坏了就跳过这个项目，不要让整个选择器挂掉
+        nodes = graph.get("nodes") or []
+        trunk = graph.get("trunk") or {}
+        flat = []
+        if trunk:
+            flat.append({"id": trunk.get("id") or "t1",
+                         "title": trunk.get("title") or item.get("name") or "主干",
+                         "depth": 0, "is_trunk": True})
+        # 广度优先展开，保证父节点一定排在子节点前面
+        children = {}
+        for node in nodes:
+            children.setdefault(node.get("parent") or "", []).append(node)
+        queue = [(trunk.get("id") or "t1", 1)]
+        seen = set()
+        while queue:
+            parent_id, depth = queue.pop(0)
+            for child in children.get(parent_id, []):
+                cid = child.get("id")
+                if not cid or cid in seen:
+                    continue
+                seen.add(cid)
+                flat.append({"id": cid, "title": child.get("title") or "未命名",
+                             "depth": depth, "is_trunk": False})
+                queue.append((cid, depth + 1))
+        # 浮空节点（没有父节点的）也要能选
+        for node in nodes:
+            nid = node.get("id")
+            if nid and nid not in seen:
+                flat.append({"id": nid, "title": node.get("title") or "未命名",
+                             "depth": 1, "is_trunk": False})
+        out.append({"id": item.get("id"), "name": item.get("name") or "未命名项目",
+                    "path": str(item.get("path") or ""), "nodes": flat})
+    return {"projects": out}
+
+
 def api_gc(payload: dict) -> dict:
     """清理没有被任何版本引用的内容块，顺便报一下前后占用。"""
     item = find_project(str(payload.get("id") or ""))
@@ -1934,6 +1980,7 @@ ROUTES = {
     "/api/project/export-git": api_export_git,
     "/api/project/history-stats": api_history_stats,
     "/api/project/gc": api_gc,
+    "/api/project/targets": api_targets,
 }
 
 

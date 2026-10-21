@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Makise Toolkit · 项目画布</title>
-<link rel="stylesheet" href="css/style.css?v=13">
+<link rel="stylesheet" href="css/style.css?v=16">
 <style>
   /* 内嵌到 MT 主界面时，隐藏原型自己的左侧栏（MT 已经有导航栏了） */
   body.embed-mode .rail { display: none; }
@@ -165,6 +165,7 @@
     </details>
     <div class="row">
       <button class="btn text" id="editorLink" style="margin-right:auto">关联节点…</button>
+      <button class="btn text" id="editorRecent" title="从下载 / 转换完成的结果里挑一个挂到当前节点">从最近结果…</button>
       <button class="btn text" id="editorOpenFile" title="用 Typora / VS Code 等系统程序打开正文文件">外部打开</button>
       <button class="btn text" id="editorMerge">并入父节点</button>
       <button class="btn text" id="editorDelete" style="color:#ffb4ab">删除节点</button>
@@ -173,14 +174,14 @@
     </div>
   </div>
 </div>
-<script src="js/data.js?v=13"></script>
-<script src="js/api.js?v=13"></script>
-<script src="js/md.js?v=13"></script>
+<script src="js/data.js?v=16"></script>
+<script src="js/api.js?v=16"></script>
+<script src="js/md.js?v=16"></script>
 <script>
   // 告诉 MT 主界面：已经打开具体项目了，左上角按钮要变成"退出项目"
   try { parent.postMessage({ type: 'mt-state', view: 'canvas' }, location.origin); } catch (e) {}
 </script>
-<script src="js/canvas.js?v=13"></script>
+<script src="js/canvas.js?v=16"></script>
 <script>
   if (document.documentElement.dataset.embed === '1') document.body.classList.add('embed-mode');
 </script>

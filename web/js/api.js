@@ -7,6 +7,16 @@ export function setToken(token) {
   API_TOKEN = token || '';
 }
 
+/** 给需要自己发请求的模块用（比如项目联动） */
+export function getToken() {
+  return API_TOKEN;
+}
+
+/** 通用 POST：项目相关的接口用它，不用往 api 对象里一个个加方法 */
+export async function postJson(path, body) {
+  return request(path, { method: 'POST', body: JSON.stringify(body || {}) });
+}
+
 async function request(path, options = {}) {
   const headers = { 'Content-Type': 'application/json' };
   if (API_TOKEN) headers['X-MakiseToolkit-Token'] = API_TOKEN;

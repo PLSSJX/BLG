@@ -2,6 +2,7 @@
 import { api } from './api.js';
 import { playQueue, playFile, playNextItem, player, openVideo } from './player.js';
 import { icon } from './icons.js';
+import { saveToProject } from './project-link.js';
 import {
   h, clear, card, button, chip, switchRow, field, pill, toast, dialog,
   escapeHtml, fmtSize, fmtDuration, fmtCount, fmtDate, busy, emptyState, mount } from './ui.js';
@@ -1718,6 +1719,14 @@ function buildTaskCard(task) {
           toast('提取失败：' + err.message, 5000);
         }
         btn.disabled = false;
+      } }));
+    }
+    // 完成的产物直接存进项目：这是「下载 → 写论文」之间最短的一条路
+    const puttable = (task.files || []).filter((f) => f.path && ['video', 'audio', 'cover', 'subtitle', 'document'].includes(f.kind));
+    if (puttable.length) {
+      mount(actions, button('存到项目', { variant: 'text', iconName: 'folder_open', onClick: async () => {
+        const main = puttable.find((f) => f.kind === 'video') || puttable[0];
+        await saveToProject(main.path, main.name || task.title);
       } }));
     }
     // 删除分两种，都要先把"会不会删文件、删哪些"说清楚
@@ -3439,6 +3448,7 @@ function buildPaperDownloadsCard() {
                                 textOverflow: 'ellipsis' } }, it.name),
             h('span', { class: 'card-desc', style: { margin: '0', flex: 'none' } },
               Math.round(it.size / 1024) + ' KB'),
+            button('存到项目', { variant: 'text', onClick: () => { saveToProject(it.path, it.name); } }),
             button('打开', { variant: 'text', onClick: () => {
               api.shellOpen(it.path, false).catch((e) => toast(e.message, 8000));
             } }))))

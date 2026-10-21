@@ -9,6 +9,9 @@
     node tests/e2e/scenarios/lifecycle.mjs      # 节点与文件生命周期（86 项）
     node tests/e2e/scenarios/branch-merge.mjs   # 分支/合并/回滚/导出（82 项）
     node tests/e2e/scenarios/edge-cases.mjs     # 边界值与异常（80 项）
+    node tests/e2e/buttons.mjs                  # 画布页每个按钮逐个点（41 项）
+    node tests/e2e/buttons-list.mjs             # 列表页与新建立/改名/删除（17 项）
+    node tests/e2e/link.mjs                     # 下载结果存进项目（联动，8 项）
 
 约定：
 
