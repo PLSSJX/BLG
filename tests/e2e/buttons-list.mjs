@@ -109,8 +109,8 @@ check('列表态按钮是新建', String(fabLabel).includes('新建') || String(
 
 check('无 JS 异常', errs.length === 0, errs.slice(0, 3).join(' | '));
 
+try { await send('Browser.close'); } catch (e) {}
 ws.close();
-try { process.kill(browser.pid); } catch (e) {}
 const passed = results.filter((x) => x.ok).length;
 for (const x of results) console.log((x.ok ? '✅ ' : '❌ ') + x.n + (x.e ? ' — ' + x.e : ''));
 console.log('\n结果: ' + passed + '/' + results.length);

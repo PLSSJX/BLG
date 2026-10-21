@@ -189,6 +189,31 @@ def rebuild(progress=None) -> dict:
     return {"ok": True, "files": len(sources), "chunks": total, "db": str(DB_PATH)}
 
 
+def index_path(path: str, project: str = "", node: str = "") -> int:
+    """只更新一个文件的索引，不重建整库。
+
+    单节点保存、OCR 出结果之后调它 —— 全量重建要扫几百个文件，
+    为一次保存等两秒不值当。
+    """
+    target = Path(str(path))
+    try:
+        text = target.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return 0
+    conn = _db()
+    try:
+        conn.execute("DELETE FROM chunks WHERE path = ?", (str(target),))
+        count = 0
+        for piece in _chunks(text):
+            conn.execute("INSERT INTO chunks(project, node, path, text) VALUES (?,?,?,?)",
+                         (project or "", node or target.name, str(target), piece))
+            count += 1
+        conn.commit()
+    finally:
+        conn.close()
+    return count
+
+
 def stats() -> dict:
     if not DB_PATH.exists():
         return {"chunks": 0, "files": 0, "db": str(DB_PATH)}

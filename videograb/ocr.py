@@ -361,6 +361,12 @@ def ocr_pdf(pdf_path: str, progress=None, scale: float = 2.0, limit: int = 0) ->
     text = "\n\n".join(x for x in lines if x)
     out_path = source.with_suffix(source.suffix + ".ocr.txt")
     out_path.write_text(text, encoding="utf-8")
+    # 识别完立刻进检索库：下次问 AI 就能用上，不用等重建索引
+    try:
+        from . import ai as _ai
+        _ai.index_path(str(out_path), "文献库", source.name)
+    except Exception:
+        pass
     if progress:
         progress(1.0, "识别完成：%d 页，%d 字" % (len(pages), len(text)))
     return {"ok": True, "text": text, "pages": len(pages), "failed": failed,

@@ -1076,6 +1076,12 @@ def api_node_write(payload: dict) -> dict:
     # 按字节写：用 write_text 会被 Windows 的换行转换改成 CRLF，
     # 导致"同样的内容"和编辑器里看到的不一致，历史里也会误判成改动。
     target.write_bytes(body.encode("utf-8"))
+    # 保存完立刻更新这一篇的检索索引（问 AI 才能问到现在写的内容）
+    try:
+        from . import ai as _ai
+        _ai.index_path(str(target), str(item.get("name") or path.name), str(node.get("title") or target.stem))
+    except Exception:
+        pass
     return {"file": str(target.relative_to(path)).replace("\\", "/"),
             "summary": summarize(body)}
 

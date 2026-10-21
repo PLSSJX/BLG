@@ -127,8 +127,8 @@ await ev("document.getElementById('historyClose')?.click()");
 check('无 JS 异常', errs.length === 0, errs.slice(0, 2).join(' | '));
 check('服务仍在线', (() => { try { return !!JSON.parse(getRaw('/api/ping')).ok; } catch { return false; } })());
 
+try { await send('Browser.close'); } catch (e) {}
 ws.close();
-try { process.kill(browser.pid); } catch {}
 
 const passed = results.filter((x) => x.ok).length;
 for (const x of results) console.log((x.ok ? '✅ ' : '❌ ') + x.n + (x.e ? ' — ' + x.e : ''));

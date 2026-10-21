@@ -78,8 +78,8 @@ check('被删的项目不在列表里', !String(names).includes('按钮端到端
 check('项目文件夹已删掉', !fs.existsSync(proj), proj);
 check('无 JS 异常', errs.length === 0, errs.slice(0, 2).join(' | '));
 
+try { await send('Browser.close'); } catch (e) {}
 ws.close();
-try { process.kill(browser.pid); } catch {}
 const passed = results.filter((x) => x.ok).length;
 for (const x of results) console.log((x.ok ? '✅ ' : '❌ ') + x.n + (x.e ? ' — ' + x.e : ''));
 console.log('\n结果: ' + passed + '/' + results.length);

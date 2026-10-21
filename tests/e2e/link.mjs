@@ -97,8 +97,8 @@ const toast = await ev("Array.from(document.querySelectorAll('.toast')).map(func
 check('有成功提示', String(toast).indexOf('已存进项目') >= 0 || assets.length >= 1, toast);
 check('无 JS 异常', errs.length === 0, errs.slice(0, 2).join(' | '));
 
+try { await send('Browser.close'); } catch (e) {}
 ws.close();
-try { process.kill(browser.pid); } catch (e) {}
 console.log('project=' + pid);
 const passed = results.filter((x) => x.ok).length;
 for (const x of results) console.log((x.ok ? '✅ ' : '❌ ') + x.n + (x.e ? ' — ' + x.e : ''));
