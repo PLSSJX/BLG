@@ -143,15 +143,18 @@ class WNDCLASSW(ctypes.Structure):
 class Tray:
     """托盘图标 + 菜单。构造后调用 start() 起线程。"""
 
+    # (label, hash, 是否属于附加工具箱)
     PAGES = [
-        ("解析", "#home"),
-        ("音乐", "#music"),
-        ("播放", "#player"),
-        ("剪辑", "#clip"),
-        ("文档", "#doc"),
-        ("图片", "#image"),
-        ("历史记录", "#tasks"),
-        ("设置", "#settings"),
+        ("项目", "#projects", False),
+        ("解析", "#home", True),
+        ("音乐", "#music", True),
+        ("播放", "#player", True),
+        ("剪辑", "#clip", True),
+        ("文档", "#doc", False),
+        ("文献", "#papers", False),
+        ("图片", "#image", True),
+        ("历史记录", "#tasks", False),
+        ("设置", "#settings", False),
     ]
 
     def __init__(self, window_getter=None, icon_path=None, on_quit=None, tooltip="Makise Toolkit"):
@@ -242,13 +245,24 @@ class Tray:
             pass
 
     # ------------------------------------------------------------ 菜单
+    def _extras_on(self) -> bool:
+        """附加工具箱开着吗。读配置而不是缓存：用户改完设置，下一次右键就生效。"""
+        try:
+            from .config import load_settings
+            return load_settings().extras_enabled is True
+        except Exception:
+            return False
+
     def _build_menu(self) -> int:
         menu = user32.CreatePopupMenu()
-        items = [("显示主界面", 100), (None, 0),
-                 ("播放 / 暂停", 201), ("上一首", 202), ("下一首", 203), (None, 0),
-                 ("播放方式", 0),          # 小标题，灰掉不可点
-                 ("　顺序播放", 211), ("　列表循环", 212),
-                 ("　单曲循环", 213), ("　乱序播放", 214), (None, 0)]
+        extras = self._extras_on()
+        items = [("显示主界面", 100), (None, 0)]
+        if extras:
+            # 播放控制是给音乐用的，工具箱关着时整段不出现
+            items += [("播放 / 暂停", 201), ("上一首", 202), ("下一首", 203), (None, 0),
+                      ("播放方式", 0),          # 小标题，灰掉不可点
+                      ("　顺序播放", 211), ("　列表循环", 212),
+                      ("　单曲循环", 213), ("　乱序播放", 214), (None, 0)]
         for label, cmd in items:
             if label is None:
                 user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
@@ -259,12 +273,17 @@ class Tray:
                 user32.AppendMenuW(menu, MF_STRING, cmd, label)
         # 页面跳转单独一组，加个灰色小标题，免得和播放控制混在一起
         user32.AppendMenuW(menu, MF_STRING | MF_GRAYED, 0, "打开页面")
-        for index, (label, _hash) in enumerate(self.PAGES):
-            user32.AppendMenuW(menu, MF_STRING, 300 + index, "　" + label)
+        pages = [item for item in self.PAGES if extras or not item[2]]
+        self._menu_pages = pages        # 命令号要跟这次真正放进去的列表对齐
+        for index, (label, _hash, _x) in enumerate(pages):
+            # 关掉工具箱时这一页只剩文献，名字跟着界面一起改
+            shown = "文献资料" if (label == "历史记录" and not extras) else label
+            user32.AppendMenuW(menu, MF_STRING, 300 + index, "　" + shown)
         user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
         # 系统：方便出问题时自查，不用去翻安装目录
         user32.AppendMenuW(menu, MF_STRING, 901, "打开安装目录")
-        user32.AppendMenuW(menu, MF_STRING, 902, "打开下载目录")
+        if extras:
+            user32.AppendMenuW(menu, MF_STRING, 902, "打开下载目录")
         user32.AppendMenuW(menu, MF_STRING, 903, "查看错误日志")
         user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
         user32.AppendMenuW(menu, MF_STRING, 900, "退出")
@@ -282,8 +301,8 @@ class Tray:
         elif cmd in (211, 212, 213, 214):
             mode = {211: "off", 212: "all", 213: "one", 214: "shuffle"}[cmd]
             self._player("setLoop", "'" + mode + "'")
-        elif 300 <= cmd < 300 + len(self.PAGES):
-            self._navigate(self.PAGES[cmd - 300][1])
+        elif 300 <= cmd < 300 + len(getattr(self, "_menu_pages", self.PAGES)):
+            self._navigate(self._menu_pages[cmd - 300][1])
         elif cmd == 901:
             self._open_dir("install")
         elif cmd == 902:
