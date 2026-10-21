@@ -632,9 +632,14 @@ function drawEdges() {
       // 垂直分支：从父节点下沿一直竖着拉，节点挂在这条线上
       d = 'M ' + pa.x + ' ' + (pa.y + pa.h / 2) + ' L ' + ca.x + ' ' + (ca.y - ca.h / 2);
     } else if (layout === 'timeline') {
-      const x1 = pa.x + pa.w / 2, y1 = pa.y;
-      const x2 = ca.x - ca.w / 2, y2 = ca.y;
-      const k = Math.max(34, Math.abs(x2 - x1) * 0.45);
+      // 子节点在右边：父右沿 → 子左沿；在左边则反过来，
+      // 否则曲线会从父节点身体里穿过去，看着像断线。
+      const forward = ca.x >= pa.x;
+      const x1 = forward ? pa.x + pa.w / 2 : pa.x - pa.w / 2;
+      const y1 = pa.y;
+      const x2 = forward ? ca.x - ca.w / 2 : ca.x + ca.w / 2;
+      const y2 = ca.y;
+      const k = Math.max(34, Math.abs(x2 - x1) * 0.45) * (forward ? 1 : -1);
       d = 'M ' + x1 + ' ' + y1 + ' C ' + (x1 + k) + ' ' + y1 + ', ' + (x2 - k) + ' ' + y2 + ', ' + x2 + ' ' + y2;
     } else {
       // 导图：沿两点连线方向，从圆周边缘出去
@@ -1099,10 +1104,30 @@ function fitView(padding = 80) {
   const bh = Math.max(1, maxY - minY);
   const need = Math.min((rect.width - padding * 2) / bw, (rect.height - padding * 2) / bh);
   const scale = Math.min(1.3, Math.max(0.2, need));
-  view.scale = scale;
-  view.x = (rect.width - bw * scale) / 2 - minX * scale;
-  view.y = (rect.height - bh * scale) / 2 - minY * scale;
+  let fitScale = scale;
+  view.scale = fitScale;
+  view.x = (rect.width - bw * fitScale) / 2 - minX * fitScale;
+  view.y = (rect.height - bh * fitScale) / 2 - minY * fitScale;
   applyView();
+
+  // 复核一遍：模型尺寸和真实 DOM 尺寸对不上时（比如摘要还没渲染出来），
+  // 上面算的缩放会让边上的节点露在外面。溢出就缩一点再来。
+  for (let tries = 0; tries < 6; tries++) {
+    const box = canvas.getBoundingClientRect();
+    let overflow = false;
+    for (const n of list) {
+      const el = nodeEl(n.id);
+      if (!el) continue;
+      const r = el.getBoundingClientRect();
+      if (r.left < box.left + 2 || r.right > box.right - 2) { overflow = true; break; }
+    }
+    if (!overflow) break;
+    fitScale = Math.max(0.2, fitScale * 0.9);
+    view.scale = fitScale;
+    view.x = (rect.width - bw * fitScale) / 2 - minX * fitScale;
+    view.y = (rect.height - bh * fitScale) / 2 - minY * fitScale;
+    applyView();
+  }
 }
 
 /* ---------------------------------------------------------- 节点之间的关联线
@@ -1151,6 +1176,18 @@ function finishLink(targetId) {
   if (src) src.classList.add('link-source');
 }
 
+/** 从节点中心朝 (tx,ty) 方向射出，返回与节点矩形边框的交点。
+ *  连线必须落在边框上，否则会从节点身上穿过去。 */
+function edgeAnchor(node, tx, ty, size) {
+  const dx = tx - node.x, dy = ty - node.y;
+  if (!dx && !dy) return { x: node.x, y: node.y };
+  const halfW = size.w / 2, halfH = size.h / 2;
+  const scaleX = dx ? halfW / Math.abs(dx) : Infinity;
+  const scaleY = dy ? halfH / Math.abs(dy) : Infinity;
+  const t = Math.min(scaleX, scaleY);
+  return { x: node.x + dx * t, y: node.y + dy * t };
+}
+
 function drawLinks() {
   if (!graph.links || !graph.links.length) return;
   for (const link of graph.links) {
@@ -1166,8 +1203,11 @@ function drawLinks() {
     const bow = Math.min(90, len * 0.18);
     const cx = mx - (dy / len) * bow;
     const cy = my + (dx / len) * bow;
+    // 两端收在节点边框上，别从节点身体里穿出来
+    const startPoint = edgeAnchor(a, cx, cy, sa);
+    const endPoint = edgeAnchor(b, cx, cy, sb);
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', 'M' + ax + ',' + ay + ' Q' + cx + ',' + cy + ' ' + bx + ',' + by);
+    path.setAttribute('d', 'M' + startPoint.x + ',' + startPoint.y + ' Q' + cx + ',' + cy + ' ' + endPoint.x + ',' + endPoint.y);
     path.setAttribute('class', 'edge link');
     path.dataset.linkId = link.id;
     const onCtx = (ev) => {
@@ -2605,8 +2645,7 @@ canvas.addEventListener('contextmenu', (e) => {
 document.getElementById('editorDelete').addEventListener('click', async () => {
   const node = editingId ? byId(editingId) : null;
   if (!node) { closeEditor(); return; }
-  await saveGraphNow();   // 同上：服务端删的是磁盘上的结构
-  if (node.id === graph.trunk.id) { mtAlert('主干不能删除'); return; }
+  if (node.id === graph.trunk.id) { await mtAlert('主干不能删除'); return; }
 
   // 先数清楚会删掉多少（含所有层级）
   const doomed = new Set();
@@ -2625,6 +2664,7 @@ document.getElementById('editorDelete').addEventListener('click', async () => {
     okText: '删除', danger: true,
   });
   if (!ok) return;
+  await saveGraphNow();   // 确认之后才落盘：先弹窗再等网络，按钮不会像卡住
   // 记下这些节点的正文文件内容，撤销时能原样写回
   const keepFiles = {};
   for (const n of graph.nodes) {
