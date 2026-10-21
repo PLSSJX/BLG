@@ -2965,6 +2965,45 @@ const DOC_FORMATS = [
   ['pptx', 'PowerPoint', '需要装 PowerPoint', ['pdf']],
 ];
 
+/** PDF 到底能做什么、不能做什么 —— 写在界面上，而不是藏在文档里。 */
+function buildPdfStrategyCard() {
+  const row = (name, how, ok) => h('div', { style: { display: 'flex', gap: '10px', padding: '6px 0',
+    borderTop: '1px solid var(--md-outline-variant)', borderTopWidth: '.5px', fontSize: '12.5px' } },
+    h('b', { style: { minWidth: '92px', flex: 'none' } }, name),
+    h('span', { style: { flex: '1', opacity: '.85' } }, how),
+    pill(ok ? '可以做' : '做不了', ok ? 'ok' : 'mute'));
+
+  return card(
+    h('div', { class: 'card-title', html: icon('page_info', 'outlined', 20) + '<span>PDF 是怎么处理的</span>' }),
+    h('div', { class: 'card-desc' }, 'PDF 不像 Word 那样有段落结构，能拿到什么取决于它是哪种 PDF。'),
+    row('文本型 PDF', '直接抽出文字，按段落重新组织；版式（分栏、表格）会丢', true),
+    row('扫描件 / 图片型', '本身没有文字层，先渲染成图片再用 OCR 识别', true),
+    row('加密 PDF', '会明确报错说"需要密码"，不会产出一个空文件', false),
+    row('还原版式', '不做。要保留原版式请直接打开原 PDF', false),
+    h('div', { class: 'btn-row', style: { marginTop: '10px' } },
+      button('查看 OCR 组件', { variant: 'text', iconName: 'tune', onClick: async () => {
+        try {
+          const st = await api.ocrStatus();
+          const lines = [
+            '渲染组件（pypdfium2）：' + (st.renderer ? '已就绪' : '未安装，约 4 MB'),
+            '系统 OCR（Windows 自带）：' + (st.windows_ocr ? '可用' : '不可用'),
+            'Tesseract：' + (st.tesseract || '未安装（可选，装了识别更稳）'),
+          ];
+          const yes = await dialog({
+            title: 'OCR 组件状态',
+            body: lines.join('\n') + '\n\n装的是渲染组件；OCR 本身用系统自带的，不用下载。',
+            confirm: st.renderer ? '知道了' : '安装渲染组件',
+            cancel: '关闭',
+          });
+          if (yes && !st.renderer) {
+            toast('正在下载…', 4000);
+            await api.ocrInstall();
+            toast('渲染组件已就绪', 5000);
+          }
+        } catch (e) { toast('读取失败：' + e.message, 8000); }
+      } })));
+}
+
 export function renderDoc(view) {
   clear(view);
   const holder = h('div', {});
@@ -2980,6 +3019,7 @@ export function renderDoc(view) {
     const results = docState.results;
 
     return mount(holder, 
+      buildPdfStrategyCard(),
       card(
         h('div', { class: 'card-title', html: icon('description', 'outlined', 20) + '<span>选择文档并转换</span>' }),
         h('div', { class: 'card-desc' },
@@ -3035,10 +3075,31 @@ export function renderDoc(view) {
                       if (r.done.length) toast('已转换 ' + r.done.length + ' 个文件');
                       else if (r.failed.length) toast('转换失败：' + r.failed[0].error, 7000);
                       if (r.done && r.done.length) {
+                        // PDF 转出来的字太少 = 大概率是扫描件，直接把 OCR 这条路摆出来
+                        const thin = r.done.filter((d) => (d.source === 'pdf') && (d.chars !== undefined) && d.chars < 200);
+                        if (thin.length) {
+                          const yes = await dialog({
+                            title: '这 PDF 可能是扫描件',
+                            body: '「' + thin[0].output.split(/[\\/]/).pop() + '」只抽到 ' + thin[0].chars +
+                              ' 个字。\n\n扫描件本身没有文字层，要走 OCR 识别。要现在试吗？（识别结果会存成同名的 .ocr.txt）',
+                            confirm: '做 OCR',
+                            cancel: '先不用',
+                          });
+                          if (yes) {
+                            toast('正在识别，页数多的话要等一会儿…', 8000);
+                            try {
+                              const ocr = await api.ocrRun(thin[0].output.replace(/\.md$/i, ''), 0);
+                              toast('识别完成：' + ocr.pages + ' 页，' + ocr.chars + ' 字', 9000);
+                            } catch (e) {
+                              toast('OCR 失败：' + e.message, 9000);
+                            }
+                          }
+                        }
                         // 转换完把结果摆出来，让用户能直接打开，而不是自己去找目录
+                        const summary = r.done.map((d) => (d.chars !== undefined ? ('已抽取 ' + d.chars + ' 字') : '')).filter(Boolean).join('，');
                         dialog({
                           title: '转换完成',
-                          body: '已生成 ' + r.done.length + ' 个文件，放在：' + (r.dir || '下载目录'),
+                          body: '已生成 ' + r.done.length + ' 个文件' + (summary ? '（' + summary + '）' : '') + '，放在：' + (r.dir || '下载目录'),
                           confirm: '打开文件夹',
                           cancel: '知道了',
                         }).then((ok) => {

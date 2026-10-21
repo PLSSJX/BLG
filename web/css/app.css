@@ -1194,3 +1194,55 @@ body.has-titlebar .rail, body.has-titlebar .page-wrap { top: 44px; }
 /* 项目页的底色跟内页一致，圆角边缘就不会露出发丝一样的接缝 */
 .slab:has(.projects-frame) { background: #07231f; }
 .shell:has(.projects-frame) .rail { background: var(--md-surface-container); }
+
+
+/* ---------- 全局「问 AI」 ---------- */
+.ask-fab-host { position: fixed; right: 22px; bottom: 22px; z-index: 900; }
+.ask-fab {
+  width: 48px; height: 48px; border-radius: 16px; border: none; cursor: pointer;
+  display: grid; place-items: center;
+  background: var(--md-primary-container); color: var(--md-on-primary-container);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .28);
+  transition: transform 140ms, box-shadow 140ms;
+}
+.ask-fab:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0, 0, 0, .34); }
+
+.ask-modal {
+  position: fixed; inset: 0; z-index: 1000;
+  display: grid; place-items: center;
+  background: rgba(0, 0, 0, .45);
+}
+.ask-box {
+  width: min(680px, 92vw); max-height: 86vh; overflow: auto;
+  background: var(--md-surface-container);
+  border: 1px solid var(--md-outline-variant); border-radius: 18px;
+  padding: 16px 18px 18px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, .5);
+}
+.ask-head { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.ask-hint { font-size: 11.5px; opacity: .58; }
+.ask-close {
+  width: 28px; height: 28px; border-radius: 8px; border: 0; cursor: pointer;
+  background: transparent; color: inherit; font-size: 18px; line-height: 1;
+  opacity: .6;
+}
+.ask-close:hover { opacity: 1; background: rgba(255, 255, 255, .08); }
+.ask-context { font-size: 12px; opacity: .62; margin: 8px 0 6px; }
+.ask-input {
+  width: 100%; box-sizing: border-box; min-height: 84px; resize: vertical;
+  font: inherit; font-size: 13.5px; line-height: 1.7; padding: 10px 12px;
+  border-radius: 12px;
+}
+.ask-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; font-size: 12px; }
+.ask-ok { color: var(--md-primary); }
+.ask-off { opacity: .7; }
+.ask-answer { margin-top: 12px; }
+.ask-text {
+  white-space: pre-wrap; line-height: 1.8; font-size: 13.5px;
+  background: var(--md-surface-container-high); border-radius: 12px; padding: 12px 14px;
+}
+.ask-thinking { font-size: 13px; opacity: .6; }
+.ask-error { color: var(--md-error, #ffb4ab); font-size: 13px; }
+.ask-sources { margin-top: 10px; }
+.ask-sources-title { font-size: 11.5px; opacity: .6; margin-bottom: 4px; }
+.ask-source { font-size: 11.5px; opacity: .72; line-height: 1.7; }

@@ -512,8 +512,10 @@ def convert(src_path, out_dir, target: str) -> dict:
         out_path = out_dir / (src.stem + " (" + str(index) + ")." + target)
         index += 1
 
+    extracted = ""
     if target == "md":
-        out_path.write_text(to_markdown(source, data), encoding="utf-8")
+        extracted = to_markdown(source, data)
+        out_path.write_text(extracted, encoding="utf-8")
     else:
         if source == "md":
             blocks = from_markdown(data)
@@ -543,8 +545,12 @@ def convert(src_path, out_dir, target: str) -> dict:
                         rows.extend(value)
                 sheets = {(src.stem or "Sheet1")[:31]: rows or [["(空)"]]}
             write_xlsx(sheets, out_path)
-    return {"ok": True, "source": source, "target": target,
-            "output": str(out_path), "size": out_path.stat().st_size}
+    result = {"ok": True, "source": source, "target": target,
+              "output": str(out_path), "size": out_path.stat().st_size}
+    if target == "md":
+        # 字符数给界面判断"这是不是扫描件"：只抽到几十个字基本就是图片型 PDF
+        result["chars"] = len(extracted.strip())
+    return result
 
 
 # ---------------------------------------------------------------- 转 PDF（走 Office COM）

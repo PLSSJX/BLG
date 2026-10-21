@@ -4,6 +4,7 @@ import { icon } from './icons.js';
 import { h, clear, toast, dialog, button } from './ui.js';
 import { applyTheme, prefersDark } from './theme.js';
 import { initPlayer } from './player.js';
+import { mountAskButton, bindAskShortcut } from './ask.js';
 import {
   store, renderHome, renderMusic, renderPlayer, renderImage, renderDoc, renderClip,
   renderTasks, renderPapers, renderSettings, renderProjects,
@@ -377,6 +378,8 @@ async function openQuickSearch() {
 async function boot() {
   buildNavigation();
   initPlayer();     // 底部播放条，先建好，之后任何页面都能直接播
+  mountAskButton(); // 右下角「问 AI」圆钮，任何页面都能呼出
+  bindAskShortcut();
 
   try {
     store.config = await api.state();
