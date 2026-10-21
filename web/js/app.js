@@ -72,25 +72,51 @@ function buildNavigation() {
   const fab = document.getElementById('railSearch');
   fab.hidden = false;
   fab.onclick = () => {
-    if (current !== 'projects') { navigate('projects'); return; }
-    // 已经在项目页：让嵌套页面自己处理（保存并退出）
+    const mode = fab.dataset.mode || 'back';
+    if (mode === 'back') { navigate('projects'); return; }
     const frame = document.querySelector('.projects-frame');
-    if (frame && frame.contentWindow) {
-      try { frame.contentWindow.postMessage({ type: 'mt-back' }, location.origin); } catch (e) { /* 忽略 */ }
+    const win = frame && frame.contentWindow;
+    if (mode === 'exit') {
+      // 保存并退出：交给画布页自己走保存检查
+      try { win && win.postMessage({ type: 'mt-back' }, location.origin); } catch (e) { /* 忽略 */ }
+      return;
     }
+    // 列表页：让内嵌页面弹出「新建项目」
+    try { win && win.postMessage({ type: 'mt-new' }, location.origin); } catch (e) { /* 忽略 */ }
   };
   syncRailFab();
 }
 
-/** 左上角按钮的图标随页面切换：项目页显示返回，其它页显示返回项目 */
+/** 左上角按钮的三种状态：
+ *  别的页面      → 返回箭头，回到项目页
+ *  项目页·画布里  → 返回箭头，保存并退出当前项目
+ *  项目页·列表里  → 加号，新建项目
+ */
+let projectView = 'list';   // iframe 里现在是列表还是画布
+
 function syncRailFab() {
   const fab = document.getElementById('railSearch');
   if (!fab) return;
   const onProjects = current === 'projects';
-  fab.innerHTML = icon('arrow_back', 'filled', 24);
-  fab.title = onProjects ? '保存并退出项目' : '回到项目';
+  const inCanvas = onProjects && projectView === 'canvas';
+  const showPlus = onProjects && !inCanvas;
+
+  fab.innerHTML = icon(showPlus ? 'add' : 'arrow_back', 'filled', 24);
+  fab.title = showPlus ? '新建项目' : (inCanvas ? '保存并退出项目' : '回到项目');
   fab.setAttribute('aria-label', fab.title);
+  fab.dataset.mode = showPlus ? 'new' : (inCanvas ? 'exit' : 'back');
 }
+
+// 内嵌页面会告诉我们它在哪一屏
+window.addEventListener('message', (event) => {
+  if (!event || !event.data || event.data.type !== 'mt-state') return;
+  if (event.data.view && event.data.view !== projectView) {
+    projectView = event.data.view;
+    syncRailFab();
+  } else if (current === 'projects') {
+    syncRailFab();
+  }
+});
 
 /** 把粘球移到当前选中项的位置。首次定位不做动画，之后每次都滑过去。 */
 let blobReady = false;
@@ -206,6 +232,7 @@ async function ensureData() {
 }
 
 async function navigate(id) {
+  if (id !== 'projects') projectView = 'list';
   if (!ROUTES.some((r) => r.id === id)) id = 'home';
   current = id;
   if (location.hash !== '#' + id) history.replaceState(null, '', '#' + id);

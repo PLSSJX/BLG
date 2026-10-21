@@ -35,18 +35,23 @@ post('/api/project/graph', { id, graph: g });
 post('/api/project/commit-now', { id, message: 'mt: 界面测试' });
 
 const browser = spawn('C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--remote-debugging-port=10660', '--window-size=1400,880',
+  ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--remote-debugging-port=10660', '--user-data-dir=D:\\_e2e_profile_' + Date.now(), '--window-size=1400,880',
    BASE + '/projects/project.html?id=' + id], { windowsHide: true, detached: true, stdio: 'ignore' });
 browser.unref();
 await new Promise((r) => setTimeout(r, 9000));
 const list = await (await fetch('http://127.0.0.1:10660/json/list')).json();
-const ws = new WebSocket((list.find((t) => t.type === 'page') || list[0]).webSocketDebuggerUrl);
+const target = list.find((t) => t.type === 'page' && String(t.url).indexOf('127.0.0.1:8931') >= 0) || list.find((t) => t.type === 'page') || list[0];
+const ws = new WebSocket(target.webSocketDebuggerUrl);
 let n = 0; const pend = new Map(); const errs = [];
 const send = (m, q) => new Promise((r) => { const i = ++n; pend.set(i, r); ws.send(JSON.stringify({ id: i, method: m, params: q })); });
 ws.addEventListener('message', (e) => { const m = JSON.parse(e.data);
   if (m.method === 'Runtime.exceptionThrown') errs.push(String(m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text).slice(0, 160));
   if (m.id && pend.has(m.id)) { pend.get(m.id)(m.result || m.error); pend.delete(m.id); } });
-await new Promise((r) => ws.addEventListener('open', r));
+await Promise.race([
+  new Promise((r) => ws.addEventListener('open', r)),
+  new Promise((_, rej) => setTimeout(() => rej(new Error('CDP 连接超时')), 15000)),
+]);
+ws.addEventListener('error', () => {});
 await send('Runtime.enable', {});
 await send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 880, deviceScaleFactor: 1, mobile: false });
 const ev = async (x) => { const r = await send('Runtime.evaluate', { expression: x, awaitPromise: true, returnByValue: true }); return r.exceptionDetails ? 'EXC ' + String(r.exceptionDetails.exception?.description).slice(0, 140) : r.result?.value; };

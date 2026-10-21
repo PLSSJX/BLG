@@ -25,7 +25,7 @@
   <main class="slab">
     <div class="view">
       <h1 class="page-title">项目</h1>
-      <p class="page-sub">每个项目是一个被接管的文件夹，由 git 记录每一次保存。</p>
+      <p class="page-sub">每个项目是一个被接管的文件夹，每次保存都会留一个版本，随时能回去。</p>
       <div id="list"></div>
     </div>
   </main>
@@ -34,8 +34,7 @@
 <div class="dialog-host" id="dialogHost">
   <div class="dialog">
     <h3>新建项目</h3>
-    <p>选一个空文件夹，Makise Toolkit 会接管它并用 git 管理。<br>
-       目前原型阶段不会真的写入磁盘。</p>
+    <p>选一个空文件夹，Makise Toolkit 会接管它，之后每次保存都记一个版本。</p>
     <input class="input" id="projectName" placeholder="项目名称，例如：低功耗芯片论文">
     <input class="input" id="projectPath" placeholder="文件夹路径，例如：D:\\我的项目\\低功耗芯片" style="margin-top:8px">
     <div class="actions">
@@ -62,6 +61,22 @@
   <div class="empty-arrow">↖</div>
   <div class="empty-text"><b>创建第一个项目吧！</b>点左上角的 ＋ 选一个空文件夹开始</div>
 </div>
+<script>
+  // 和 MT 主界面的约定：告诉它当前是哪一屏，外部据此切换左上角按钮
+  window.tellHost = function (extra) {
+    try { parent.postMessage(Object.assign({ type: 'mt-state', view: 'list' }, extra || {}), location.origin); } catch (e) {}
+  };
+  window.addEventListener('load', () => { tellHost(); });
+  window.addEventListener('message', (e) => {
+    if (!e || !e.data) return;
+    if (e.data.type === 'mt-new') {
+      const dlg = document.getElementById('dialogHost');
+      if (dlg) dlg.classList.add('open');
+      const name = document.getElementById('projectName');
+      if (name) setTimeout(() => name.focus(), 60);
+    }
+  });
+</script>
 <script src="js/api.js?v=3"></script>
 <script>
 const MTD = window.MTData;
@@ -82,6 +97,7 @@ async function render() {
   list.innerHTML = '';
   const hint = document.getElementById('emptyHint');
   if (hint) hint.style.display = projects.length ? 'none' : 'flex';
+  if (window.tellHost) window.tellHost({ count: projects.length });
   if (!projects.length) return;
   const grid = document.createElement('div');
   grid.className = 'projects';
@@ -94,14 +110,18 @@ async function render() {
       '<div class="project-path">' + p.path + '</div>' +
       '<div class="project-actions">' +
         '<button class="mini-btn" data-act="rename" title="改个项目名">重命名</button>' +
-        '<button class="mini-btn danger" data-act="remove" title="从列表移除（不删文件）">移除</button>' +
+        '<button class="mini-btn danger" data-act="delete" title="删掉项目和它的文件夹">删除项目</button>' +
       '</div>' +
       '<div class="project-meta">' +
         '<span>版本 <b>' + (p.commits || 0) + '</b></span>' +
         (p.branch ? '<span>分支 <b>' + p.branch + '</b></span>' : '') +
         (p.head ? '<span>' + String(p.head).slice(0, 7) + '</span>' : '') +
       '</div>';
-    card.onclick = () => { location.href = 'project.html?id=' + encodeURIComponent(p.id); };
+    card.onclick = (ev) => {
+      const act = ev.target && ev.target.dataset ? ev.target.dataset.act : '';
+      if (act) { ev.stopPropagation(); onCardAction(p, act); return; }
+      location.href = 'project.html?id=' + encodeURIComponent(p.id);
+    };
     grid.append(card);
   });
   list.append(grid);
@@ -115,15 +135,83 @@ document.getElementById('newProject').onclick = () => {
 };
 document.getElementById('cancel').onclick = () => host.classList.remove('open');
 host.onclick = (e) => { if (e.target === host) host.classList.remove('open'); };
-document.getElementById('confirm').onclick = () => {
+document.getElementById('confirm').onclick = async () => {
   const name = document.getElementById('projectName').value.trim();
   const path = document.getElementById('projectPath').value.trim();
   if (!name || !path) { alert('名称和路径都要填'); return; }
-  const p = MTD.createProject(name, path);
-  host.classList.remove('open');
-  render();
-  setTimeout(() => { location.href = 'project.html?id=' + encodeURIComponent(p.id); }, 260);
+  try {
+    const p = MTOnline ? await MTApi.create(name, path) : MTD.createProject(name, path);
+    host.classList.remove('open');
+    await render();
+    if (p && p.id) location.href = 'project.html?id=' + encodeURIComponent(p.id);
+  } catch (e) {
+    alert('创建失败：' + e.message);
+  }
 };
+
+/** 卡片上的三个动作：重命名 / 删除项目 */
+/** 应用内对话框：不用原生 confirm/prompt（会被"阻止此页面创建更多对话框"静默拦掉） */
+function askDialog(opts) {
+  return new Promise((resolve) => {
+    const host = document.createElement('div');
+    host.className = 'mt-modal';
+    host.innerHTML = '<div class="mt-modal-box"><div class="mt-modal-title"></div>' +
+      '<div class="mt-modal-body"></div>' +
+      '<input class="input mt-modal-input" style="display:none">' +
+      '<div class="mt-modal-row"><button class="btn text" data-act="cancel"></button>' +
+      '<button class="btn" data-act="ok"></button></div></div>';
+    host.querySelector('.mt-modal-title').textContent = opts.title || '提示';
+    host.querySelector('.mt-modal-body').textContent = opts.body || '';
+    host.querySelector('[data-act="ok"]').textContent = opts.okText || '确定';
+    host.querySelector('[data-act="cancel"]').textContent = opts.cancelText || '取消';
+    if (opts.danger) host.querySelector('[data-act="ok"]').style.background = '#ffb4ab';
+    const input = host.querySelector('.mt-modal-input');
+    if (opts.input !== undefined) {
+      input.style.display = 'block';
+      input.value = opts.input;
+      host.querySelector('.mt-modal-body').style.display = 'none';
+    }
+    document.body.append(host);
+    const close = (v) => { host.remove(); resolve(v); };
+    host.querySelector('[data-act="ok"]').onclick = () => close(opts.input !== undefined ? input.value : true);
+    host.querySelector('[data-act="cancel"]').onclick = () => close(opts.input !== undefined ? null : false);
+    host.onclick = (e) => { if (e.target === host) close(opts.input !== undefined ? null : false); };
+    setTimeout(() => (opts.input !== undefined ? input : host.querySelector('[data-act="ok"]')).focus(), 40);
+  });
+}
+
+/** 卡片上的动作：重命名 / 删除项目 */
+async function onCardAction(p, act) {
+  if (act === 'rename') {
+    const name = await askDialog({ title: '重命名项目', input: p.name, okText: '改名' });
+    if (!name || !name.trim() || name === p.name) return;
+    try { await MTApi.rename(p.id, name.trim()); await render(); }
+    catch (e) { await askDialog({ title: '改名失败', body: e.message, okText: '知道了', cancelText: '关闭' }); }
+    return;
+  }
+  if (act === 'delete') {
+    const ok = await askDialog({
+      title: '删除项目',
+      body: '删除「' + p.name + '」？\n\n确定 = 连文件夹一起删掉（不可恢复）\n取消 = 什么都不做',
+      okText: '删除', danger: true,
+    });
+    if (!ok) return;
+    try {
+      await MTApi.deleteProject(p.id, true);
+      await render();
+    } catch (e) {
+      const only = await askDialog({
+        title: '文件夹删不掉',
+        body: '可能里面还有文件开着：' + e.message + '\n\n只从列表移除这个项目？（文件保留）',
+        okText: '只移除', cancelText: '算了',
+      });
+      if (only) {
+        try { await MTApi.deleteProject(p.id, false); await render(); }
+        catch (e2) { await askDialog({ title: '移除失败', body: e2.message, okText: '知道了', cancelText: '关闭' }); }
+      }
+    }
+  }
+}
 
 render();
 </script>

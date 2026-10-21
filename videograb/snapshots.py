@@ -86,6 +86,7 @@ class Repo:
         self.db_path = self.root / MT_DIR / DB_NAME
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._local = threading.local()
+        self._conns = []          # 所有线程开过的连接，删项目时要一并关掉
         self.init()
 
     # ---------------- 底层
@@ -97,7 +98,30 @@ class Repo:
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
             self._local.conn = conn
+            self._conns.append(conn)
         return conn
+
+    def close(self) -> None:
+        """关掉这个项目所有线程的连接（Windows 下文件被占用就删不掉目录）。"""
+        with _LOCK:
+            for conn in list(getattr(self, "_conns", [])):
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+            self._conns = []
+            try:
+                if getattr(self._local, "conn", None):
+                    self._local.conn = None
+            except Exception:
+                pass
+            # Windows 上 SQLite 的 WAL 映射要等对象被回收才真正释放句柄，
+            # 不主动跑一次 GC，删项目目录时会一直报"另一个程序正在使用此文件"。
+            try:
+                import gc
+                gc.collect()
+            except Exception:
+                pass
 
     def init(self) -> None:
         with _LOCK:

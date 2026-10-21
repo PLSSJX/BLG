@@ -26,6 +26,23 @@ def repo_for(root: Path) -> Repo:
     return r
 
 
+def forget(root) -> None:
+    """把某个项目（及其子目录）的 Repo 从缓存里丢掉并关连接。
+
+    删项目之前必须调：Windows 上只要还有一条 sqlite 连接开着，
+    整个目录就删不掉（WinError 32）。
+    """
+    base = str(Path(root).resolve())
+    doomed = [k for k in list(_REPOS) if k == base or k.startswith(base + "\\")]
+    for key in doomed:
+        repo = _REPOS.pop(key, None)
+        if repo is not None:
+            try:
+                repo.close()
+            except Exception:
+                pass
+
+
 class GitCompatError(Exception):
     pass
 

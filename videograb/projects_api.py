@@ -34,7 +34,7 @@ WATCH_ERROR = ""             # 监听线程自身最近一次故障
 # graph.json 会被多个入口读写：界面保存、删除节点、挂文件、监听器的摘要同步。
 # 没有这把锁时，摘要同步的「读-改-写」会覆盖掉用户刚保存的结构（实测踩过）。
 GRAPH_LOCK = threading.RLock()
-WATCH_LOCK = threading.Lock()
+WATCH_LOCK = threading.RLock()
 
 
 
@@ -565,22 +565,54 @@ def api_project_rename(payload: dict) -> dict:
 
 
 def api_project_delete(payload: dict) -> dict:
-    """从列表移除。delete_folder 才真的删目录。"""
+    """从列表移除。delete_folder 才真的删目录。
+
+    顺序很重要：先把目录删掉，成功了才注销。
+    反过来的话，目录删不掉时用户会看到项目凭空消失、文件夹却还在磁盘上。
+    """
+    import shutil as _shutil
+    import time as _time
+
     item = find_project(str(payload.get("id") or ""))
     path = project_dir(item)
+    removed = False
+
+    if payload.get("delete_folder"):
+        with WATCH_LOCK:
+            WATCHERS.pop(item["id"], None)
+        # 巡检线程每 2 秒会扫一遍目录，扫描期间 Windows 不允许删目录
+        # （"另一个程序正在使用此文件"）。删之前先让它停下来。
+        pause_watcher()
+        items = [e for e in load_registry() if e.get("id") != item["id"]]
+        save_registry(items)
+        try:
+            import gc as _gc
+            last = None
+            for _ in range(20):
+                git_compat.forget(path)      # 关掉快照库连接
+                _gc.collect()                # 让 SQLite 真正释放 WAL 句柄
+                try:
+                    _shutil.rmtree(path)
+                    removed = True
+                    last = None
+                    break
+                except OSError as exc:
+                    last = exc
+                    _time.sleep(0.25)
+            if last is not None:
+                raise ApiError("目录删不掉（可能里面还有文件开着）：" + str(last)[:80]) from None
+        except ApiError:
+            save_registry(load_registry() + [item])     # 失败就把登记放回去
+            raise
+        finally:
+            resume_watcher()
+        return {"removed": True}
+
     items = [e for e in load_registry() if e.get("id") != item["id"]]
     save_registry(items)
     with WATCH_LOCK:
         WATCHERS.pop(item["id"], None)
-    removed = False
-    if payload.get("delete_folder"):
-        import shutil as _shutil
-        try:
-            _shutil.rmtree(path)
-            removed = True
-        except OSError as exc:
-            raise ApiError("目录删不掉：" + str(exc)[:80]) from None
-    return {"removed": removed}
+    return {"removed": False}
 
 
 def api_list(_payload: dict) -> dict:
@@ -1864,16 +1896,36 @@ ROUTES = {
 
 # ------------------------------------------------------------------ 对外接口
 _stop = threading.Event()
-_started = False
+_watch_thread = None
 
 
 def init(data_dir) -> None:
     """指定登记表位置，并启动自动提交的巡检线程。"""
-    global REGISTRY, _started
+    global REGISTRY
     REGISTRY = Path(data_dir) / "projects.json"
-    if not _started:
-        _started = True
-        threading.Thread(target=watch_loop, args=(_stop,), daemon=True).start()
+    _start_watcher()
+
+
+def _start_watcher() -> None:
+    global _watch_thread
+    if _watch_thread is not None and _watch_thread.is_alive():
+        return
+    _stop.clear()
+    _watch_thread = threading.Thread(target=watch_loop, args=(_stop,), daemon=True,
+                                     name="project-watcher")
+    _watch_thread.start()
+
+
+def pause_watcher(timeout: float = 3.0) -> None:
+    """临时停掉巡检（删项目时用：扫描期间删不掉目录）。"""
+    _stop.set()
+    thread = _watch_thread
+    if thread is not None and thread.is_alive():
+        thread.join(timeout)
+
+
+def resume_watcher() -> None:
+    _start_watcher()
 
 
 def shutdown() -> None:
