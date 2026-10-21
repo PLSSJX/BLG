@@ -63,7 +63,7 @@ def make_icon() -> Path | None:
     """
     target = TOOLS / "app.ico"
     if target.exists():
-        return target
+        return target   # 已经有就用现成的（新图标是脚本生成后放这里的）
     try:
         from PIL import Image, ImageDraw
     except ImportError:
@@ -75,32 +75,25 @@ def make_icon() -> Path | None:
     image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
 
-    # 竖向渐变底：取 Material 3 绿色种子的 primary / primaryContainer 色调
-    top, bottom = (0x6A, 0xD8, 0x6E), (0x1B, 0x5E, 0x20)
-    layer = Image.new("RGBA", (size, size))
-    pixels = layer.load()
-    for y in range(size):
-        ratio = y / (size - 1)
-        row = tuple(int(top[i] + (bottom[i] - top[i]) * ratio) for i in range(3))
-        for x in range(size):
-            pixels[x, y] = (*row, 255)
+    # 薄荷绿圆角方块 + 深墨绿字母 M，和界面里的配色一致
+    mint = (0x9E, 0xD8, 0xCB, 255)
+    ink = (0x0B, 0x3B, 0x36, 255)
+    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=112, fill=mint)
 
-    mask = Image.new("L", (size, size), 0)
-    ImageDraw.Draw(mask).rounded_rectangle([0, 0, size - 1, size - 1], radius=112, fill=255)
-    image.paste(layer, (0, 0), mask)
-
-    # 白色播放三角
-    cx, cy, r = size // 2, size // 2, 128
-    draw.polygon(
-        [(cx - r + 34, cy - r), (cx - r + 34, cy + r), (cx + r + 10, cy)],
-        fill=(255, 255, 255, 255),
-    )
-    # 左下角一点"下载"暗示：一条白色短横线
-    draw.rounded_rectangle([size // 2 - 120, size - 150, size // 2 + 120, size - 122],
-                           radius=14, fill=(255, 255, 255, 235))
+    # M 用多边形画，不依赖字体：外轮廓 + 中间凹口
+    u = size
+    pts = [
+        (0.235, 0.760), (0.235, 0.240), (0.360, 0.240),
+        (0.500, 0.480), (0.640, 0.240), (0.765, 0.240),
+        (0.765, 0.760), (0.635, 0.760), (0.635, 0.470),
+        (0.530, 0.680), (0.470, 0.680), (0.365, 0.470),
+        (0.365, 0.760),
+    ]
+    draw.polygon([(x * u, y * u) for x, y in pts], fill=ink)
 
     image.save(target, format="ICO",
                sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    image.save(TOOLS / "icon-256.png", format="PNG")
     log("图标已生成：" + str(target))
     return target
 
