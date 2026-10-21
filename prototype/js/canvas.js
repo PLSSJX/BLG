@@ -2183,6 +2183,30 @@ function initMarkdownEditor() {
     preview.innerHTML = window.MTMarkdown ? window.MTMarkdown.render(editorBody.value) : '';
   }
 
+  // 预览里的链接：原来点了没反应（相对路径还会按网页地址去解析，直接 404）。
+  // 现在统一交给系统处理：网址交给浏览器，文件按项目目录解析后打开。
+  preview.addEventListener('click', async (e) => {
+    const a = e.target.closest('a');
+    if (!a) return;
+    e.preventDefault();
+    const href = a.getAttribute('href') || '';
+    if (!href || href.startsWith('#')) return;
+    try {
+      if (/^(https?:|mailto:)/i.test(href)) {
+        await window.MTApi.shellOpen(href, false);
+        return;
+      }
+      // 站内相对路径：相对项目根目录，而不是相对这个网页
+      const clean = decodeURI(href.split('#')[0]);
+      const full = clean.startsWith('/')
+        ? projectPath + clean
+        : projectPath + '\\' + clean.replace(/\//g, '\\');
+      await window.MTApi.shellOpen(full, false);
+    } catch (err) {
+      await mtAlert('打不开这个链接', href + '\n\n' + (err && err.message ? err.message : '文件可能不在了'));
+    }
+  });
+
   // 输入时实时预览（有预览区才更新）
   editorName.addEventListener('input', () => markEditorDirty(true));
   editorBody.addEventListener('input', () => {
