@@ -2438,6 +2438,52 @@ async function attachFromRecent() {
   }
 }
 
+/** 问 AI：先在本地检索，再把命中的片段发给用户配置的端点。 */
+async function askAI() {
+  const host = document.createElement('div');
+  host.className = 'mt-modal';
+  host.innerHTML = '<div class="mt-modal-box mt-ask-box">'
+    + '<div class="mt-modal-title">问 AI</div>'
+    + '<div class="mt-modal-body">问题会先在本地资料里检索，命中的片段才会发到你配置的端点。</div>'
+    + '<textarea class="input mt-ask-input" placeholder="例如：我论文里关于时钟门控的部分写了什么？"></textarea>'
+    + '<div class="mt-ask-result"></div>'
+    + '<div class="mt-modal-row"><button class="btn text" data-act="cancel">关闭</button>'
+    + '<button class="btn" data-act="send">提问</button></div></div>';
+  document.body.append(host);
+  const input = host.querySelector('.mt-ask-input');
+  const out = host.querySelector('.mt-ask-result');
+  const sendBtn = host.querySelector('[data-act="send"]');
+  const close = () => host.remove();
+  host.querySelector('[data-act="cancel"]').onclick = close;
+  host.onclick = (e) => { if (e.target === host) close(); };
+  setTimeout(() => input.focus(), 50);
+
+  sendBtn.onclick = async () => {
+    const question = input.value.trim();
+    if (!question) { input.focus(); return; }
+    sendBtn.disabled = true;
+    out.textContent = '正在检索并提问…';
+    try {
+      const r = await window.MTApi.aiAsk(question);
+      const hits = (r.hits || []).map((h) => '· ' + h.project + ' / ' + h.node).join('\n');
+      out.innerHTML = '';
+      const ans = document.createElement('div');
+      ans.className = 'mt-ask-answer';
+      ans.textContent = r.answer || '(没有返回内容)';
+      out.append(ans);
+      if (hits) {
+        const src = document.createElement('div');
+        src.className = 'mt-ask-sources';
+        src.textContent = '参考：\n' + hits;
+        out.append(src);
+      }
+    } catch (e) {
+      out.textContent = '失败：' + e.message;
+    }
+    sendBtn.disabled = false;
+  };
+}
+
 /** 面板回到"没选节点"的状态（面板本身还在） */
 function showEditorEmpty() {
   editorHost.classList.remove('has-node');
@@ -2995,6 +3041,9 @@ initEditorResizer();
 
 const recentBtn = document.getElementById('editorRecent');
 if (recentBtn) recentBtn.onclick = () => attachFromRecent();
+
+const askBtn = document.getElementById('editorAsk');
+if (askBtn) askBtn.onclick = () => askAI();
 
 const gcBtnEl = document.getElementById('historyGc');
 if (gcBtnEl) gcBtnEl.onclick = () => cleanHistory();

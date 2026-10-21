@@ -133,6 +133,14 @@ const recentModal = await modal();
 check('从最近结果有反馈', !!recentModal, recentModal);
 await okModal(); await cancelModal();
 
+// 问 AI（只验证对话框能开，不发请求）
+await closeAnyModal();
+await ev("window.__openNode('n2')"); await wait(1200);
+await click('#editorAsk'); await wait(800);
+check('问 AI 弹出对话框', (await ev("!!document.querySelector('.mt-ask-box')")) === true);
+check('问 AI 说明写了隐私边界', String(await ev("(document.querySelector('.mt-ask-box .mt-modal-body')||{}).textContent||''")).includes('本地'), await ev("(document.querySelector('.mt-ask-box .mt-modal-body')||{}).textContent||''"));
+await ev("document.querySelector('.mt-ask-box [data-act=\"cancel\"]')?.click()"); await wait(400);
+
 // 撤销 / 重做按钮真的能改结构
 await closeAnyModal();
 const n0 = await nodeCount();

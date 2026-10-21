@@ -79,6 +79,7 @@ window.MTApi = {
   deleteProject: (id, deleteFolder) => call('/api/project/delete', { id, delete_folder: deleteFolder }),
   stagedAddFile: (id, source) => call('/api/project/staged/add-file', { id, source }),
   stagedAttach: (id, nodeId, path) => call('/api/project/staged/attach', { id, nodeId, path }),
+  aiAsk: (question) => call('/api/ai/ask', { question, use_context: true }),
   attach: (id, nodeId, source) => call('/api/project/attach', { id, nodeId, source }),
   assetRemove: (id, nodeId, path, deleteFile) => call('/api/project/asset/remove', { id, nodeId, path, delete_file: deleteFile }),
   openFile: (id, path) => call('/api/project/open', { id, path }),

@@ -1847,6 +1847,7 @@ export function renderSettings(view) {
       buildSitesCard(),
       buildUpdateCard(),
       buildProgramCard(),
+      buildAICard(settings),
       buildToolboxCard(settings)),
   );
   mount(view, page);
@@ -2280,6 +2281,61 @@ function buildExtrasCard(settings) {
     switchRow('NFO 元数据', '生成 Kodi / Jellyfin 可识别的 .nfo', settings.write_nfo === true,
       (v) => saveSetting({ write_nfo: v }, false)),
   );
+}
+
+/** AI 端点：用户自己填，程序不内置。 */
+function buildAICard(settings) {
+  const state = { status: null };
+  const holder = h('div', {});
+  const paint = () => {
+    clear(holder);
+    const st = state.status || {};
+    mount(holder,
+      h('div', { class: 'card-title', html: icon('auto_awesome', 'outlined', 20) + '<span>AI 助手</span>' }),
+      h('div', { class: 'card-desc' },
+        '填一个 OpenAI 兼容的端点（DeepSeek / OpenAI / 本地 Ollama 都行）。'
+        + '检索永远在本地做，只有你点「问 AI」时，命中的片段才会发到你填的地址。'),
+      field('接口地址', h('input', {
+        class: 'input', value: settings.ai_base_url || '', placeholder: 'https://api.deepseek.com/v1',
+        onchange: (e) => saveSetting({ ai_base_url: e.target.value.trim() }, false),
+      })),
+      field('API Key', h('input', {
+        class: 'input', type: 'password', value: settings.ai_api_key || '', placeholder: 'sk-...',
+        onchange: (e) => saveSetting({ ai_api_key: e.target.value.trim() }, false),
+      })),
+      field('模型名', h('input', {
+        class: 'input', value: settings.ai_model || '', placeholder: 'deepseek-chat',
+        onchange: (e) => saveSetting({ ai_model: e.target.value.trim() }, false),
+      })),
+      h('div', { class: 'kv' }, h('span', {}, '本地索引'),
+        h('span', {}, (st.chunks || 0) + ' 段 / ' + (st.files || 0) + ' 个文件')),
+      h('div', { class: 'btn-row', style: { marginTop: '10px', gap: '6px' } },
+        button('重建索引', { variant: 'text', iconName: 'refresh', onClick: async (e) => {
+          const b = e.currentTarget; b.disabled = true;
+          try {
+            const r = await api.aiRebuild();
+            toast('已索引 ' + r.files + ' 个文件，' + r.chunks + ' 段', 6000);
+            await refresh();
+          } catch (err) { toast('重建失败：' + err.message, 8000); }
+          b.disabled = false;
+        } }),
+        button('测试连接', { variant: 'text', iconName: 'bolt', onClick: async (e) => {
+          const b = e.currentTarget; b.disabled = true;
+          try {
+            const r = await api.aiAsk('用一句话回答：你好', false);
+            toast('连接正常：' + String(r.answer || '').slice(0, 40), 7000);
+          } catch (err) { toast('连接失败：' + err.message, 10000); }
+          b.disabled = false;
+        } })),
+      st.ready ? pill('已配置', 'ok') : pill('还没填 Key', 'mute'));
+  };
+  const refresh = async () => {
+    try { state.status = await api.aiStatus(); } catch (e) { state.status = null; }
+    paint();
+  };
+  paint();
+  refresh();
+  return card(holder);
 }
 
 /** 附加工具箱开关。

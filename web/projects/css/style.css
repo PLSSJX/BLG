@@ -945,3 +945,20 @@ body.resizing-editor iframe { pointer-events: none; }
 }
 .stage-del:hover { opacity: 1; background: rgba(255, 255, 255, .08); }
 .stage-del:focus-visible { outline: 2px solid var(--md-primary); outline-offset: 1px; opacity: 1; }
+
+
+/* 「问 AI」对话框 */
+.mt-ask-box { width: min(620px, 94vw); }
+.mt-ask-input {
+  width: 100%; box-sizing: border-box; min-height: 74px; resize: vertical;
+  margin-top: 2px; font: inherit;
+}
+.mt-ask-result { margin-top: 10px; max-height: 40vh; overflow: auto; }
+.mt-ask-answer {
+  white-space: pre-wrap; line-height: 1.75; font-size: 13px;
+  background: var(--md-surface-container-high);
+  border-radius: 10px; padding: 10px 12px;
+}
+.mt-ask-sources {
+  white-space: pre-wrap; margin-top: 8px; font-size: 11.5px; opacity: .65; line-height: 1.7;
+}

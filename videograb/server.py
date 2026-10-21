@@ -846,6 +846,45 @@ class Handler(BaseHTTPRequestHandler):
             got["library"] = entry
             return self._json(got)
 
+        if route == "/api/ai/status":
+            from . import ai as _ai
+            cfg = _ai.config()
+            return self._json({
+                "ready": _ai.ready(),
+                "base_url": cfg["base_url"],
+                "model": cfg["model"],
+                "has_key": bool(cfg["api_key"]),
+                **(_ai.stats()),
+            })
+
+        if route == "/api/ai/rebuild":
+            from . import ai as _ai
+            return self._json(_ai.rebuild())
+
+        if route == "/api/ai/search":
+            from . import ai as _ai
+            query = str(payload.get("query") or "").strip()
+            if not query:
+                raise ApiError("没有输入要查的内容")
+            hits = _ai.search(query, limit=int(payload.get("limit") or 6),
+                              project=str(payload.get("project") or ""))
+            for hit in hits:
+                hit["preview"] = hit["text"][:200]
+                hit.pop("text", None)
+            return self._json({"ok": True, "hits": hits})
+
+        if route == "/api/ai/ask":
+            from . import ai as _ai
+            question = str(payload.get("question") or "").strip()
+            if not question:
+                raise ApiError("没有输入问题")
+            try:
+                return self._json(_ai.ask(question,
+                                          project=str(payload.get("project") or ""),
+                                          use_context=payload.get("use_context") is not False))
+            except _ai.AIError as exc:
+                raise ApiError(str(exc)) from None
+
         if route == "/api/ocr/status":
             from . import ocr as _ocr
             return self._json(_ocr.status())
