@@ -4060,7 +4060,12 @@ export function renderProjects(view) {
   view.innerHTML = '';
   const frame = document.createElement('iframe');
   frame.className = 'projects-frame';
-  frame.src = '/projects/index.html?embed=1';
+  // 之前在某个项目里、只是去别的页面转了一圈 —— 回来要落在原来那一屏，
+  // 而不是把项目关掉重开到列表。
+  const open = typeof window.__mtOpenProject === 'function' ? window.__mtOpenProject() : null;
+  frame.src = open && open.id
+    ? '/projects/project.html?id=' + encodeURIComponent(open.id) + '&embed=1'
+    : '/projects/index.html?embed=1';
   frame.title = '项目管理';
   frame.setAttribute('allow', 'same-origin');
   view.append(frame);

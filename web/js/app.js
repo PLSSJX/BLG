@@ -57,7 +57,11 @@ function buildNavigation() {
       const node = h('button', {
         class: 'destination' + (current === route.id ? ' active' : ''),
         dataset: { route: route.id },
-        onclick: () => navigate(route.id),
+        onclick: () => {
+          // 点导航的「项目」是想看列表；左上角那颗返回箭头才是"回到刚才的项目"
+          if (route.id === 'projects') openProject = null;
+          navigate(route.id);
+        },
       },
         h('span', { class: 'indicator', html: icon(route.icon, current === route.id ? 'filled' : 'outlined', 24) }),
         h('span', { class: 'label' }, label));
@@ -107,6 +111,14 @@ function buildNavigation() {
  *  项目页·列表里  → 加号，新建项目
  */
 let projectView = 'list';   // iframe 里现在是列表还是画布
+let openProject = null;     // 正在编辑的项目 {id,title}，离开页面后用来恢复
+
+/** 供 pages.js 决定 iframe 该打开列表还是某个项目 */
+export function getOpenProject() {
+  return openProject;
+}
+// pages.js 和 app.js 是两个模块，不共享作用域，用 window 传一下
+window.__mtOpenProject = () => openProject;
 
 function syncRailFab() {
   const fab = document.getElementById('railSearch');
@@ -124,8 +136,14 @@ function syncRailFab() {
 // 内嵌页面会告诉我们它在哪一屏
 window.addEventListener('message', (event) => {
   if (!event || !event.data || event.data.type !== 'mt-state') return;
-  if (event.data.view && event.data.view !== projectView) {
-    projectView = event.data.view;
+  const data = event.data;
+  if (data.view === 'canvas' && data.id) {
+    openProject = { id: data.id, title: data.title || '' };
+  } else if (data.view === 'list') {
+    openProject = null;         // 用户自己退出了项目
+  }
+  if (data.view && data.view !== projectView) {
+    projectView = data.view;
     syncRailFab();
   } else if (current === 'projects') {
     syncRailFab();

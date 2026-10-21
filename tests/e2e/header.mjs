@@ -78,6 +78,25 @@ check('被删的项目不在列表里', !String(names).includes('按钮端到端
 check('项目文件夹已删掉', !fs.existsSync(proj), proj);
 check('无 JS 异常', errs.length === 0, errs.slice(0, 2).join(' | '));
 
+// 进项目 → 去别的页面 → 点左上角返回：应该回到那个项目，而不是列表
+await ev("location.hash = '#projects'");
+await new Promise((r) => setTimeout(r, 3000));
+await ev("document.querySelector('.projects-frame').contentDocument.querySelector('.project-card').click()");
+await new Promise((r) => setTimeout(r, 3500));
+const inProject = await ev("document.querySelector('.projects-frame').contentWindow.location.pathname.indexOf('project.html') >= 0");
+check('进项目后 FAB 是「保存并退出」', inProject && (await fab()).startsWith('exit'), await fab());
+await ev("location.hash = '#doc'");
+await new Promise((r) => setTimeout(r, 2500));
+check('离开项目后 FAB 变回返回箭头', (await fab()).startsWith('back'), await fab());
+await ev("document.getElementById('railSearch').click()");
+await new Promise((r) => setTimeout(r, 4000));
+check('返回箭头回到没退出的项目', String(await ev("document.querySelector('.projects-frame').contentWindow.location.pathname")).indexOf('project.html') >= 0,
+  await ev("document.querySelector('.projects-frame').contentWindow.location.pathname"));
+await ev("document.querySelector('.destination[data-route=\"projects\"]').click()");
+await new Promise((r) => setTimeout(r, 3000));
+check('点导航「项目」回列表', String(await ev("document.querySelector('.projects-frame').contentWindow.location.pathname")).indexOf('index.html') >= 0,
+  await ev("document.querySelector('.projects-frame').contentWindow.location.pathname"));
+
 try { await send('Browser.close'); } catch (e) {}
 ws.close();
 const passed = results.filter((x) => x.ok).length;

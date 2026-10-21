@@ -180,7 +180,13 @@
 <script src="js/md.js?v=18"></script>
 <script>
   // 告诉 MT 主界面：已经打开具体项目了，左上角按钮要变成"退出项目"
-  try { parent.postMessage({ type: 'mt-state', view: 'canvas' }, location.origin); } catch (e) {}
+  try {
+    // 带上项目 id：离开这个页面再回来时，MT 能直接把这一屏恢复出来
+    var _p = new URLSearchParams(location.search);
+    parent.postMessage({ type: 'mt-state', view: 'canvas',
+      id: _p.get('id') || '',
+      title: (document.getElementById('pName') || {}).textContent || '' }, location.origin);
+  } catch (e) {}
 </script>
 <script src="js/canvas.js?v=18"></script>
 <script>
