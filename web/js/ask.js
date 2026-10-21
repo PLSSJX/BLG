@@ -1,125 +1,173 @@
-/** 全局「问 AI」入口：任何页面都能呼出。
+/** 右侧「AI 助手」抽屉：和节点编辑栏一样贴着右边，带聊天记录。
  *
- * 设计取舍：
- *   · 用浮在右下角的圆钮 + Ctrl+K，不占导航栏位置
- *   · 打开时自动带上"你在看哪一页"和"选中的文字"，用户不用解释上下文
- *   · 没配置端点时不假装能用，直接把用户送去设置页
+ * 设计：
+ *   · 右下角圆钮 / Ctrl+K 打开，再点一次收起
+ *   · 顶部可以切换用哪个助手（设置里配了多个）
+ *   · 每条消息都能单独删，也能一次清空
+ *   · 检索在本地做，只有命中的片段会发到你配置的端点
  */
 import { api } from './api.js';
-import { h, mount, clear, toast, button } from './ui.js';
+import { h, mount, clear, button } from './ui.js';
 import { icon } from './icons.js';
 
-let host = null;
+let open = false;
+let shell = null;
+let listEl = null;
+let state = { messages: [], assistants: [], active: '', ready: false };
 
-function ensureHost() {
-  if (host && document.body.contains(host)) return host;
-  host = h('div', { class: 'ask-fab-host' });
-  document.body.append(host);
-  return host;
+function el(tag, props, ...kids) { return h(tag, props || {}, ...kids); }
+
+function currentAssistant() {
+  return state.assistants.find((a) => a.id === state.active) || state.assistants[0] || null;
 }
 
-/** 右下角那颗圆钮 */
-export function mountAskButton() {
-  const box = ensureHost();
-  const btn = h('button', {
-    class: 'ask-fab', title: '问 AI（Ctrl+K）',
-    onclick: () => openAsk(),
-  }, h('span', { html: icon('auto_awesome', 'outlined', 22) }));
-  mount(clear(box), btn);
+function renderMessages() {
+  if (!listEl) return;
+  clear(listEl);
+  if (!state.messages.length) {
+    mount(listEl, el('div', { class: 'chat-empty' },
+      '还没有对话。试试问：「我关于时钟门控的部分写了什么？」'));
+    return;
+  }
+  for (const msg of state.messages) {
+    const mine = msg.role === 'user';
+    const bubble = el('div', { class: 'chat-row' + (mine ? ' mine' : '') },
+      el('div', { class: 'chat-bubble' + (mine ? ' mine' : '') },
+        el('div', { class: 'chat-text' }, msg.text || ''),
+        msg.hits ? el('div', { class: 'chat-meta' }, '参考 ' + msg.hits + ' 处资料') : null),
+      el('button', {
+        class: 'chat-del', title: '删除这条',
+        onclick: async () => {
+          try { await api.aiChatDelete(msg.id); } catch (e) { /* 删不掉就留着 */ }
+          state.messages = state.messages.filter((x) => x.id !== msg.id);
+          renderMessages();
+        },
+      }, '×'));
+    mount(listEl, bubble);
+  }
+  listEl.scrollTop = listEl.scrollHeight;
 }
 
-/** 当前页面能给出的上下文：页面名 + 选中的文字 */
-function gatherContext() {
-  const route = (location.hash || '#projects').slice(1);
-  const labels = {
-    projects: '项目', doc: '文档', papers: '文献', tasks: '历史记录',
-    settings: '设置', home: '解析', music: '音乐', player: '播放', clip: '剪辑', image: '图片',
-  };
-  const selected = String(window.getSelection ? window.getSelection().toString() : '').trim();
-  return { route, label: labels[route] || route, selected };
+function renderAssistants() {
+  const sel = shell.querySelector('.chat-model');
+  if (!sel) return;
+  sel.textContent = '';
+  for (const a of state.assistants) {
+    sel.append(el('option', { value: a.id }, a.name + (a.model ? '（' + a.model + '）' : '')));
+  }
+  if (state.active) sel.value = state.active;
 }
 
-export function openAsk(preset) {
-  if (document.getElementById('askModal')) return;
-  const ctx = gatherContext();
-  const shell = h('div', { class: 'ask-modal', id: 'askModal' });
-  document.body.append(shell);        // 忘了这句就直接白屏 —— 元素建好了但没挂上去
-  const answer = h('div', { class: 'ask-answer' });
-  const sources = h('div', { class: 'ask-sources' });
-  const input = h('textarea', {
-    class: 'input ask-input',
-    placeholder: '问点什么…例如：这一段能怎么改写得更学术一点？',
-  });
-  if (preset) input.value = preset;
+async function refreshStatus() {
+  try {
+    const st = await api.aiStatus();
+    state.assistants = st.assistants || [];
+    state.active = st.active || (state.assistants[0] || {}).id || '';
+    state.ready = !!st.ready;
+  } catch (e) { state.assistants = []; state.ready = false; }
+  renderAssistants();
+  const hint = shell.querySelector('.chat-hint');
+  if (hint) {
+    hint.textContent = state.ready
+      ? '已连接 · 本地索引 ' + (state.stats?.chunks || 0) + ' 段'
+      : '还没配置 AI 助手，去设置里加一个';
+  }
+}
 
-  const status = h('div', { class: 'ask-status' }, '正在检查 AI 配置…');
-  const sendBtn = button('提问', { onClick: () => submit() });
+export function buildChatPanel() {
+  if (shell) return shell;
+  listEl = el('div', { class: 'chat-list' });
+  const input = el('textarea', { class: 'chat-input', placeholder: '问点什么…（Ctrl+Enter 发送）' });
+  const send = el('button', { class: 'btn', onclick: () => submit() }, '发送');
 
-  const close = () => shell.remove();
   const submit = async () => {
     const question = input.value.trim();
     if (!question) { input.focus(); return; }
-    sendBtn.disabled = true;
-    clear(answer).append(h('div', { class: 'ask-thinking' }, '正在本地检索并提问…'));
-    clear(sources);
+    if (!state.ready) { shell.querySelector('.chat-hint').textContent = '还没配置 AI 助手，去设置里加一个'; return; }
+    input.value = '';
+    const assistant = currentAssistant();
+    state.messages.push({ id: 'tmp' + Date.now(), role: 'user', text: question });
+    renderMessages();
+    const thinking = el('div', { class: 'chat-row' }, el('div', { class: 'chat-bubble thinking' }, '正在检索并提问…'));
+    mount(listEl, thinking);
+    listEl.scrollTop = listEl.scrollHeight;
+    send.disabled = true;
     try {
-      const r = await api.aiAsk(question, true);
-      clear(answer).append(h('div', { class: 'ask-text' }, r.answer || '(没有返回内容)'));
-      if ((r.hits || []).length) {
-        mount(sources, h('div', { class: 'ask-sources-title' }, '参考了 ' + r.hits.length + ' 处资料'),
-          ...r.hits.map((x) => h('div', { class: 'ask-source' }, '· ' + x.project + ' / ' + x.node)));
-      } else {
-        mount(sources, h('div', { class: 'ask-source' }, '（没有检索到相关资料，回答只基于你的问题）'));
-      }
+      const r = await api.aiAsk(question, true, '', state.active);
+      thinking.remove();
+      await loadHistory();
     } catch (err) {
-      clear(answer).append(h('div', { class: 'ask-error' }, '失败：' + err.message));
+      thinking.remove();
+      mount(listEl, el('div', { class: 'chat-row' }, el('div', { class: 'chat-bubble error' }, '失败：' + err.message)));
+      listEl.scrollTop = listEl.scrollHeight;
     }
-    sendBtn.disabled = false;
+    send.disabled = false;
   };
 
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); }
-    if (e.key === 'Escape') close();
   });
 
-  mount(shell,
-    h('div', { class: 'ask-box' },
-      h('div', { class: 'ask-head' },
-        h('span', { html: icon('auto_awesome', 'outlined', 20) }),
-        h('b', {}, '问 AI'),
-        h('span', { class: 'ask-hint' },
-          '检索在本地做，只有命中的片段会发到你配置的端点'),
-        h('div', { class: 'spacer' }),
-        h('button', { class: 'ask-close', title: '关闭', onclick: close }, '×')),
-      ctx.selected
-        ? h('div', { class: 'ask-context' }, '会带上你选中的 ' + ctx.selected.length + ' 个字作为上下文')
-        : h('div', { class: 'ask-context' }, '当前在「' + ctx.label + '」页，会自动带上相关资料'),
-      input,
-      h('div', { class: 'ask-row' }, status, h('div', { class: 'spacer' }), sendBtn),
-      answer, sources));
+  const sel = el('select', { class: 'chat-model', onchange: (e) => { state.active = e.target.value; } });
 
-  shell.addEventListener('click', (e) => { if (e.target === shell) close(); });
-  setTimeout(() => input.focus(), 30);
-
-  // 状态：没配端点就说清楚，并给一个"去设置"的按钮
-  api.aiStatus().then((st) => {
-    clear(status);
-    if (st.ready) {
-      mount(status, h('span', { class: 'ask-ok' }, '已连接 ' + (st.model || '') + ' · 本地索引 ' + (st.chunks || 0) + ' 段'));
-    } else {
-      mount(status,
-        h('span', { class: 'ask-off' }, '还没配置 AI 端点　'),
-        button('去设置', { variant: 'text', onClick: () => { close(); location.hash = '#settings'; } }));
-    }
-  }).catch(() => { clear(status); mount(status, h('span', { class: 'ask-off' }, '无法读取 AI 状态')); });
+  shell = el('div', { class: 'chat-panel' },
+    el('div', { class: 'chat-head' },
+      el('span', { class: 'chat-icon', html: icon('auto_awesome', 'outlined', 20) }),
+      el('b', {}, 'AI 助手'),
+      el('div', { class: 'spacer' }),
+      el('button', { class: 'chat-x', title: '收起', onclick: () => toggle(false) }, '×')),
+    el('div', { class: 'chat-bar' },
+      sel,
+      el('button', {
+        class: 'chat-clear', title: '清空对话',
+        onclick: async () => {
+          const yes = confirm('清空所有聊天记录？');
+          if (!yes) return;
+          try { await api.aiChatClear(); } catch (e) { /* 忽略 */ }
+          state.messages = [];
+          renderMessages();
+        },
+      }, '清空')),
+    el('div', { class: 'chat-hint' }, '正在读取…'),
+    listEl,
+    el('div', { class: 'chat-foot' }, input, send));
+  document.body.append(shell);
+  return shell;
 }
 
-/** 全局快捷键 */
+export async function loadHistory() {
+  try {
+    const r = await api.aiChatList();
+    state.messages = r.messages || [];
+  } catch (e) { state.messages = []; }
+  renderMessages();
+}
+
+export async function toggle(force) {
+  const panel = buildChatPanel();
+  const next = force === undefined ? !open : !!force;
+  open = next;
+  panel.classList.toggle('open', open);
+  document.body.classList.toggle('chat-open', open);
+  if (open) {
+    await refreshStatus();
+    await loadHistory();
+  }
+}
+
+export function mountAskButton() {
+  const host = el('div', { class: 'ask-fab-host' });
+  document.body.append(host);
+  mount(host, el('button', {
+    class: 'ask-fab', title: 'AI 助手（Ctrl+K）', onclick: () => toggle(),
+  }, el('span', { html: icon('auto_awesome', 'outlined', 22) })));
+}
+
 export function bindAskShortcut() {
   window.addEventListener('keydown', (e) => {
     if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
       e.preventDefault();
-      openAsk();
+      toggle();
     }
   });
 }

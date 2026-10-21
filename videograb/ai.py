@@ -38,18 +38,118 @@ class AIError(RuntimeError):
 
 
 # ---------------------------------------------------------------- 配置
-def config() -> dict:
+def _migrate(st) -> list:
+    """老版本只能配一个端点，第一次升级时把它变成一条助手记录。"""
+    items = list(getattr(st, "ai_assistants", []) or [])
+    if items:
+        return items
+    base = (getattr(st, "ai_base_url", "") or "").strip()
+    key = (getattr(st, "ai_api_key", "") or "").strip()
+    model = (getattr(st, "ai_model", "") or "").strip()
+    # 只填了默认地址和模型、没填 key 的，不算"配置过"，别凭空造一条空助手
+    if not (base and model and key):
+        return []
+    item = {
+        "id": "default",
+        "name": model or "默认助手",
+        "base_url": base.rstrip("/"),
+        "api_key": key,
+        "model": model,
+    }
+    st.ai_assistants = [item]
+    if not getattr(st, "ai_active", ""):
+        st.ai_active = item["id"]
+    try:
+        from .config import Context
+        Context.__dict__  # 仅用于触发导入，不写盘
+    except Exception:
+        pass
+    return [item]
+
+
+def assistants() -> list:
     st = load_settings()
+    items = _migrate(st)
+    out = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        out.append({
+            "id": item.get("id") or "",
+            "name": item.get("name") or item.get("model") or "未命名",
+            "base_url": item.get("base_url") or "",
+            "model": item.get("model") or "",
+            "has_key": bool(item.get("api_key")),
+        })
+    return out
+
+
+def _assistant(assistant_id: str = "") -> dict:
+    st = load_settings()
+    items = _migrate(st)
+    want = assistant_id or getattr(st, "ai_active", "") or ""
+    chosen = None
+    for item in items:
+        if item.get("id") == want:
+            chosen = item
+            break
+    if chosen is None and items:
+        chosen = items[0]
+    if chosen is None:
+        return {}
     return {
-        "base_url": (getattr(st, "ai_base_url", "") or "").rstrip("/"),
-        "api_key": getattr(st, "ai_api_key", "") or "",
-        "model": getattr(st, "ai_model", "") or "",
+        "id": chosen.get("id") or "",
+        "name": chosen.get("name") or "",
+        "base_url": (chosen.get("base_url") or "").rstrip("/"),
+        "api_key": chosen.get("api_key") or "",
+        "model": chosen.get("model") or "",
     }
 
 
-def ready() -> bool:
-    cfg = config()
+def config(assistant_id: str = "") -> dict:
+    item = _assistant(assistant_id)
+    return {
+        "id": item.get("id", ""),
+        "name": item.get("name", ""),
+        "base_url": item.get("base_url", ""),
+        "api_key": item.get("api_key", ""),
+        "model": item.get("model", ""),
+    }
+
+
+def ready(assistant_id: str = "") -> bool:
+    cfg = config(assistant_id)
     return bool(cfg["base_url"] and cfg["api_key"] and cfg["model"])
+
+
+def save_assistants(items: list, active: str = "") -> dict:
+    """整表保存。api_key 传空字符串表示"不修改"，避免界面回显时把 key 抹掉。"""
+    st = load_settings()
+    old = {x.get("id"): x for x in (getattr(st, "ai_assistants", []) or []) if isinstance(x, dict)}
+    clean = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        ident = str(item.get("id") or "").strip() or ("a" + str(abs(hash(str(item.get("model") or "x"))) % 100000))
+        key = item.get("api_key")
+        if key is None or key == "":
+            key = (old.get(ident) or {}).get("api_key", "")
+        clean.append({
+            "id": ident,
+            "name": str(item.get("name") or item.get("model") or "助手").strip(),
+            "base_url": str(item.get("base_url") or "").strip().rstrip("/"),
+            "api_key": str(key or ""),
+            "model": str(item.get("model") or "").strip(),
+        })
+    st.ai_assistants = clean
+    want = active or getattr(st, "ai_active", "") or ""
+    ids = [x["id"] for x in clean]
+    st.ai_active = want if want in ids else (ids[0] if ids else "")
+    from .config import Context
+    ctx = Context()
+    ctx.settings = st         # 关键：把改好的对象交给它，否则写盘的是另一份
+    ctx.save()
+    return {"assistants": assistants(), "active": st.ai_active}
 
 
 # ---------------------------------------------------------------- 分词/打分
@@ -272,10 +372,10 @@ def context_block(hits: list, budget: int = MAX_CONTEXT_CHARS) -> str:
 
 
 # ---------------------------------------------------------------- 调模型
-def chat(messages: list, temperature: float = 0.3, timeout: int = 90) -> dict:
+def chat(messages: list, temperature: float = 0.3, timeout: int = 90, assistant_id: str = "") -> dict:
     """调用用户配置的 OpenAI 兼容端点。"""
-    cfg = config()
-    if not ready():
+    cfg = config(assistant_id)
+    if not (cfg["base_url"] and cfg["api_key"] and cfg["model"]):
         raise AIError("还没配置 AI 端点（地址 / API Key / 模型名）")
     url = cfg["base_url"] + "/chat/completions"
     body = json.dumps({
@@ -316,7 +416,7 @@ SYSTEM = (
 )
 
 
-def ask(question: str, project: str = "", use_context: bool = True) -> dict:
+def ask(question: str, project: str = "", use_context: bool = True, assistant_id: str = "") -> dict:
     """检索 + 生成。返回 {answer, hits, context_chars, model}。"""
     hits = search(question, limit=6, project=project) if use_context else []
     ctx = context_block(hits)
@@ -326,9 +426,61 @@ def ask(question: str, project: str = "", use_context: bool = True) -> dict:
                          "下面是检索到的资料（来自用户本机）：\n\n" + ctx})
         messages.append({"role": "assistant", "content": "好的，我会只根据这些资料回答。"})
     messages.append({"role": "user", "content": question})
-    result = chat(messages)
-    return {"ok": True, "answer": result["text"], "model": result["model"],
+    result = chat(messages, assistant_id=assistant_id)
+    cfg = config(assistant_id)
+    return {"ok": True, "answer": result["text"], "model": result["model"], "assistant": cfg.get("name") or "",
             "usage": result.get("usage") or {},
             "hits": [{"project": h["project"], "node": h["node"], "score": h["score"],
                       "path": h["path"]} for h in hits],
             "context_chars": len(ctx), "at": time.strftime("%H:%M:%S")}
+
+
+# ---------------------------------------------------------------- 聊天记录
+CHAT_PATH = DATA_DIR / "ai" / "chat.json"
+
+
+def chat_history() -> list:
+    try:
+        data = json.loads(CHAT_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    items = data.get("messages") if isinstance(data, dict) else None
+    return items if isinstance(items, list) else []
+
+
+def _save_chat(items: list) -> None:
+    CHAT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    tmp = CHAT_PATH.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"messages": items}, ensure_ascii=False, indent=1), encoding="utf-8")
+    tmp.replace(CHAT_PATH)
+
+
+def chat_append(role: str, text: str, meta: dict | None = None) -> dict:
+    import uuid
+    items = chat_history()
+    message = {
+        "id": uuid.uuid4().hex[:12],
+        "role": "user" if role == "user" else "assistant",
+        "text": str(text or ""),
+        "at": time.strftime("%H:%M"),
+    }
+    if meta:
+        message.update({k: v for k, v in meta.items() if k in ("assistant", "model", "hits")})
+    items.append(message)
+    _save_chat(items[-400:])          # 只留最近 400 条，别让文件无限长
+    return message
+
+
+def chat_delete(message_id: str) -> bool:
+    items = chat_history()
+    left = [x for x in items if x.get("id") != message_id]
+    if len(left) == len(items):
+        return False
+    _save_chat(left)
+    return True
+
+
+def chat_clear() -> int:
+    items = chat_history()
+    _save_chat([])
+    return len(items)

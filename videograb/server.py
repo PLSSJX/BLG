@@ -848,14 +848,42 @@ class Handler(BaseHTTPRequestHandler):
 
         if route == "/api/ai/status":
             from . import ai as _ai
-            cfg = _ai.config()
+            st = ctx.settings
+            items = _ai.assistants()
+            active = getattr(st, "ai_active", "") or (items[0]["id"] if items else "")
+            cfg = _ai.config(active)
             return self._json({
-                "ready": _ai.ready(),
+                "ready": _ai.ready(active),
                 "base_url": cfg["base_url"],
                 "model": cfg["model"],
                 "has_key": bool(cfg["api_key"]),
+                "active": active,
+                "assistants": items,
                 **(_ai.stats()),
             })
+
+        if route == "/api/ai/assistants":
+            from . import ai as _ai
+            items = payload.get("assistants")
+            if items is None:
+                return self._json({"assistants": _ai.assistants(),
+                                   "active": getattr(ctx.settings, "ai_active", "")})
+            saved = _ai.save_assistants(items, str(payload.get("active") or ""))
+            from .config import load_settings as _load
+            ctx.settings = _load()      # 保存后立刻让 /api/state 看到新值
+            return self._json({"ok": True, **saved})
+
+        if route == "/api/ai/chat/list":
+            from . import ai as _ai
+            return self._json({"ok": True, "messages": _ai.chat_history()})
+
+        if route == "/api/ai/chat/delete":
+            from . import ai as _ai
+            return self._json({"ok": _ai.chat_delete(str(payload.get("id") or ""))})
+
+        if route == "/api/ai/chat/clear":
+            from . import ai as _ai
+            return self._json({"ok": True, "removed": _ai.chat_clear()})
 
         if route == "/api/ai/rebuild":
             from . import ai as _ai
@@ -879,9 +907,16 @@ class Handler(BaseHTTPRequestHandler):
             if not question:
                 raise ApiError("没有输入问题")
             try:
-                return self._json(_ai.ask(question,
-                                          project=str(payload.get("project") or ""),
-                                          use_context=payload.get("use_context") is not False))
+                _ai.chat_append("user", question)
+                result = _ai.ask(question,
+                                 project=str(payload.get("project") or ""),
+                                 use_context=payload.get("use_context") is not False,
+                                 assistant_id=str(payload.get("assistant") or ""))
+                _ai.chat_append("assistant", result.get("answer") or "",
+                                {"assistant": result.get("assistant") or "",
+                                 "model": result.get("model") or "",
+                                 "hits": len(result.get("hits") or [])})
+                return self._json(result)
             except _ai.AIError as exc:
                 raise ApiError(str(exc)) from None
 

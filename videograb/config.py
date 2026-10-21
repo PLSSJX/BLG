@@ -144,9 +144,13 @@ class Settings:
     # 打开后左侧导航会多出那几个入口。
     extras_enabled: bool = False
     # AI 端点：用户自己填，程序不内置（没有服务器，也不该把 key 存在别人那儿）
+    # 旧版的单端点配置（保留用于迁移，界面上不再直接编辑）
     ai_base_url: str = "https://api.deepseek.com/v1"
     ai_api_key: str = ""
     ai_model: str = "deepseek-chat"
+    # 可以配多个助手，用的时候选一个
+    ai_assistants: list = field(default_factory=list)
+    ai_active: str = ""
     titlebar: str = "native"
     # 文档转 PDF 的两条通路。用户可以单独关掉某一条，也可以指定优先用哪条。
     doc_office: bool = True

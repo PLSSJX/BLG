@@ -1828,26 +1828,29 @@ export async function refreshTasks() {
 export function renderSettings(view) {
   clear(view);
   const settings = store.config?.settings || {};
+  const extrasOn = settings.extras_enabled === true;
   const page = h('div', { class: 'page' });
 
   mount(page, 
     h('div', { class: 'page-head' }, h('h1', { class: 'page-title' }, '设置')),
-    h('p', { class: 'page-sub' }, '主题外观、账号、下载选项、抓取通道、更新与自检。改动即时生效并写入 data/config.json。'),
+    h('p', { class: 'page-sub' }, extrasOn
+    ? '主题外观、AI 助手、账号、下载选项、抓取通道、更新与自检。改动即时生效并写入 data/config.json。'
+    : '主题外观、AI 助手、更新与自检。改动即时生效并写入 data/config.json。'),
     h('div', { class: 'split' },
       buildAppearanceCard(settings),
-      buildCredentialsCard(),
-      buildDownloadCard2(settings),
-      // 视频下载和音乐下载是一对，紧挨着放，方便对照
-
-      buildExtrasCard(settings),
-      buildBigjpgCard(settings),
-      buildFfmpegCard(),
-      buildEnginesCard(),
-      buildToolsCard(),
-      buildSitesCard(),
+      buildAICard(settings),
+      // 附加工具箱关着的时候，下面这些媒体相关的设置整个不显示 ——
+      // 用户看不到用不上的东西，也就不会以为自己漏配了什么。
+      extrasOn ? buildCredentialsCard() : null,
+      extrasOn ? buildDownloadCard2(settings) : null,
+      extrasOn ? buildExtrasCard(settings) : null,
+      extrasOn ? buildBigjpgCard(settings) : null,
+      extrasOn ? buildFfmpegCard() : null,
+      extrasOn ? buildEnginesCard() : null,
+      extrasOn ? buildToolsCard() : null,
+      extrasOn ? buildSitesCard() : null,
       buildUpdateCard(),
       buildProgramCard(),
-      buildAICard(settings),
       buildToolboxCard(settings)),
   );
   mount(view, page);
@@ -2283,58 +2286,110 @@ function buildExtrasCard(settings) {
   );
 }
 
-/** AI 端点：用户自己填，程序不内置。 */
+/** AI 助手：可以配多个端点，用的时候在下拉里选。 */
 function buildAICard(settings) {
-  const state = { status: null };
+  const state = { list: [], active: settings.ai_active || '', stats: null };
   const holder = h('div', {});
+
   const paint = () => {
     clear(holder);
-    const st = state.status || {};
+    const rows = state.list.map((a) => h('div', {
+      style: { display: 'flex', gap: '8px', alignItems: 'center', padding: '7px 0',
+               borderTop: '1px solid var(--md-outline-variant)', borderTopWidth: '.5px' },
+    },
+      h('input', {
+        type: 'radio', name: 'ai-active', checked: state.active === a.id,
+        title: '设为默认助手',
+        onchange: () => { state.active = a.id; paint(); },
+      }),
+      h('div', { style: { flex: '1', minWidth: '0' } },
+        h('div', { style: { fontSize: '13px' } }, a.name || '(未命名)'),
+        h('div', { class: 'card-desc', style: { margin: '2px 0 0' } },
+          [a.model, a.base_url, a.has_key ? '已填 Key' : '缺 Key'].filter(Boolean).join(' · '))),
+      button('编辑', { variant: 'text', onClick: () => editAssistant(a) }),
+      button('删除', { variant: 'text', onClick: async () => {
+        state.list = state.list.filter((x) => x.id !== a.id);
+        if (state.active === a.id) state.active = (state.list[0] || {}).id || '';
+        await persist();
+      } })));
+
     mount(holder,
       h('div', { class: 'card-title', html: icon('auto_awesome', 'outlined', 20) + '<span>AI 助手</span>' }),
       h('div', { class: 'card-desc' },
-        '填一个 OpenAI 兼容的端点（DeepSeek / OpenAI / 本地 Ollama 都行）。'
-        + '检索永远在本地做，只有你点「问 AI」时，命中的片段才会发到你填的地址。'),
-      field('接口地址', h('input', {
-        class: 'input', value: settings.ai_base_url || '', placeholder: 'https://api.deepseek.com/v1',
-        onchange: (e) => saveSetting({ ai_base_url: e.target.value.trim() }, false),
-      })),
-      field('API Key', h('input', {
-        class: 'input', type: 'password', value: settings.ai_api_key || '', placeholder: 'sk-...',
-        onchange: (e) => saveSetting({ ai_api_key: e.target.value.trim() }, false),
-      })),
-      field('模型名', h('input', {
-        class: 'input', value: settings.ai_model || '', placeholder: 'deepseek-chat',
-        onchange: (e) => saveSetting({ ai_model: e.target.value.trim() }, false),
-      })),
-      h('div', { class: 'kv' }, h('span', {}, '本地索引'),
-        h('span', {}, (st.chunks || 0) + ' 段 / ' + (st.files || 0) + ' 个文件')),
+        '可以配多个（DeepSeek / OpenAI / 本地 Ollama 都行），用的时候在右侧面板顶部切换。'
+        + '检索永远在本地做，只有你点发送时，命中的片段才会发到你选的那个地址。'),
+      state.list.length
+        ? h('div', { style: { marginTop: '6px' } }, ...rows)
+        : h('div', { class: 'card-desc', style: { marginTop: '8px' } }, '还没有配置助手。'),
       h('div', { class: 'btn-row', style: { marginTop: '10px', gap: '6px' } },
+        button('添加助手', { variant: 'tonal', iconName: 'add', onClick: () => editAssistant(null) }),
         button('重建索引', { variant: 'text', iconName: 'refresh', onClick: async (e) => {
           const b = e.currentTarget; b.disabled = true;
           try {
             const r = await api.aiRebuild();
             toast('已索引 ' + r.files + ' 个文件，' + r.chunks + ' 段', 6000);
-            await refresh();
           } catch (err) { toast('重建失败：' + err.message, 8000); }
           b.disabled = false;
-        } }),
-        button('测试连接', { variant: 'text', iconName: 'bolt', onClick: async (e) => {
-          const b = e.currentTarget; b.disabled = true;
-          try {
-            const r = await api.aiAsk('用一句话回答：你好', false);
-            toast('连接正常：' + String(r.answer || '').slice(0, 40), 7000);
-          } catch (err) { toast('连接失败：' + err.message, 10000); }
-          b.disabled = false;
         } })),
-      st.ready ? pill('已配置', 'ok') : pill('还没填 Key', 'mute'));
+      h('div', { class: 'kv', style: { marginTop: '8px' } },
+        h('span', {}, '本地索引'),
+        h('span', {}, (state.stats?.chunks || 0) + ' 段 / ' + (state.stats?.files || 0) + ' 个文件')),
+      state.list.length ? null : pill('还没配置助手', 'mute'));
   };
-  const refresh = async () => {
-    try { state.status = await api.aiStatus(); } catch (e) { state.status = null; }
+
+  const persist = async () => {
+    try {
+      const r = await api.aiAssistants(state.list, state.active);
+      state.list = r.assistants || state.list;
+      state.active = r.active || state.active;
+      paint();
+    } catch (e) { toast('保存失败：' + e.message, 8000); }
+  };
+
+  const editAssistant = (item) => {
+    const isNew = !item;
+    const f = {
+      name: h('input', { class: 'input', value: item?.name || '', placeholder: '例如：DeepSeek 主力' }),
+      base: h('input', { class: 'input', value: item?.base_url || 'https://api.deepseek.com/v1', placeholder: 'https://api.deepseek.com/v1' }),
+      key: h('input', { class: 'input', type: 'password', value: '', placeholder: item?.has_key ? '已保存，留空表示不改' : 'sk-...' }),
+      model: h('input', { class: 'input', value: item?.model || 'deepseek-chat', placeholder: 'deepseek-chat' }),
+    };
+    const box = h('div', { style: { display: 'flex', flexDirection: 'column', gap: '8px' } },
+      h('div', { class: 'card-desc' }, '名称'), f.name,
+      h('div', { class: 'card-desc' }, '接口地址'), f.base,
+      h('div', { class: 'card-desc' }, 'API Key'), f.key,
+      h('div', { class: 'card-desc' }, '模型名'), f.model);
+    dialog({
+      title: isNew ? '添加 AI 助手' : '编辑 AI 助手',
+      body: box,
+      confirm: '保存',
+    }).then(async (ok) => {
+      if (!ok) return;
+      const entry = {
+        id: item?.id || ('a' + Date.now().toString(36)),
+        name: f.name.value.trim() || f.model.value.trim() || '助手',
+        base_url: f.base.value.trim(),
+        api_key: f.key.value.trim(),     // 空 = 不修改后端已存的 key
+        model: f.model.value.trim(),
+      };
+      const index = state.list.findIndex((x) => x.id === entry.id);
+      if (index >= 0) state.list[index] = entry; else state.list.push(entry);
+      if (!state.active) state.active = entry.id;
+      await persist();
+    });
+  };
+
+  const load = async () => {
+    try {
+      const st = await api.aiStatus();
+      state.list = st.assistants || [];
+      state.active = st.active || (state.list[0] || {}).id || '';
+      state.stats = st;
+    } catch (e) { state.stats = null; }
     paint();
   };
   paint();
-  refresh();
+  load();
   return card(holder);
 }
 
@@ -2347,7 +2402,7 @@ function buildAICard(settings) {
 function buildToolboxCard(settings) {
   const on = settings.extras_enabled === true;
   return card(
-    h('div', { class: 'card-title', html: icon('extension', 'outlined', 20) + '<span>附加工具箱</span>' }),
+    h('div', { class: 'card-title', html: icon('grid_view', 'outlined', 20) + '<span>附加工具箱</span>' }),
     h('div', { class: 'card-desc' },
       '视频下载、音乐、剪辑、图片放大。这些是媒体处理工具，和论文写作没有直接关系，默认不显示在左侧。'),
     switchRow('启用附加工具箱', '打开后左侧导航会多出「解析 / 音乐 / 播放 / 剪辑 / 图片」五个入口', on,
