@@ -8,6 +8,9 @@
 > ⚠️ 这是 4.0 的快照版，**不是稳定版**。功能已经能日常使用，但还没经过长时间验证，
 > 建议先在**新项目**上试用，重要论文请同时保留一份普通文件夹备份。
 > 稳定版请看 [Releases](https://github.com/PLSSJX/BLG/releases)。
+>
+> 安装包：`MakiseToolkit-Setup-4.0.0.exe`（122 MB，Windows 10/11 x64）——
+> 在 [v4.0.0-snapshot](https://github.com/PLSSJX/BLG/releases/tag/v4.0.0-snapshot) 下下载。
 
 ![播放页](docs/screenshots/12-player.png)
 
