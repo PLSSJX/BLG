@@ -1534,20 +1534,25 @@ export function renderTasks(view) {
   clear(view);
   const page = h('div', { class: 'page' });
   const stats = store.taskStats || {};
+  // 附加工具箱关着时，这一页只留文献相关的东西 ——
+  // 视频/图片的历史对写论文的人没有意义，摆着只会让人以为程序跑偏了。
+  const extrasOn = store.config?.settings?.extras_enabled === true;
 
   mount(page, 
     h('div', { class: 'page-head' },
-      h('h1', { class: 'page-title' }, '历史记录'),
+      h('h1', { class: 'page-title' }, extrasOn ? '历史记录' : '文献资料'),
       h('div', { class: 'spacer' }),
       // 直接打开下载目录，不用先回解析页
-      button('打开下载目录', { variant: 'text', iconName: 'folder_open', onClick: () => api.open() }),
-      button('清除已完成', { variant: 'text', iconName: 'delete', onClick: async () => {
+      extrasOn ? button('打开下载目录', { variant: 'text', iconName: 'folder_open', onClick: () => api.open() }) : null,
+      extrasOn ? button('清除已完成', { variant: 'text', iconName: 'delete', onClick: async () => {
         const result = await api.clearTasks();
         toast('已清除 ' + result.removed + ' 条记录');
         refreshTasks();
-      } }),
-      button('打开目录', { variant: 'text', iconName: 'folder_open', onClick: () => api.open() })),
-    h('p', { class: 'page-sub' }, '所有下载任务的历史记录，进行中的任务每 0.8 秒刷新一次进度。记录保存在 data/tasks.json，重启程序后依然在。'),
+      } }) : null,
+      extrasOn ? button('打开目录', { variant: 'text', iconName: 'folder_open', onClick: () => api.open() }) : null),
+    h('p', { class: 'page-sub' }, extrasOn
+      ? '所有下载任务的历史记录，进行中的任务每 0.8 秒刷新一次进度。记录保存在 data/tasks.json，重启程序后依然在。'
+      : '下载过的文献和入库的引用条目。搜索和下载在「文献」页，这里看已经拿到的。'),
     // 未登录失败的聚合成一条提示，按平台分开列 —— 视频和音乐要找的登录项不是同一个
     (() => {
       const nl = stats.need_login || [];
@@ -1577,7 +1582,7 @@ export function renderTasks(view) {
     card(
       h('div', { class: 'stat-row', style: { flexDirection: 'column', alignItems: 'stretch',
                                             gap: '6px' } },
-        ...[['视频', 'video'], ['音频', 'audio'], ['转换', 'convert'], ['其他', 'other']].map(([label, key]) => {
+        ...(extrasOn ? [['视频', 'video'], ['音频', 'audio'], ['转换', 'convert'], ['其他', 'other']] : []).map(([label, key]) => {
           const b = (stats.by_kind || {})[key] || {};
           // 一条任务都没有的分类整行不显示，不要占位置也不要写「暂无」
           if (!b.total) return null;
@@ -1596,13 +1601,20 @@ export function renderTasks(view) {
                             opacity: store.paperCount ? '1' : '.55' } },
           h('b', { style: { minWidth: '38px' } }, '文献'),
           h('span', {}, '已下载 ', h('b', {}, String(store.paperCount == null ? '…' : store.paperCount)), ' 篇'),
-          h('span', { style: { opacity: '.6' } }, '合并方式 ',
-            h('b', {}, stats.ffmpeg ? 'ffmpeg' : '内置 fMP4 合并器')))),
+          extrasOn
+            ? h('span', { style: { opacity: '.6' } }, '合并方式 ',
+                h('b', {}, stats.ffmpeg ? 'ffmpeg' : '内置 fMP4 合并器'))
+            : null)),
     ),
-    buildBigjpgHistoryCard(),
+    extrasOn ? buildBigjpgHistoryCard() : null,
     buildPaperDownloadsCard(),
     buildLibraryCard(),
   );
+
+  if (!extrasOn) {
+    // 工具箱关着：不渲染任务列表，也不提示"去解析页下载"
+    return mount(view, page);
+  }
 
   const tasks = store.tasks || [];
   if (!tasks.length) {

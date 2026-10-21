@@ -52,13 +52,15 @@ function buildNavigation() {
 
   for (const route of visibleRoutes()) {
     const make = (forBottom) => {
+      // 工具箱关着时这一页只剩文献，导航上就别再叫「历史记录」了
+      const label = (route.id === 'tasks' && !extrasOn()) ? '文献资料' : route.label;
       const node = h('button', {
         class: 'destination' + (current === route.id ? ' active' : ''),
         dataset: { route: route.id },
         onclick: () => navigate(route.id),
       },
         h('span', { class: 'indicator', html: icon(route.icon, current === route.id ? 'filled' : 'outlined', 24) }),
-        h('span', { class: 'label' }, route.label));
+        h('span', { class: 'label' }, label));
       if (forBottom) node.dataset.bottom = '1';
       return node;
     };
@@ -393,6 +395,9 @@ async function boot() {
   }
 
   setToken(store.config.api_token);
+  // 导航在配置读回来之前就建好了，那时 extrasOn() 只能算 false。
+  // 配置一到就重建一次，否则打开附加工具箱后要刷新两次才看得到那几个入口。
+  buildNavigation();
 
   // 心跳：后端 8 秒内收不到就会回退原生标题栏（自绘模式下的逃生口）。
   // 前端报错也一并送进 data/error.log，别让问题只剩"没反应"。
