@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MakiseToolkit —— 用思维导图写论文，随时回得去</title>
+<meta name="description" content="MakiseToolkit 是一个本地优先的论文写作辅助工具：思维导图式提纲、每次保存自动留版本、文档转换、文献检索与引用、扫描件 OCR、可选 AI 助手。">
+<link rel="stylesheet" href="site.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><span class="mark">M</span>MakiseToolkit</div>
+    <nav class="top-nav">
+      <a href="#features">功能</a>
+      <a href="#shots">界面</a>
+      <a href="#flow">工作流</a>
+      <a href="#limits">边界</a>
+      <a href="#download">下载</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<div class="hero">
+  <div class="wrap">
+    <h1>用思维导图<em>写论文</em><br>每一次保存都回得去</h1>
+    <p class="lead">
+      边写边长出提纲：节点就是章节，保存就是版本。改坏了随时回到任意一版，
+      连节点树一起回来。全部在本机跑，文件不会上传到任何地方。
+    </p>
+    <div class="actions">
+      <a class="btn" href="#download">下载 Windows 版</a>
+      <a class="btn ghost" href="#features">看看能做什么</a>
+    </div>
+    <div class="meta">Windows 10 / 11 · 单文件安装包 · 本地运行，不需要注册账号</div>
+  </div>
+</div>
+
+<section id="features">
+  <div class="wrap">
+    <h2>它到底解决什么</h2>
+    <p class="sub">写论文最难受的不是打字，是「这里该写什么」和「改坏了怎么办」。这两件事各有一个功能对着干。</p>
+    <div class="grid">
+
+      <div class="card">
+        <h3>思维导图式的提纲</h3>
+        <p>每个节点就是一段正文，写进项目里的 .md 文件。节点之间连线表示「支撑」「对比」，
+           随便拖、随便连，导图不用先想好再画。</p>
+        <span class="tag">节点 = 章节</span>
+      </div>
+
+      <div class="card">
+        <h3>每次保存留一个版本</h3>
+        <p>点保存就记一版，自动保存也会记。版本历史按天分组，可以整份回滚，
+           也可以只还原某一个文件。回滚连节点结构一起回去。</p>
+        <span class="tag">内容寻址 + 分支</span>
+      </div>
+
+      <div class="card">
+        <h3>文档转换</h3>
+        <p>Word / Excel / Markdown / PDF 互转，全在本地。PDF 是哪种、能做什么，
+           界面上直接写清楚，转不了会明确报错，不会产出一个空文件。</p>
+        <span class="tag">PDF 策略写在界面上</span>
+      </div>
+
+      <div class="card">
+        <h3>文献检索与引用</h3>
+        <p>走 OpenAlex / Crossref / DOAJ / PubMed / Semantic Scholar 这些开放学术源。
+           下载即入库，按 DOI 去重，一键生成 GB/T 7714、APA、IEEE、MLA 引用，
+           也能导出 BibTeX / RIS。</p>
+        <span class="tag">中英文都支持</span>
+      </div>
+
+      <div class="card">
+        <h3>扫描件 OCR</h3>
+        <p>图片型 PDF 没有文字层，抽不出字。这里会把它渲染成图片再识别，
+           默认用 Windows 自带的 OCR 引擎，不下载任何东西就能用。</p>
+        <span class="tag">零下载可用</span>
+      </div>
+
+      <div class="card">
+        <h3>可选 AI 助手</h3>
+        <p>检索完全在本地做，命中的片段才会发到你配置的端点。
+           可以配多个（DeepSeek / OpenAI / 本地 Ollama），聊天记录能一条条删。</p>
+        <span class="tag">自带 Key，不内置服务</span>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="flow">
+  <div class="wrap">
+    <h2>一条完整的工作流</h2>
+    <p class="sub">查文献到交稿，中间不用换工具，也不用担心哪天打开发现草稿没了。</p>
+    <div class="flow">
+      <span class="step">查文献</span><span class="arrow">→</span>
+      <span class="step">下载并入库</span><span class="arrow">→</span>
+      <span class="step">OCR / 转换</span><span class="arrow">→</span>
+      <span class="step">挂到导图节点</span><span class="arrow">→</span>
+      <span class="step">写正文</span><span class="arrow">→</span>
+      <span class="step">保存成版本</span><span class="arrow">→</span>
+      <span class="step">随时回档</span>
+    </div>
+    <p class="sub" style="margin-top:22px">
+      节点里的正文就是普通的 Markdown 文件，放在你自己的文件夹里 ——
+      用 Typora、VS Code 直接改也行，下次打开程序会认。
+    </p>
+  </div>
+</section>
+
+<section id="shots">
+  <div class="wrap">
+    <h2>长什么样</h2>
+    <p class="sub">没有欢迎页、没有仪表盘 —— 打开就是你的提纲。</p>
+    <div class="shots">
+      <figure class="shot">
+        <img src="assets/canvas.png" alt="项目画布：思维导图式的提纲">
+        <figcaption>画布：节点就是章节，连线表示论证关系；右边直接写正文，保存即成一个版本</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="assets/history.png" alt="版本历史">
+        <figcaption>版本历史：按天分组，可以整份回滚，也可以只还原某一个文件</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section id="limits">
+  <div class="wrap">
+    <h2>它做不到什么</h2>
+    <p class="sub">下面这些写在界面上，也写在这里。提前说清楚，比用的时候才发现强。</p>
+    <table class="facts">
+      <tr><td>还原 PDF 版式</td><td>不做。PDF 抽的是文字，分栏和表格会丢；要原版式请直接打开原 PDF。</td></tr>
+      <tr><td>加密 PDF</td><td>读不了，会明确提示需要密码，不会产出一个空文件。</td></tr>
+      <tr><td>扫描件质量</td><td>取决于原图清晰度和系统 OCR 语言包。模糊的扫描件识别率会明显下降。</td></tr>
+      <tr><td>AI 服务</td><td>程序不内置任何模型服务，需要你自己填一个 OpenAI 兼容的端点。</td></tr>
+      <tr><td>跨平台</td><td>目前只有 Windows（依赖 WebView2 和系统 OCR）。</td></tr>
+      <tr><td>团队协作</td><td>没有。项目是本地文件夹，多人改同一份建议用 Git 自己管。</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <h2>下载</h2>
+    <p class="sub">安装包在 GitHub Releases 上。装完打开就能用，不需要注册。</p>
+    <div class="dl">
+      <div class="info">
+        <h3>MakiseToolkit for Windows <span style="font-size:13px;color:var(--text-dim)">v3.7.0</span></h3>
+        <p>Windows 10 / 11 · 64 位 · 约 120 MB<br>
+           首次运行会检查系统 WebView2 运行时；没有的话安装包会帮你装上。</p>
+      </div>
+      <div class="btns">
+        <a class="btn" href="https://github.com/PLSSJX/BLG/releases/latest">前往下载页</a>
+        <a class="btn ghost" href="https://github.com/PLSSJX/BLG">查看源码</a>
+      </div>
+    </div>
+    <p class="sub" style="margin-top:18px">
+      程序会检查更新：有新版本时在「设置 → 更新与自检」里一键下载安装，
+      装完自动重新打开。也可以在上面那个页面手动下载。
+    </p>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap">
+    <h2>常见问题</h2>
+    <table class="facts">
+      <tr><td>我的论文存在哪？</td><td>就是你建项目时选的那个文件夹。程序只在里面加一个 <code>.mt</code> 目录（版本库），其它文件都是普通的 md / 附件。</td></tr>
+      <tr><td>会不会偷偷上传？</td><td>不会。下载、转换、OCR、检索都在本机。只有你主动点「问 AI」时，命中的片段才会发到你填的端点。</td></tr>
+      <tr><td>版本库坏了怎么办？</td><td>「设置 → 更新与自检 → 自检并修复」会校验界面文件；项目版本库是 SQLite，建议定期把整个项目文件夹备份一份。</td></tr>
+      <tr><td>为什么默认看不到下载功能？</td><td>这个程序的主线是论文写作。视频下载、音乐、剪辑、图片放大放在「附加工具箱」里，默认关闭，在设置里可以打开。</td></tr>
+    </table>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>MakiseToolkit</span>
+    <span>·</span>
+    <a href="https://github.com/PLSSJX/BLG">GitHub</a>
+    <span>·</span>
+    <a href="https://github.com/PLSSJX/BLG/releases/latest">Releases</a>
+    <span style="margin-left:auto">仅供学习与研究使用，请遵守所在地区的法律法规与平台条款。</span>
+  </div>
+</footer>
+
+</body>
+</html>
