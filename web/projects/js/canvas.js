@@ -3164,6 +3164,26 @@ if (gcBtnEl) gcBtnEl.onclick = () => cleanHistory();
 const exportBtnEl = document.getElementById('historyExport');
 if (exportBtnEl) exportBtnEl.onclick = () => exportGit();
 
+/** 一键备份：把整个项目目录（含 .mt 版本库）打成一个 zip。 */
+async function backupProject() {
+  const ok = await mtDialog({
+    title: '备份整个项目',
+    body: '会把项目文件夹里的所有东西打成一个 zip：正文、附件、还有版本库（.mt 目录）。\n\n'
+      + '解开这个 zip 就是一份完整的项目，不依赖程序本身。\n\n'
+      + '默认存到「文档」文件夹，文件名带时间戳。',
+    okText: '开始备份',
+  });
+  if (!ok) return;
+  try {
+    const r = await window.MTApi.backup(projectId);
+    await mtAlert('备份完成', '共 ' + r.files + ' 个文件，' + (r.bytes / 1048576).toFixed(1) + ' MB\n\n' + r.path);
+  } catch (e) {
+    await mtAlert('备份失败', e.message);
+  }
+}
+const backupBtnEl = document.getElementById('historyBackup');
+if (backupBtnEl) backupBtnEl.onclick = () => backupProject();
+
 const folderBtn = document.getElementById('openFolder');
 if (folderBtn) folderBtn.onclick = () => openProjectFolder();
 

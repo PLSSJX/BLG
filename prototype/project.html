@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>Makise Toolkit · 项目画布</title>
-<link rel="stylesheet" href="css/style.css?v=33">
+<link rel="stylesheet" href="css/style.css?v=34">
 <style>
   /* 内嵌到 MT 主界面时，隐藏原型自己的左侧栏（MT 已经有导航栏了） */
   body.embed-mode .rail { display: none; }
@@ -114,6 +114,7 @@
     <div class="hint">按时间从新到旧排列，按天分组。可以整份回到某个版本，也可以只还原单个文件。</div>
     <div id="historyList" style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px"></div>
     <div class="row"><button class="btn text" id="historyGc" title="清理没有被任何版本引用的旧数据">清理历史数据</button>
+      <button class="btn text" id="historyBackup" title="把整个项目（含版本库）打包成 zip">一键备份</button>
       <button class="btn text" id="historyExport" title="用系统 git 打开这份历史">导出为 Git 仓库</button>
       <button class="btn text" id="historyClose">关闭</button></div>
   </div>
@@ -176,9 +177,9 @@
     </div>
   </div>
 </div>
-<script src="js/data.js?v=33"></script>
-<script src="js/api.js?v=33"></script>
-<script src="js/md.js?v=33"></script>
+<script src="js/data.js?v=34"></script>
+<script src="js/api.js?v=34"></script>
+<script src="js/md.js?v=34"></script>
 <script>
   // 告诉 MT 主界面：已经打开具体项目了，左上角按钮要变成"退出项目"
   try {
@@ -189,7 +190,7 @@
       title: (document.getElementById('pName') || {}).textContent || '' }, location.origin);
   } catch (e) {}
 </script>
-<script src="js/canvas.js?v=33"></script>
+<script src="js/canvas.js?v=34"></script>
 <script>
   if (document.documentElement.dataset.embed === '1') document.body.classList.add('embed-mode');
 </script>

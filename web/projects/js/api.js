@@ -53,6 +53,7 @@ window.MTApi = {
   historyStats: (id) => call('/api/project/history-stats', { id }),
   gcProject: (id) => call('/api/project/gc', { id }),
   exportGit: (id) => call('/api/project/export-git', { id }),
+  backup: (id, target) => call('/api/project/backup', { id, target: target || '' }),
   restore: (id, commit, files) => call('/api/project/restore', { id, commit, files }),
   head: (id) => call('/api/project/head', { id }),
   remember: (id) => call('/api/project/remember', { id }),

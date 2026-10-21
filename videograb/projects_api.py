@@ -1865,6 +1865,37 @@ def api_export_git(payload: dict) -> dict:
     return result
 
 
+def api_backup(payload: dict) -> dict:
+    """把整个项目目录（正文 + 附件 + .mt 版本库）打成一个 zip。
+
+    这是"一键备份"：不依赖任何内部格式，直接复制目录树，
+    哪怕哪天程序跑不起来，用压缩软件解开就是完整的一份项目。"""
+    import zipfile
+    item = find_project(str(payload.get("id") or ""))
+    root = project_dir(item)
+    if not root.is_dir():
+        raise ApiError("项目目录不见了")
+    target_dir = Path(payload.get("target") or "").expanduser()
+    if not str(target_dir):
+        target_dir = Path.home() / "Documents"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    name = (item.get("name") or "project").replace("/", "_").replace("\\", "_")
+    out = target_dir / (name + "-备份-" + stamp + ".zip")
+    count = 0
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(root.rglob("*")):
+            if not path.is_file():
+                continue
+            rel = path.relative_to(root)
+            try:
+                zf.write(path, str(rel))
+                count += 1
+            except OSError:
+                continue      # 被占用的文件跳过，不因为一个文件整个备份失败
+    return {"ok": True, "path": str(out), "files": count, "bytes": out.stat().st_size}
+
+
 def api_targets(_payload: dict) -> dict:
     """给「存到项目」选择器用：一次返回所有项目和它们的节点树。
 
@@ -1987,6 +2018,7 @@ ROUTES = {
     "/api/project/history-stats": api_history_stats,
     "/api/project/gc": api_gc,
     "/api/project/targets": api_targets,
+    "/api/project/backup": api_backup,
 }
 
 
