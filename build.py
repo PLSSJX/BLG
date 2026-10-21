@@ -75,10 +75,10 @@ def make_icon() -> Path | None:
     image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
 
-    # 薄荷绿圆角方块 + 深墨绿字母 M，和界面里的配色一致
-    mint = (0x9E, 0xD8, 0xCB, 255)
-    ink = (0x0B, 0x3B, 0x36, 255)
-    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=112, fill=mint)
+    # 和官网品牌块完全一致的配色（site.css 里的 --primary / --on-primary）
+    mint = (0x7F, 0xD7, 0xC4, 255)     # --primary  #7FD7C4
+    ink = (0x04, 0x24, 0x1E, 255)      # --on-primary #04241E
+    draw.rounded_rectangle([0, 0, size - 1, size - 1], radius=164, fill=mint)   # 圆角 32%，和官网的 9/28 对齐
 
     # M 用多边形画，不依赖字体：外轮廓 + 中间凹口
     u = size

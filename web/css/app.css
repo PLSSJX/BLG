@@ -186,8 +186,6 @@ body.mode-oled {
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--md-on-primary-container) 30%, transparent) transparent;
 }
 .view::-webkit-scrollbar { width: 10px; }
 .view::-webkit-scrollbar-thumb {
@@ -446,7 +444,6 @@ body.mode-oled {
   border: 1px solid var(--md-outline-variant);
   border-radius: var(--radius-card);
   background: var(--md-surface-container-high);
-  scrollbar-width: thin;
 }
 .page-row {
   display: flex; align-items: center; gap: 10px;
@@ -1326,3 +1323,17 @@ body.chat-open .ask-fab-host { display: none; }
 }
 .ocr-row b { min-width: 150px; flex: none; }
 .ocr-row span { flex: 1; opacity: .85; word-break: break-all; }
+
+/* 统一滚动条：暗色界面里用系统默认的会突然出现一条亮色轨道，很难看。
+   注意：不能同时写 scrollbar-width / scrollbar-color —— Chromium 里这两个属性一出现，
+   下面的 ::-webkit-scrollbar 规则就整个失效（改了像没改）。 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(143, 211, 199, .28);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(143, 211, 199, .5); background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }

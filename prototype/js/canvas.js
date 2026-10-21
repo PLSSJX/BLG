@@ -266,7 +266,7 @@ function render() {
         : (data.note ? '<div class="note">' + data.note + '</div>' : '')) +
       (data.file ? '<div class="filerow">' + data.file + '</div>' : '') +
       ((data.assets && data.assets.length)
-        ? '<div class="docrow" title="点一下用外部程序打开">' +
+        ? '<div class="docrow" title="点一下用外部程序打开。项目里存的是副本，改它不影响原文件">' +
           (/\.[a-z0-9]+$/i.test(data.assets[0].name) && /\.(md|txt)$/i.test(data.assets[0].name)
             ? '📄 ' : '📎 ') + data.assets[0].name +
           (data.assets.length > 1 ? ' +' + (data.assets.length - 1) : '') + '</div>'
@@ -1723,7 +1723,7 @@ canvas.addEventListener('drop', (e) => {
         : await window.MTApi.attach(projectId, newId, externalPath);
       if (node) node.assets = (r.node && r.node.assets) || node.assets;
       markDirty(); render();
-      toastMsg('已挂上 ' + ((node && node.assets && node.assets.length) || 0) + ' 个文件');
+      toastMsg('已挂上 ' + ((node && node.assets && node.assets.length) || 0) + ' 个文件（项目里放的是副本，改它不影响原文件）', 4200);
     } catch (e) {
       const msg = String(e.message || e);
       fail(/找不到这个文件/.test(msg) ? '这个文件已经不在原位置了，请用「📎 文件」重新选一次' : msg);

@@ -147,8 +147,17 @@ export async function toggle(force) {
   const panel = buildChatPanel();
   const next = force === undefined ? !open : !!force;
   open = next;
-  panel.classList.toggle('open', open);
-  document.body.classList.toggle('chat-open', open);
+  if (open) {
+    // 第一次打开时这个面板是刚插进 DOM 的：如果同一个任务里立刻加 .open，
+    // 浏览器还没算过初始的 translateX(102%)，过渡会被跳过 —— 看起来就是"啪"一下出现。
+    // 这里先强制一次布局，让起始位置生效，再切类。
+    void panel.offsetHeight;
+    document.body.classList.add('chat-open');
+    panel.classList.add('open');
+  } else {
+    panel.classList.remove('open');
+    document.body.classList.remove('chat-open');
+  }
   if (open) {
     await refreshStatus();
     await loadHistory();
