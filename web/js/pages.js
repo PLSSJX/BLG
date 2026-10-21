@@ -3036,27 +3036,69 @@ function buildPdfStrategyCard() {
     row('加密 PDF', '会明确报错说"需要密码"，不会产出一个空文件', false),
     row('还原版式', '不做。要保留原版式请直接打开原 PDF', false),
     h('div', { class: 'btn-row', style: { marginTop: '10px' } },
-      button('查看 OCR 组件', { variant: 'text', iconName: 'tune', onClick: async () => {
-        try {
-          const st = await api.ocrStatus();
-          const lines = [
-            '渲染组件（pypdfium2）：' + (st.renderer ? '已就绪' : '未安装，约 4 MB'),
-            '系统 OCR（Windows 自带）：' + (st.windows_ocr ? '可用' : '不可用'),
-            'Tesseract：' + (st.tesseract || '未安装（可选，装了识别更稳）'),
-          ];
-          const yes = await dialog({
-            title: 'OCR 组件状态',
-            body: lines.join('\n') + '\n\n装的是渲染组件；OCR 本身用系统自带的，不用下载。',
-            confirm: st.renderer ? '知道了' : '安装渲染组件',
-            cancel: '关闭',
-          });
-          if (yes && !st.renderer) {
-            toast('正在下载…', 4000);
-            await api.ocrInstall();
-            toast('渲染组件已就绪', 5000);
+      button('查看 OCR 组件', { variant: 'text', iconName: 'tune', onClick: () => openOcrPanel() })));
+}
+
+/** OCR 组件面板：看状态、装渲染组件、下载 Tesseract。 */
+function openOcrPanel() {
+  const box = h('div', { class: 'ocr-panel' });
+  const host = h('div', { class: 'mt-fixed-modal' }, box);
+  document.body.append(host);
+  const close = () => host.remove();
+
+  const line = (name, value, ok) => h('div', { class: 'ocr-row' },
+    h('b', {}, name), h('span', {}, value), pill(ok ? '可用' : '未安装', ok ? 'ok' : 'mute'));
+
+  const paint = async () => {
+    let st = {};
+    try { st = await api.ocrStatus(); } catch (e) { st = {}; }
+    clear(box);
+    mount(box,
+      h('div', { class: 'ocr-title' }, 'OCR 组件状态'),
+      line('渲染组件（pypdfium2）', st.renderer ? '已就绪' : '未安装，约 4 MB', !!st.renderer),
+      line('系统 OCR（Windows 自带）', st.windows_ocr ? '可用' : '不可用', !!st.windows_ocr),
+      line('Tesseract', st.tesseract ? st.tesseract : '未安装（可选，装上版式复杂的更稳）', !!st.tesseract),
+      h('div', { class: 'card-desc', style: { marginTop: '10px' } },
+        '系统 OCR 已经能用，不装任何东西也能识别。多装一个 Tesseract 只是让复杂版式更准。'),
+      h('div', { class: 'btn-row', style: { marginTop: '12px', gap: '6px' } },
+        !st.renderer ? button('安装渲染组件', { variant: 'tonal', onClick: async () => {
+          toast('正在下载渲染组件…', 6000);
+          try { await api.ocrInstall(); toast('渲染组件已就绪', 5000); }
+          catch (e) { toast('失败：' + e.message, 9000); }
+          paint();
+        } }) : null,
+        !st.tesseract ? button('下载并安装 Tesseract', { variant: 'tonal', onClick: async (e) => {
+          const b = e.currentTarget; b.disabled = true; b.textContent = '下载中…';
+          toast('正在下载 Tesseract（约 50 MB），装到用户目录，不会弹权限框…', 10000);
+          try {
+            await api.ocrInstallTesseract();
+            toast('Tesseract 装好了', 6000);
+          } catch (err) {
+            const go = await dialog({
+              title: '自动安装没成功',
+              body: err.message + '\n\n可以到发行页手动下载安装，装的时候勾上「Chinese (Simplified)」语言包。',
+              confirm: '打开下载页',
+              cancel: '关闭',
+            });
+            if (go) api.shellOpen('https://github.com/UB-Mannheim/tesseract/wiki', false).catch(() => {});
           }
-        } catch (e) { toast('读取失败：' + e.message, 8000); }
-      } })));
+          paint();
+        } }) : null,
+        !st.tesseract ? button('用我下载的安装包', { variant: 'text', onClick: async () => {
+          try {
+            const picked = await api.pickLocalFiles('video');
+            if (!picked.paths || !picked.paths.length) return;
+            toast('正在安装…', 6000);
+            await api.ocrInstallFrom(picked.paths[0]);
+            toast('Tesseract 装好了', 6000);
+          } catch (e) {
+            toast('安装失败：' + e.message, 9000);
+          }
+          paint();
+        } }) : null,
+        button('关闭', { variant: 'text', onClick: close })));
+  };
+  paint();
 }
 
 export function renderDoc(view) {

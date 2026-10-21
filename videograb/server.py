@@ -932,6 +932,29 @@ class Handler(BaseHTTPRequestHandler):
                 raise ApiError(str(exc)) from None
             return self._json({"ok": True, **result, "status": _ocr.status()})
 
+        if route == "/api/ocr/install-tesseract":
+            from . import ocr as _ocr
+            try:
+                result = _ocr.install_tesseract()
+            except _ocr.OcrError as exc:
+                raise ApiError(str(exc)) from None
+            except Exception as exc:      # 下载超时、安装器失败等，都如实转成可读错误
+                raise ApiError("安装失败：" + str(exc)[:200]) from None
+            return self._json({"ok": True, **result, "status": _ocr.status()})
+
+        if route == "/api/ocr/install-from":
+            from . import ocr as _ocr
+            target = str(payload.get("path") or "").strip()
+            if not target:
+                raise ApiError("没有指定安装包")
+            try:
+                result = _ocr.install_tesseract_from(target)
+            except _ocr.OcrError as exc:
+                raise ApiError(str(exc)) from None
+            except Exception as exc:
+                raise ApiError("安装失败：" + str(exc)[:200]) from None
+            return self._json({"ok": True, **result, "status": _ocr.status()})
+
         if route == "/api/ocr/run":
             from . import ocr as _ocr
             target = str(payload.get("path") or "").strip()

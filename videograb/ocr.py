@@ -50,6 +50,11 @@ def _importable(name: str) -> bool:
 
 
 def find_tesseract() -> str:
+    # 先看我们自己的安装目录（可能是压缩包解出来的，路径不一定在顶层）
+    local = Path(os.environ.get("LOCALAPPDATA") or "C:") / "MakiseToolkit" / "tesseract"
+    if local.is_dir():
+        for found in local.rglob("tesseract.exe"):
+            return str(found)
     exe = shutil.which("tesseract")
     if exe:
         return exe
@@ -62,6 +67,114 @@ def find_tesseract() -> str:
         if path.is_file():
             return str(path)
     return ""
+
+
+# Tesseract 是可选的增强项：系统 OCR 已经能用，装了它版式复杂时更稳。
+# 装在 %LOCALAPPDATA% 下而不是 Program Files —— 那里需要管理员权限，
+# 一个桌面小工具不该为了装个 OCR 弹 UAC。
+TESS_DIR = Path(os.environ.get("LOCALAPPDATA") or str(BIN_DIR)) / "MakiseToolkit" / "tesseract"
+TESS_INDEX = "https://digi.bib.uni-mannheim.de/tesseract/"
+TESS_MANUAL = "https://github.com/UB-Mannheim/tesseract/wiki"
+TESSDATA_BASE = "https://raw.githubusercontent.com/tesseract-ocr/tessdata_fast/main/"
+
+
+def _latest_tesseract_url() -> str:
+    """从发行页索引里挑最新那个安装包。"""
+    req = urllib.request.Request(TESS_INDEX, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=25) as resp:
+        html = resp.read().decode("utf-8", "ignore")
+    names = re.findall(r"tesseract-ocr-w64-setup-[0-9.]+\.[0-9]+\.exe", html)
+    if not names:
+        raise OcrError("没在发行页找到安装包。可以手动下载：" + TESS_MANUAL)
+    names = sorted(set(names))
+    return TESS_INDEX + names[-1]
+
+
+def _download(url: str, target: Path, progress=None, label: str = "") -> None:
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=180) as resp, open(target, "wb") as out:
+        total = int(resp.headers.get("Content-Length") or 0)
+        done = 0
+        while True:
+            block = resp.read(1 << 18)
+            if not block:
+                break
+            out.write(block)
+            done += len(block)
+            if progress and total:
+                progress(min(0.95, done / total), (label or "下载中") + " %.1f / %.1f MB"
+                         % (done / 1048576, total / 1048576))
+
+
+def install_tesseract(progress=None) -> dict:
+    """下载并静默安装 Tesseract，再补上中英文语言包。"""
+    if os.name != "nt":
+        raise OcrError("只有 Windows 有这套安装包，其它系统请用包管理器装 tesseract")
+
+    if progress:
+        progress(0.02, "正在查找最新版本…")
+    url = _latest_tesseract_url()
+    with tempfile.TemporaryDirectory(prefix="mt-tess-") as tmp:
+        installer = Path(tmp) / "tesseract-setup.exe"
+        if progress:
+            progress(0.05, "正在下载安装包…")
+        _download(url, installer, progress, "已下载")
+        if progress:
+            progress(0.96, "正在安装…")
+        TESS_DIR.mkdir(parents=True, exist_ok=True)
+        # NSIS：/S 静默，/D= 指定目录且必须是最后一个参数（不能加引号）
+        proc = subprocess.run([str(installer), "/S", "/D=" + str(TESS_DIR)],
+                              capture_output=True, timeout=600)
+        exe = TESS_DIR / "tesseract.exe"
+        if not exe.is_file():
+            raise OcrError("安装程序没有生成 tesseract.exe（退出码 %d）。可以手动安装：%s"
+                           % (proc.returncode, TESS_MANUAL))
+
+    # 语言包：安装包默认只带英文，中文要自己下
+    data_dir = TESS_DIR / "tessdata"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    for name in ("chi_sim", "eng"):
+        target = data_dir / (name + ".traineddata")
+        if target.is_file():
+            continue
+        try:
+            if progress:
+                progress(0.97, "正在下载语言包 " + name + "…")
+            _download(TESSDATA_BASE + name + ".traineddata", target, None, name)
+        except Exception:
+            pass                    # 语言包下不下来不影响英文识别
+    if progress:
+        progress(1.0, "Tesseract 已就绪")
+    return {"ok": True, "path": str(TESS_DIR / "tesseract.exe"),
+            "tessdata": str(data_dir), "source": url}
+
+
+def install_tesseract_from(installer_path: str, progress=None) -> dict:
+    """用用户自己下载的安装包安装（发行站连不上时的退路）。"""
+    installer = Path(str(installer_path))
+    if not installer.is_file():
+        raise OcrError("找不到这个文件：" + str(installer_path))
+    if installer.suffix.lower() == ".exe":
+        TESS_DIR.mkdir(parents=True, exist_ok=True)
+        if progress:
+            progress(0.3, "正在安装…")
+        subprocess.run([str(installer), "/S", "/D=" + str(TESS_DIR)],
+                       capture_output=True, timeout=900)
+        exe = TESS_DIR / "tesseract.exe"
+        if not exe.is_file():
+            raise OcrError("安装程序没有生成 tesseract.exe，可能不是官方安装包")
+        return {"ok": True, "path": str(exe), "tessdata": str(TESS_DIR / "tessdata")}
+    if installer.suffix.lower() == ".zip":
+        if progress:
+            progress(0.3, "正在解压…")
+        TESS_DIR.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(installer) as zf:
+            zf.extractall(TESS_DIR)
+        found = list(TESS_DIR.rglob("tesseract.exe"))
+        if not found:
+            raise OcrError("压缩包里没找到 tesseract.exe")
+        return {"ok": True, "path": str(found[0]), "tessdata": str(found[0].parent / "tessdata")}
+    raise OcrError("只支持 .exe 安装包或 .zip 压缩包")
 
 
 def _windows_ocr_ready() -> bool:

@@ -1306,3 +1306,22 @@ body.chat-open .ask-fab-host { right: 402px; }
   border-radius: 10px; background: var(--md-surface-container-high);
   color: var(--md-on-surface); border: 1px solid var(--md-outline-variant);
 }
+
+
+/* OCR 组件面板 */
+.mt-fixed-modal {
+  position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center;
+  background: rgba(0, 0, 0, .45);
+}
+.ocr-panel {
+  width: min(560px, 92vw); background: var(--md-surface-container);
+  border: 1px solid var(--md-outline-variant); border-radius: 16px;
+  padding: 18px 20px; box-shadow: 0 18px 60px rgba(0, 0, 0, .5);
+}
+.ocr-title { font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+.ocr-row {
+  display: flex; align-items: center; gap: 10px; font-size: 12.5px;
+  padding: 7px 0; border-top: 1px solid var(--md-outline-variant); border-top-width: .5px;
+}
+.ocr-row b { min-width: 150px; flex: none; }
+.ocr-row span { flex: 1; opacity: .85; word-break: break-all; }

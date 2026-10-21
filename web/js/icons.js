@@ -237,9 +237,12 @@ export const ICONS = {
     filled: "<path d=\"M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z\"/>",
     outlined: "<path d=\"M19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z\"/>",
   },
+  // 这个图标之前是"找不到图标"的占位，里面存着一句英文报错；
+  // 它又被当成兜底图标用，任何图标名写错都会把报错印到界面上。这里换成真的 info 图标。
   "page_info": {
     viewBox: "0 0 24 24",
-    filled: "Couldn't find the requested file /filled/page_info.svg in @material-design-icons/svg.",
+    filled: "<path d=\"M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z\"/>",
+    outlined: "<path d=\"M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z\"/>",
   },
   "palette": {
     viewBox: "0 0 24 24",
@@ -390,7 +393,9 @@ export function icon(name, variant = 'filled', size = 24, className = '') {
   const key = name + '|' + variant + '|' + size + '|' + className;
   if (CACHE.has(key)) return CACHE.get(key);
   const item = ICONS[name] || ICONS['page_info'];
-  const body = item[variant] || item.filled || item.outlined || '';
+  const pick = (x) => (x && String(x).trim().startsWith('<') ? x : '');
+  const body = pick(item[variant]) || pick(item.filled) || pick(item.outlined)
+    || pick((ICONS['info'] || {}).outlined) || '';
   const svg = `<svg class="md-icon ${className}" viewBox="${item.viewBox}" width="${size}" height="${size}" aria-hidden="true" focusable="false">${body}</svg>`;
   CACHE.set(key, svg);
   return svg;
