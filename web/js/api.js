@@ -45,6 +45,7 @@ export const api = {
   paperLibrary: () => post('/api/papers/library', {}),
   paperCite: (id, style) => post('/api/papers/cite', { id, style }),
   paperLibraryRemove: (id) => post('/api/papers/library/remove', { id }),
+  paperExport: (format) => post('/api/papers/export', { format }),
   playlistImport: (input, limit, only) => post('/api/playlist/import', { input, limit, only }),
   playlistCancel: (site, id) => post('/api/playlist/cancel', { site, id }),
   playlistRetrySong: (site, id, url) => post('/api/playlist/retry-song', { site, id, url }),

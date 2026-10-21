@@ -3567,8 +3567,31 @@ function buildLibraryCard() {
         state.items.length
           ? '共 ' + state.items.length + ' 篇。选一种格式，点「复制引用」就能粘进参考文献。'
           : '还没有入库的文献。在「文献」页搜索并下载全文，会自动进库。'),
+      state.items.length
+        ? h('div', { class: 'btn-row', style: { marginTop: '8px', gap: '6px' } },
+            button('导出 BibTeX', { variant: 'text', iconName: 'file_download', onClick: () => exportAs('bibtex') }),
+            button('导出 RIS', { variant: 'text', iconName: 'file_download', onClick: () => exportAs('ris') }))
+        : null,
       state.items.length ? styleRow : null,
       state.items.length ? h('div', { style: { maxHeight: '300px', overflow: 'auto' } }, ...rows) : null);
+  };
+
+  const exportAs = async (format) => {
+    try {
+      const r = await api.paperExport(format);
+      const blob = new Blob([r.text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'references.' + (format === 'ris' ? 'ris' : 'bib');
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      toast('已导出 ' + r.count + ' 条（' + (format === 'ris' ? 'RIS' : 'BibTeX') + '）', 5000);
+    } catch (e) {
+      toast('导出失败：' + e.message, 8000);
+    }
   };
 
   const load = async () => {

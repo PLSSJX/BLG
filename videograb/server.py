@@ -855,6 +855,18 @@ class Handler(BaseHTTPRequestHandler):
                 item["exists"] = bool(path) and __import__("os").path.isfile(path)
             return self._json({"items": items, "styles": _lib.STYLES, "total": len(items)})
 
+        if route == "/api/papers/export":
+            from . import library as _lib
+            fmt = str(payload.get("format") or "bibtex").lower()
+            wanted = payload.get("ids")
+            items = _lib.load().get("items") or []
+            if isinstance(wanted, list) and wanted:
+                items = [x for x in items if x.get("id") in set(wanted)]
+            if not items:
+                raise ApiError("文献库里没有可导出的条目")
+            text = _lib.to_ris(items) if fmt == "ris" else _lib.to_bibtex(items)
+            return self._json({"text": text, "format": fmt, "count": len(items)})
+
         if route == "/api/papers/cite":
             from . import library as _lib
             entry = _lib.find(str(payload.get("id") or ""))

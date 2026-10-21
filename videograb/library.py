@@ -253,3 +253,100 @@ def citation(entry: dict, style: str = "gbt7714") -> str:
         rest += ", " + year
     link = (", doi: " + doi) if doi else ""
     return (head + body + rest + link + ".").strip()
+
+
+# ---------------------------------------------------------------- 导出
+# BibTeX / RIS 是参考文献管理器的通用交换格式：Zotero、EndNote、JabRef 都能吃。
+# 这两段纯字符串拼接，不引第三方库。
+
+def _bib_escape(text) -> str:
+    out = str(text or "")
+    for a, b in (("&", r"\&"), ("%", r"\%"), ("$", r"\$"), ("#", r"\#"), ("_", r"\_")):
+        out = out.replace(a, b)
+    return out
+
+
+def _split_pages(pages) -> tuple:
+    text = str(pages or "").strip().replace("–", "-")
+    if not text:
+        return "", ""
+    if "-" in text:
+        a, _, b = text.partition("-")
+        return a.strip(), b.strip()
+    return text, ""
+
+
+def _bib_authors(entry: dict) -> str:
+    names = _split_authors(entry.get("authors") or entry.get("author"))
+    if not names:
+        return ""
+    # 不颠倒姓名顺序：中文拼音（Zhang San）和西文（San Zhang）从字符串上分不清，
+    # 硬转只会把中文作者搞成 "San, Zhang"。原样交给 Zotero/JabRef 更安全。
+    return " and ".join(names)
+
+
+def to_bibtex(entries: list) -> str:
+    """导出 .bib。key 用 作者姓+年份+标题首词，重复时自动加后缀。"""
+    blocks = []
+    used = set()
+    for entry in entries:
+        names = _split_authors(entry.get("authors") or entry.get("author"))
+        first = (names[0].split()[-1] if names else "anon")
+        year = str(entry.get("year") or "nd")
+        word = "".join(c for c in str(entry.get("title") or "").split(" ")[0] if c.isalnum()) or "paper"
+        key = (first + year + word)[:40]
+        base = key
+        n = 1
+        while key in used:
+            n += 1
+            key = base + chr(96 + n)
+        used.add(key)
+
+        fields = [
+            ("author", _bib_authors(entry)),
+            ("title", _bib_escape(entry.get("title"))),
+            ("journal", _bib_escape(entry.get("venue") or entry.get("journal"))),
+            ("year", year if year != "nd" else ""),
+            ("volume", entry.get("volume")),
+            ("number", entry.get("issue")),
+            ("pages", str(entry.get("pages") or "").replace("–", "--")),
+            ("doi", _display_doi(entry)),
+            ("url", entry.get("url")),
+        ]
+        lines = ["  " + name + " = {" + str(value) + "},"
+                 for name, value in fields if str(value or "").strip()]
+        kind = "article" if (entry.get("venue") or entry.get("journal")) else "misc"
+        blocks.append("@" + kind + "{" + key + ",\n" + "\n".join(lines) + "\n}")
+    return "\n\n".join(blocks) + ("\n" if blocks else "")
+
+
+def to_ris(entries: list) -> str:
+    """导出 .ris。"""
+    blocks = []
+    for entry in entries:
+        lines = ["TY  - " + ("JOUR" if (entry.get("venue") or entry.get("journal")) else "GEN")]
+        for name in _split_authors(entry.get("authors") or entry.get("author")):
+            lines.append("AU  - " + name)
+        if entry.get("title"):
+            lines.append("TI  - " + str(entry.get("title")))
+        if entry.get("venue") or entry.get("journal"):
+            lines.append("JO  - " + str(entry.get("venue") or entry.get("journal")))
+        if entry.get("year"):
+            lines.append("PY  - " + str(entry.get("year")))
+        if entry.get("volume"):
+            lines.append("VL  - " + str(entry.get("volume")))
+        if entry.get("issue"):
+            lines.append("IS  - " + str(entry.get("issue")))
+        if entry.get("pages"):
+            start, end = _split_pages(entry.get("pages"))
+            lines.append("SP  - " + start)
+            if end:
+                lines.append("EP  - " + end)
+        doi = _display_doi(entry)
+        if doi:
+            lines.append("DO  - " + doi)
+        if entry.get("url"):
+            lines.append("UR  - " + str(entry.get("url")))
+        lines.append("ER  - ")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks) + ("\n" if blocks else "")
