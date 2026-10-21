@@ -3017,7 +3017,7 @@ function openHistory() {
           b.onclick = async (ev) => {
             ev.stopPropagation();
             const okFile = await mtDialog({
-            title: '恢复单个文件', body: '把 ' + f + ' 恢复到 ' + c.short + ' 这个版本？\n\n只会改这一个文件。',
+            title: '恢复单个文件', body: '把 ' + f + ' 回档到 ' + c.short + ' 这个版本？\n\n只会改这一个文件。',
             okText: '恢复',
           });
           if (!okFile) return;
@@ -3069,7 +3069,7 @@ async function rollbackToCommit(c) {
     title: '回到这个版本',
     body: '把整个项目回到 ' + c.short + '？\n\n'
       + '版本说明：' + (c.subject || '(无)') + '\n\n'
-      + '确定 = 把所有文件恢复到那个版本的样子（会改动磁盘文件）\n'
+      + '确定 = 把所有文件回档到那个版本的样子（会改动磁盘文件）\n'
       + '取消 = 什么都不做',
     okText: '回到这个版本',
   });
@@ -3163,6 +3163,26 @@ const gcBtnEl = document.getElementById('historyGc');
 if (gcBtnEl) gcBtnEl.onclick = () => cleanHistory();
 const exportBtnEl = document.getElementById('historyExport');
 if (exportBtnEl) exportBtnEl.onclick = () => exportGit();
+
+/** 一键备份：把整个项目目录（含 .mt 版本库）打成一个 zip。 */
+async function backupProject() {
+  const ok = await mtDialog({
+    title: '备份整个项目',
+    body: '会把项目文件夹里的所有东西打成一个 zip：正文、附件、还有版本库（.mt 目录）。\n\n'
+      + '解开这个 zip 就是一份完整的项目，不依赖程序本身。\n\n'
+      + '默认存到「文档」文件夹，文件名带时间戳。',
+    okText: '开始备份',
+  });
+  if (!ok) return;
+  try {
+    const r = await window.MTApi.backup(projectId);
+    await mtAlert('备份完成', '共 ' + r.files + ' 个文件，' + (r.bytes / 1048576).toFixed(1) + ' MB\n\n' + r.path);
+  } catch (e) {
+    await mtAlert('备份失败', e.message);
+  }
+}
+const backupBtnEl = document.getElementById('historyBackup');
+if (backupBtnEl) backupBtnEl.onclick = () => backupProject();
 
 const folderBtn = document.getElementById('openFolder');
 if (folderBtn) folderBtn.onclick = () => openProjectFolder();

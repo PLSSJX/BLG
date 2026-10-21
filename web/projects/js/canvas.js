@@ -3017,7 +3017,7 @@ function openHistory() {
           b.onclick = async (ev) => {
             ev.stopPropagation();
             const okFile = await mtDialog({
-            title: '恢复单个文件', body: '把 ' + f + ' 恢复到 ' + c.short + ' 这个版本？\n\n只会改这一个文件。',
+            title: '恢复单个文件', body: '把 ' + f + ' 回档到 ' + c.short + ' 这个版本？\n\n只会改这一个文件。',
             okText: '恢复',
           });
           if (!okFile) return;
@@ -3069,7 +3069,7 @@ async function rollbackToCommit(c) {
     title: '回到这个版本',
     body: '把整个项目回到 ' + c.short + '？\n\n'
       + '版本说明：' + (c.subject || '(无)') + '\n\n'
-      + '确定 = 把所有文件恢复到那个版本的样子（会改动磁盘文件）\n'
+      + '确定 = 把所有文件回档到那个版本的样子（会改动磁盘文件）\n'
       + '取消 = 什么都不做',
     okText: '回到这个版本',
   });
