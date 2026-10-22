@@ -19,11 +19,11 @@
   <div class="wrap">
     <div class="brand"><span class="mark">M</span>MakiseToolkit</div>
     <nav class="top-nav">
-      <a href="#features">能干什么</a>
+      <a href="#features">功能</a>
       <a href="#shots">截图</a>
-      <a href="#flow">怎么用</a>
+      <a href="#flow">使用流程</a>
       <a href="#safety">数据安全</a>
-      <a href="#limits">做不了什么</a>
+      <a href="#limits">能力边界</a>
       <a href="#download">下载</a>
     </nav>
   </div>
@@ -33,66 +33,66 @@
 
 <div class="hero">
   <div class="wrap">
-    <h1>先把提纲摆开<br><em>再一段段写</em></h1>
+    <h1>先搭提纲<br><em>再逐节写作</em></h1>
     <p class="lead">
-      每个小节就是一张卡片，卡片里写正文。写的时候能看见整篇文章长什么样，
-      哪块还空着自己心里有数。存一次留一个版本，写崩了退回去就是。
-      东西都在你自己的文件夹里，本机跑，不联网也能写。
+      每个小节对应一个节点，正文直接写在节点里。写作时可以同时看到整篇文章的结构，
+      空着的部分一目了然。每次保存生成一个版本，需要时可以回退。
+      所有文件保存在你指定的文件夹中，本地运行，无需联网。
     </p>
     <div class="actions">
       <a class="btn" href="#download">下载 Windows 版</a>
-      <a class="btn ghost" href="#features">先看看功能</a>
+      <a class="btn ghost" href="#features">查看功能</a>
     </div>
-    <div class="meta">Windows 10 / 11 · 一个安装包 · 不用注册，不填手机号</div>
+    <div class="meta">Windows 10 / 11 · 单个安装包 · 无需注册</div>
   </div>
 </div>
 
 <section id="features">
   <div class="wrap">
-    <h2>能干什么</h2>
-    <p class="sub">写论文卡住的地方通常就两处：不知道该往下写什么，以及改乱了不知道怎么退回去。这程序主要冲着这两件事来。</p>
+    <h2>功能</h2>
+    <p class="sub">写作时常卡在两处：不确定接下来该写什么，以及改动过多后难以回到从前的状态。这个工具主要针对这两点。</p>
     <div class="grid">
 
       <div class="card">
         <h3>提纲就是正文</h3>
-        <p>一张卡片是一个小节，卡片里直接写内容，存成 .md。卡片之间能拉线，
-           标“这块支持那块”“这两块对着说”。提纲不用一次想全，边写边加。</p>
-        <span class="tag">一张卡片 = 一个 .md</span>
+        <p>一个节点即一个小节，内容直接写入并保存为 .md 文件。节点之间可以连线，
+           标注“支撑”“对照”等关系。提纲无需一次想全，可随写作增补。</p>
+        <span class="tag">一个节点 = 一个 .md</span>
       </div>
 
       <div class="card">
         <h3>存一次，留一版</h3>
-        <p>手动存会留版本，自动保存也留。历史里按天排着，想退回哪一版直接退。
-           整个项目能退，单个文件也能单独拿回来。</p>
+        <p>手动保存与自动保存都会生成版本。版本历史按日期排列，可整份回退，
+           也可只恢复其中某一个文件。</p>
         <span class="tag">退回之前先看清楚改了啥</span>
       </div>
 
       <div class="card">
         <h3>转文档</h3>
-        <p>Word、Excel、Markdown、PDF 之间互相转，都在本机算。哪种 PDF 能转、
-           哪种转了会丢格式，界面上直接写着，转不了会直说，不会给你一个空文件。</p>
+        <p>Word、Excel、Markdown、PDF 之间可相互转换，全部在本机完成。
+           每种 PDF 能否转换、转换后是否丢失版式，界面上均有说明；无法转换时会明确提示，不会输出空文件。</p>
         <span class="tag">PDF 的脾气写在界面上</span>
       </div>
 
       <div class="card">
         <h3>找论文、抄引用</h3>
-        <p>接的是 OpenAlex、Crossref、DOAJ、PubMed 这些开放库，搜到就能下，
-           下载完自动进库，同一个 DOI 不会重复。引用格式有国标、APA、IEEE、MLA，
-           也能导 BibTeX 和 RIS。中英文的国标格式都按规矩来。</p>
+        <p>接入 OpenAlex、Crossref、DOAJ、PubMed 等开放数据库，检索到即可下载，
+           下载后自动入库并按 DOI 去重。支持 GB/T 7714（中英文）、APA、IEEE、MLA，
+           以及 BibTeX、RIS 导出。</p>
         <span class="tag">中文英文都不用手打</span>
       </div>
 
       <div class="card">
         <h3>扫描件认字</h3>
-        <p>扫描出来的 PDF 里头没有文字，直接抽只能得到空白。这里先把它渲成图再认字，
-           默认用 Windows 自带的识别，不用另外装东西。</p>
+        <p>扫描型 PDF 没有文字层，直接提取只能得到空白。程序会先渲染为图像再做识别，
+           默认调用 Windows 自带 OCR 引擎，无需额外安装。</p>
         <span class="tag">不用下载模型</span>
       </div>
 
       <div class="card">
         <h3>想问就问一句</h3>
-        <p>找一个问题，先把相关的段落从你自己的笔记里翻出来，连同问题一起发给你填的接口。
-           嫌吵关掉也行，不填接口就当没这功能。支持填多个，DeepSeek、OpenAI、本地 Ollama 都行。</p>
+        <p>提问时先从你的笔记中检索相关段落，再连同问题一起发送到所配置的接口。
+           可以关闭该功能；也可以配置多个接口，DeepSeek、OpenAI、本地 Ollama 均可。</p>
         <span class="tag">Key 自己填，程序不带服务</span>
       </div>
 
@@ -102,8 +102,8 @@
 
 <section id="flow">
   <div class="wrap">
-    <h2>一般怎么用</h2>
-    <p class="sub">从找资料到交稿，中间不用换来换去。也不用担心哪天打开，草稿没了。</p>
+    <h2>使用流程</h2>
+    <p class="sub">从检索资料到完稿，不必在多个工具之间切换，也不必担心某天打开时草稿丢失。</p>
     <div class="flow">
       <span class="step">搜论文</span><span class="arrow">→</span>
       <span class="step">下回来进库</span><span class="arrow">→</span>
@@ -114,19 +114,19 @@
       <span class="step">不对就退回去</span>
     </div>
     <p class="sub" style="margin-top:22px">
-      正文是普通的 Markdown，躺在你选的那个文件夹里。想用 Typora 或 VS Code 改也随意，
-      回程序里它认。
+      正文是普通的 Markdown 文件，位于你指定的文件夹中。也可以用 Typora、VS Code 直接编辑，
+      程序会识别这些改动。
     </p>
   </div>
 </section>
 
 <section id="shots">
   <div class="wrap">
-    <h2>界面长这样</h2>
-    <p class="sub">打开就是你的提纲，没有欢迎页，也没有一堆统计数据要先看。</p>
+    <h2>界面</h2>
+    <p class="sub">启动后直接进入你的提纲，没有欢迎页，也没有需先行阅读的统计数据。</p>
     <div class="shots">
       <figure class="shot">
-        <img src="assets/canvas.png" alt="项目画布：卡片式提纲">
+        <img src="assets/canvas.png" alt="项目画布：节点式提纲">
         <figcaption>左边摆提纲，右边写正文。存一次就多一个版本</figcaption>
       </figure>
       <figure class="shot">
@@ -139,8 +139,8 @@
 
 <section id="safety">
   <div class="wrap">
-    <h2>丢稿这事，我们真拿脚本试过</h2>
-    <p class="sub">写论文最怕的就是稿子没了。下面这些不是“应该没事”，是自动化脚本一条条跑出来的结果。</p>
+    <h2>数据安全：已用脚本逐项验证</h2>
+    <p class="sub">论文写作最怕稿件丢失。以下项目均为自动化脚本的实际运行结果，不是推测。</p>
     <table class="facts">
       <tr><td>编辑到一半直接杀进程</td><td>重启后正文和版本都还在</td></tr>
       <tr><td>模拟断电（改完盘上文件就断电）</td><td>内容没丢，回来还能接着存</td></tr>
@@ -156,15 +156,15 @@
 
 <section id="limits">
   <div class="wrap">
-    <h2>做不了什么</h2>
-    <p class="sub">下面这些都写在界面里了。先讲明白，省得你用到一半才发现。</p>
+    <h2>能力边界</h2>
+    <p class="sub">以下限制在界面中同样标明，使用前即可了解。</p>
     <table class="facts">
-      <tr><td>还原 PDF 的版式</td><td>不干。抽出来的是文字，分栏和表格会散。要看原样就开原文件。</td></tr>
-      <tr><td>加密的 PDF</td><td>打不开，会告诉你缺密码，不会塞给你一个空文件。</td></tr>
-      <tr><td>扫描件认得准不准</td><td>看原图清不清楚、系统装没装语言包。太糊的件认错很正常。</td></tr>
-      <tr><td>AI 服务</td><td>程序里没有模型。要问就自己填一个兼容 OpenAI 的地址。</td></tr>
-      <tr><td>别的系统</td><td>只有 Windows。它靠 WebView2 和系统自带的识别，换平台得重做。</td></tr>
-      <tr><td>多人一起改</td><td>没有这功能。项目就是个本地文件夹，几个人改同一份建议用 Git。</td></tr>
+      <tr><td>还原 PDF 版式</td><td>不支持。提取的是文字，分栏与表格会错乱；需要原版式请直接打开原 PDF。</td></tr>
+      <tr><td>加密 PDF</td><td>无法读取，会明确提示需要密码，不会输出空文件。</td></tr>
+      <tr><td>扫描件识别准确率</td><td>取决于原图清晰度与系统语言包；图像模糊时识别率明显下降。</td></tr>
+      <tr><td>AI 服务</td><td>程序不内置模型，需自行填写兼容 OpenAI 的接口地址。</td></tr>
+      <tr><td>其他平台</td><td>目前仅支持 Windows，依赖 WebView2 与系统 OCR。</td></tr>
+      <tr><td>多人协作</td><td>不支持。项目是本地文件夹，多人修改同一份建议用 Git 自行管理。</td></tr>
     </table>
   </div>
 </section>
@@ -172,14 +172,14 @@
 <section id="download">
   <div class="wrap">
     <h2>下载</h2>
-    <p class="sub"><b>先说一句：论文这些功能只在 4.0 快照版里有，而且它还不算稳。</b>
-      3.7.0 是之前那套工具（下载、音乐、转文档），没有提纲也没有版本历史。</p>
+    <p class="sub"><b>论文相关功能仅存在于 4.0 快照版，且尚未稳定。</b>
+      3.7.0 是此前的工具集（下载、音乐、文档转换），没有提纲与版本历史。</p>
     <div class="dl">
       <div class="info">
         <h3>稳定版 <span style="font-size:13px;color:var(--text-dim)">v3.7.0</span></h3>
         <p>Windows 10 / 11 · 64 位 · 约 120 MB<br>
            <b>这是 3.x，只有下载、音乐、转文档这些，没有论文功能</b>。<br>
-           想要写论文那套，看下面那个。</p>
+           需要写作功能请下载下方的快照版。</p>
       </div>
       <div class="btns">
         <a class="btn" href="https://github.com/PLSSJX/BLG/releases/tag/v3.7.0">下载稳定版</a>
@@ -187,32 +187,31 @@
     </div>
     <div class="dl" style="margin-top:16px;border-color:#c58b3a">
       <div class="info">
-        <h3>快照版 <span style="font-size:13px;color:#e5b567">v4.0.0-snapshot</span>
-          <span class="tag" style="margin-left:6px">别当稳定版用</span></h3>
+        <h3>快照版 <span style="font-size:13px;color:#e5b567">v4.0.1-snapshot</span>
+          <span class="tag" style="margin-left:6px">非稳定版</span></h3>
         <p>4.0 把重心挪到写论文上了：提纲和版本是主线，下载那些收进“其他功能”，默认不显示。<br>
-           能日常用，但还没被长时间折腾过。建议先拿新项目试，重要的稿子另外留一份文件夹备份。<br>
-           本页上面说的功能，都是这个版本。</p>
+           可以日常使用，但尚未经过长时间验证。建议先在新建项目上试用，重要稿件另存一份文件夹备份。<br>
+           本页上方介绍的功能均指此版本。</p>
       </div>
       <div class="btns">
-        <a class="btn ghost" href="https://github.com/PLSSJX/BLG/releases/tag/v4.0.0-snapshot">下载快照版</a>
+        <a class="btn ghost" href="https://github.com/PLSSJX/BLG/releases/tag/v4.0.1-snapshot">下载快照版</a>
         <span style="font-size:12px;color:var(--text-dim);align-self:center">安装包 122 MB，Windows 10/11 64 位</span>
       </div>
     </div>
     <p class="sub" style="margin-top:18px">
-      程序会自己看有没有新版本：设置里点一下就能下载安装，装完自动重开。
-      也可以在上面那页手动下。
+      程序会检查更新，在设置中即可下载安装，安装完成后自动重启；也可以在上面的页面手动下载。
     </p>
   </div>
 </section>
 
 <section id="faq">
   <div class="wrap">
-    <h2>常被问到</h2>
+    <h2>常见问题</h2>
     <table class="facts">
-      <tr><td>我的稿子到底存在哪</td><td>就是你建项目时选的那个文件夹。程序只在里面多放一个 <code>.mt</code> 目录存版本，别的都是普通 md 和附件。</td></tr>
-      <tr><td>会不会偷偷上传</td><td>不会。下载、转格式、认字、检索都在你机器上。只有你主动点“问一句”，命中的那几段才会发到你填的地址。</td></tr>
-      <tr><td>版本库要是坏了呢</td><td>程序会把它改名留档，再建一个空的新库，稿子照样在。真怕出事，就偶尔用“一键备份”打个 zip。</td></tr>
-      <tr><td>为什么找不到下载功能</td><td>这程序现在是写论文用的。视频、音乐、剪辑、图片放大都收进“其他功能”了，默认不显示，设置里能打开。</td></tr>
+      <tr><td>稿件保存在哪里</td><td>创建项目时选择的文件夹。程序只会在其中增加一个 <code>.mt</code> 目录用于存放版本，其余均为普通 md 文件与附件。</td></tr>
+      <tr><td>是否会上传文件</td><td>不会。下载、转换、识别与检索均在本机完成；仅在你主动提问时，命中的片段才会发送到所配置的接口。</td></tr>
+      <tr><td>版本库损坏怎么办</td><td>程序会将损坏的库改名留档并新建空库，正文不受影响。建议定期使用「备份」导出 zip。</td></tr>
+      <tr><td>为什么找不到下载功能</td><td>本程序以论文写作为主线，视频、音乐、剪辑、图片放大已归入「其他功能」，默认不显示，可在设置中开启。</td></tr>
     </table>
   </div>
 </section>
@@ -226,7 +225,7 @@
     <a href="https://github.com/PLSSJX/BLG">GitHub</a>
     <span>·</span>
     <a href="https://github.com/PLSSJX/BLG/releases/latest">Releases</a>
-    <span style="margin-left:auto">就自己用。遵守当地法律和平台条款，别拿去商用或批量抓。</span>
+    <span style="margin-left:auto">仅供个人学习与研究使用，请遵守当地法律及平台条款，勿用于商业用途或批量抓取。</span>
   </div>
 </footer>
 

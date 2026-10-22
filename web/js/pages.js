@@ -60,8 +60,7 @@ export function renderHome(view) {
         store.config.logged_in ? 'ok' : 'mute') : null,
       buildQuitButton()),
     h('p', { class: 'page-sub' },
-      '把视频链接或者 App 里复制的那段分享文案粘进来。认出平台之后，它会列出真能下的画质。'
-      + '音乐去左边「音乐」页。'),
+      '粘贴视频链接或 App 分享文案。识别平台后会列出实际可下载的画质档位；音乐内容请前往「音乐」页。'),
     buildSearchCard(),
   );
 
@@ -785,15 +784,15 @@ function buildPlaylistCard() {
           button('继续下载未完成的', { iconName: 'download', onClick: async (e) => {
             const btn = e.currentTarget; btn.disabled = true;
             // 本地歌曲（file:///）已经在磁盘上了，不进下载队列
-            const todo = (pl.songs || []).filter(
+            const pending = (pl.songs || []).filter(
               (s) => !s.local && /^https?:/i.test(String(s.url || '')));
-            if (!todo.length) { btn.disabled = false; toast('这个歌单里的歌都已经下载过了'); return; }
+            if (!pending.length) { btn.disabled = false; toast('这个歌单里的歌都已经下载过了'); return; }
             let ok = 0;
-            for (const s of todo.slice(0, 5)) {
+            for (const s of pending.slice(0, 5)) {
               try { await api.submit({ input: s.url, engine: 'auto', qn: 0, mode: 'auto' }); ok += 1; } catch (err) { }
             }
             btn.disabled = false;
-            toast('已排 ' + ok + ' 个下载任务（还剩 ' + Math.max(0, todo.length - ok) + ' 首）');
+            toast('已排 ' + ok + ' 个下载任务（还剩 ' + Math.max(0, pending.length - ok) + ' 首）');
             document.dispatchEvent(new CustomEvent('tasks-changed'));
           } })),
         h('div', { class: 'card-desc' }, '《' + pl.title + '》' + (pl.songs || []).length + ' 首'),
@@ -1592,8 +1591,8 @@ export function renderTasks(view) {
         refreshTasks();
       } }) : null),
     h('p', { class: 'page-sub' }, extrasOn
-      ? '下载过的东西都在这儿。还在跑的任务每 0.8 秒刷一次进度。关掉程序也不会丢，记录存在 data/tasks.json。'
-      : '下回来的论文和引文条目都堆在这儿。要搜新的去「参考文献」页。'),
+      ? '此处列出全部下载记录。进行中的任务每 0.8 秒刷新一次进度，程序关闭后记录仍然保留（data/tasks.json）。'
+      : '已下载的论文与引文条目在此列出；检索新条目请前往「参考文献」。'),
     // 未登录失败的聚合成一条提示，按平台分开列 —— 视频和音乐要找的登录项不是同一个
     (() => {
       const nl = stats.need_login || [];
@@ -2455,7 +2454,7 @@ function buildAICard(settings) {
 
 /** 附加工具箱开关。
  *
- *  这个程序的主线是论文写作：项目（思维导图 + 可回档）、文档转换、文献检索。
+ *  这个程序的主线是论文写作：项目（思维导图 + 可回退）、文档转换、文献检索。
  *  视频下载 / 音乐 / 剪辑 / 图片放大这些媒体工具只是附带的，默认不显示 ——
  *  打开后左侧导航才会多出那几个入口。
  */
@@ -2476,7 +2475,7 @@ function buildToolboxCard(settings) {
               '下什么自己看着办，别拿去传别人的付费内容。程序里没有任何绕开付费或加密的东西。',
               '',
               '确定 = 放出来，左边多五个入口',
-              '取消 = 算了，先这样',
+              '取消 = 保持现状',
             ].join('\n'),
             confirm: '放出来',
           });
@@ -3356,7 +3355,7 @@ export function renderDoc(view) {
 
 /* ================================================================ 找资源（附加工具箱） */
 
-const resourceState = { q: '', items: [], total: 0, loading: false, status: null, error: '' };
+const resourceState = { q: '', items: [], total: 0, loading: false, status: null, error: '', source: '', note: '' };
 
 export function renderResources(view) {
   clear(view);
@@ -3373,11 +3372,16 @@ export function renderResources(view) {
     }
     if (!resourceState.items.length) {
       mount(results, h('div', { class: 'card-desc' },
-        resourceState.q ? '没搜到。换个词试试，目录里主要是英文站名。' : '输入关键词开始搜。'));
+        resourceState.q ? '未找到匹配项。目录以英文站名为主，可尝试其他关键词。' : '输入关键词后开始检索。'));
       return;
     }
+    const sourceText = resourceState.source === 'online'
+      ? '联网结果'
+      : (resourceState.source === 'local' ? '本地目录（联网失败时使用）' : '');
     mount(results, h('div', { class: 'card-desc', style: { marginBottom: '6px' } },
-      '找到 ' + resourceState.total + ' 条，显示前 ' + resourceState.items.length + ' 条'));
+      '找到 ' + resourceState.total + ' 条，显示前 ' + resourceState.items.length + ' 条'
+      + (sourceText ? ' · ' + sourceText : '')
+      + (resourceState.note ? ' · ' + resourceState.note : '')));
     for (const it of resourceState.items) {
       mount(results, h('div', { class: 'set-row', style: { display: 'flex', gap: '10px',
         alignItems: 'baseline', padding: '7px 0', borderBottom: '1px solid var(--md-outline-variant)' } },
@@ -3399,7 +3403,12 @@ export function renderResources(view) {
     try {
       const r = await api.fmhySearch(resourceState.q, 60);
       if (!r.ok) { resourceState.error = r.error || '搜索失败'; resourceState.items = []; }
-      else { resourceState.items = r.items || []; resourceState.total = r.total || 0; }
+      else {
+        resourceState.items = r.items || [];
+        resourceState.total = r.total || 0;
+        resourceState.source = r.source || '';
+        resourceState.note = r.note || '';
+      }
     } catch (e) {
       resourceState.error = '搜索失败：' + e.message;
       resourceState.items = [];
@@ -3412,14 +3421,19 @@ export function renderResources(view) {
   const paintStatus = () => {
     const st = resourceState.status || {};
     if (st.running) {
-      statusLine.textContent = '正在更新目录，已完成 ' + (st.done || 0) + ' / ' + (st.total || '?') + ' 页…';
-    } else if (st.ready) {
-      const when = st.updated ? new Date(st.updated * 1000).toLocaleString() : '未知时间';
-      statusLine.textContent = '本地目录：' + (st.entries || 0) + ' 条，来自 ' + (st.pages || 0) +
-        ' 个页面，更新于 ' + when + '（搜索不联网）';
-    } else {
-      statusLine.textContent = st.error ? ('目录还没建好：' + st.error) : '还没有本地目录，第一次要联网抓一次（约 1～2 分钟）。';
+      statusLine.textContent = '正在更新本地目录…';
+      return;
     }
+    const parts = [];
+    if (st.ready) {
+      const when = st.updated ? new Date(st.updated * 1000).toLocaleString() : '未知时间';
+      parts.push('本地目录 ' + (st.entries || 0) + ' 条（' + when + ' 更新）');
+    } else {
+      parts.push('尚未保存本地目录');
+    }
+    parts.push(st.online_cached ? '联网缓存可用' : '搜索时自动联网获取最新目录');
+    if (st.error) parts.push('上次更新失败：' + st.error);
+    statusLine.textContent = parts.join(' · ');
   };
   const pollStatus = async () => {
     try { resourceState.status = await api.fmhyStatus(); } catch (e) { resourceState.status = { ready: false, error: e.message }; }
@@ -3442,9 +3456,9 @@ export function renderResources(view) {
         } catch (e) { toast('更新失败：' + e.message, 5000); }
       } })),
     h('p', { class: 'page-sub' },
-      'FreeMediaHeckYeah 那份目录的本地副本。搜的是站名和分组，点「打开」用浏览器去。'),
+      '检索 FreeMediaHeckYeah 收录的站点目录。匹配站名与分类，点击「打开」由系统浏览器访问。'),
     card(
-      h('div', { class: 'card-title', html: icon('travel_explore', 'outlined', 20) + '<span>搜一下</span>' }),
+      h('div', { class: 'card-title', html: icon('travel_explore', 'outlined', 20) + '<span>检索</span>' }),
       statusLine,
       h('div', { class: 'search-field', style: { marginTop: '10px' } },
         h('input', {
@@ -3455,8 +3469,8 @@ export function renderResources(view) {
         }),
         button('搜索', { iconName: 'search', onClick: search })),
       h('div', { class: 'hint', style: { marginTop: '8px' } },
-        '目录是别人整理的链接集合，程序不托管任何内容，也不替这些站点担保。'
-        + '有些站在你所在的地区可能不合法，点之前自己掂量。'),
+        '目录由第三方整理，程序不托管任何内容，亦不对收录站点作担保；'
+        + '部分站点在特定地区可能不合法，请自行判断是否访问。'),
       results,
     ),
   );
@@ -3703,7 +3717,7 @@ export function renderPapers(view) {
       card(
         h('div', { class: 'card-title', html: icon('search', 'outlined', 20) + '<span>搜论文</span>' }),
         h('div', { class: 'card-desc' },
-          '一次问几个库，回来的结果按来源排好。只接有公开接口的库，免得人家一改版就悄悄坏掉。'),
+          '同时检索多个开放数据库，结果按来源分组。仅接入提供公开接口的来源，避免对方改版后无声失效。'),
         h('div', { class: 'search-field', style: { marginTop: '10px' } },
           h('input', {
             class: 'input',

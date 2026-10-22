@@ -907,7 +907,7 @@ saveBtn.addEventListener('click', async () => {
   if (online && window.MTApi) {
     try {
       const r = await window.MTApi.commitNow(projectId);
-      toastMsg(r.committed ? '存好了' : ('没东西要存：' + (r.reason || '')));
+      toastMsg(r.committed ? '已保存' : ('没有需要保存的改动：' + (r.reason || '')));
       markDirty(false);
     } catch (e) { toastMsg('保存失败：' + e.message); }
     return;
@@ -918,7 +918,7 @@ saveBtn.addEventListener('click', async () => {
       const r = await window.MTApi.commit(projectId, snapshot, 'mt: 保存画布改动');
       markDirty(false);
       if (!r.committed) { toastMsg('没有改动，不用保存'); return; }
-      toastMsg('存好了 ' + String(r.sha).slice(0, 7));
+      toastMsg('已保存 ' + String(r.sha).slice(0, 7));
       return;
     } catch (e) {
       toastMsg('保存失败：' + e.message);
@@ -2035,7 +2035,7 @@ if (!document.getElementById('layoutToggle')) {
     }
     markDirty();
     render();
-    toastMsg(graph.freeLayout ? '已关闭自动排版，节点可以随便放' : '已开启自动排版');
+    toastMsg(graph.freeLayout ? '已关闭自动排版，节点可任意拖动' : '已开启自动排版');
   });
 }
 document.getElementById('autoSummary').addEventListener('click', async (ev) => {
@@ -2142,7 +2142,7 @@ async function ensureNodeFile(data) {
     data.file = r.file;
     data.summary = r.summary || data.summary;
     await window.MTApi.saveGraph(projectId, { trunk: graph.trunk, nodes: graph.nodes, staged: graph.staged });
-  } catch (e) { /* 建不出来就算了，不影响编辑 */ }
+  } catch (e) { /* 生成失败不影响编辑，忽略即可 */ }
 }
 
 /** 弹系统选择框并等结果；界面不会卡住，按钮只是显示等待中 */
@@ -2469,7 +2469,7 @@ function initEditorResizer() {
     // 等画布真的变窄/变宽之后再适配：鼠标松开的这一瞬间，
     // .slab 的 margin-right 还没重排完，立刻算会按旧宽度算，节点就会被判越界。
     setTimeout(() => {
-      try { fitView(false); } catch (err) { /* 画布还没准备好就算了 */ }
+      try { fitView(false); } catch (err) { /* 画布尚未就绪，忽略即可 */ }
     }, 120);
   });
 
@@ -2711,7 +2711,7 @@ document.getElementById('editorDelete').addEventListener('click', async () => {
     try {
       const r = await window.MTApi.nodeRead(projectId, n.file);
       if (r && typeof r.body === 'string') keepFiles[n.file] = r.body;
-    } catch (e) { /* 读不到就算了 */ }
+    } catch (e) { /* 读取失败时忽略 */ }
   }
   const purge = withFile ? await mtDialog({
     title: '磁盘文件要一起删吗',
@@ -3017,7 +3017,7 @@ function openHistory() {
           b.onclick = async (ev) => {
             ev.stopPropagation();
             const okFile = await mtDialog({
-            title: '恢复单个文件', body: '把 ' + f + ' 回档到 ' + c.short + ' 这个版本？\n\n只会改这一个文件。',
+            title: '恢复单个文件', body: '把 ' + f + ' 回退到 ' + c.short + ' 这个版本？\n\n只会改这一个文件。',
             okText: '恢复',
           });
           if (!okFile) return;
@@ -3069,7 +3069,7 @@ async function rollbackToCommit(c) {
     title: '回到这个版本',
     body: '把整个项目回到 ' + c.short + '？\n\n'
       + '版本说明：' + (c.subject || '(无)') + '\n\n'
-      + '确定 = 把所有文件回档到那个版本的样子（会改动磁盘文件）\n'
+      + '确定 = 把所有文件回退到那个版本的样子（会改动磁盘文件）\n'
       + '取消 = 什么都不做',
     okText: '回到这个版本',
   });
@@ -3078,7 +3078,7 @@ async function rollbackToCommit(c) {
     const r = await window.MTApi.restore(projectId, c.sha, []);
     await applyGraphFromServer(r);
     await reportSkippedFiles(r, c.short);
-    toastMsg('整份退到 ' + c.short + ' 了。看着没问题就点「存一版」把它记下来', 6000);
+    toastMsg('已整体回退到 ' + c.short + '；确认无误后点击「保存版本」记录为新版本', 6000);
   } catch (e) {
     mtAlert('恢复失败：' + e.message);
   }
@@ -3140,7 +3140,7 @@ async function openProjectFolder() {
   const ok = await mtDialog({
     title: '打开项目文件夹',
     body: '这里就是你的项目文件夹，正文、附件、版本库都在里面。\n\n'
-      + '【随便改没问题】\n'
+      + '【可以自由修改】\n'
       + '· .md 正文文件：用 Typora / VS Code 改，回来程序会认\n'
       + '· 附件（assets/ 下的文件）：改名、替换都行，下次挂载会重新认\n'
       + '· 新增普通文件：不会影响程序\n\n'

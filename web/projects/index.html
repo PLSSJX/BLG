@@ -70,7 +70,7 @@
 </style>
 <div class="empty-hint" id="emptyHint" style="display:none">
   <div class="empty-arrow">↖</div>
-  <div class="empty-text"><b>创建第一个项目吧！</b>点左上角的 ＋ 选一个空文件夹开始</div>
+  <div class="empty-text"><b>创建第一个项目</b>：点击左上角的 ＋，选择一个空文件夹</div>
 </div>
 <script>
   // 和 MT 主界面的约定：告诉它当前是哪一屏，外部据此切换左上角按钮
@@ -214,7 +214,7 @@ async function onCardAction(p, act) {
       const only = await askDialog({
         title: '文件夹删不掉',
         body: '可能里面还有文件开着：' + e.message + '\n\n只从列表移除这个项目？（文件保留）',
-        okText: '只移除', cancelText: '算了',
+        okText: '只移除', cancelText: '取消',
       });
       if (only) {
         try { await MTApi.deleteProject(p.id, false); await render(); }

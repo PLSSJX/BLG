@@ -1,6 +1,6 @@
 {
- "version": "4.0.0",
- "generated": "2026-10-22 05:17:10 UTC",
+ "version": "4.0.1",
+ "generated": "2026-10-22 05:30:23 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -36,8 +36,8 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "8d60d37985834b273afa14e3e0ad98e94fa589caa58fd63a98df924a465e18cc",
-   "size": 212319
+   "sha256": "29426bd562ddb2f27523c237abd6f03f18b42a9bcb11f864d2e48068fb6af5b5",
+   "size": 212742
   },
   {
    "path": "web/js/player.js",
@@ -66,8 +66,8 @@
   },
   {
    "path": "web/projects/index.html",
-   "sha256": "5235b5d0c31801ca5780a62958d66c1eca4232db66e9578b907b07c806f1fcb4",
-   "size": 10129
+   "sha256": "6af748aa6acf7e473ef5ee0bcb3dc62c22cc0e7bb1e0ebdef13a0d0d36d16524",
+   "size": 10128
   },
   {
    "path": "web/projects/js/api.js",
@@ -76,8 +76,8 @@
   },
   {
    "path": "web/projects/js/canvas.js",
-   "sha256": "2fd95be613c8dcf9060fcf9214fc8b5bec2f5a38a1c1b69f5a2b3e4a801a0e9c",
-   "size": 131272
+   "sha256": "9cfc12d4bd3267d2c2cbe4905f24df14ba0715b2775c040dcfbd458766635824",
+   "size": 131301
   },
   {
    "path": "web/projects/js/data.js",
@@ -91,8 +91,8 @@
   },
   {
    "path": "web/projects/project.html",
-   "sha256": "9015114911b15f5ff93ae872b68645747ba36e9fa599064650db6f0df5cd0f1c",
-   "size": 10003
+   "sha256": "f5519be7c4fa3e19f68f19d136ce6709436ab16994b3e5bdbfffed0f5eb3ad4d",
+   "size": 9994
   },
   {
    "path": "web/vendor/material-color-utilities.js",
@@ -138,12 +138,12 @@
   },
   {
    "path": "README.md",
-   "sha256": "425fea4714a2b42af18e3987503f323333b01d0a13b3e6a9a0b2eceef8e0bc48",
-   "size": 16001
+   "sha256": "209889caa0ac5a27938c50642bc175f393851dbf6b5e24f0b4303b8dce9a7fbb",
+   "size": 16477
   },
   {
    "path": "videograb/__init__.py",
-   "sha256": "4ee30b7ac40af5d8948fdd14f6274c44aa8b69b3c7413303e4af7903f5570e72",
+   "sha256": "341242799289eef276866fc2aa0f290ff1f72cbd09f999cf881890e3c8e6be00",
    "size": 410
   },
   {
@@ -268,8 +268,8 @@
   },
   {
    "path": "videograb/fmhy.py",
-   "sha256": "244c4ae1256228f4771af552213535489fb30f19f363f9604d5e282c541acc3b",
-   "size": 7594
+   "sha256": "e110982110488e01dc71b880f6f53ef164c808a81f6eb31f8df14efed042e860",
+   "size": 8028
   },
   {
    "path": "videograb/git_compat.py",
