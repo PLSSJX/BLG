@@ -1020,6 +1020,32 @@ class Handler(BaseHTTPRequestHandler):
             request_cancel()
             return self._json({"ok": True})
 
+        if route == "/api/open-url":
+            # 资源搜索里点一条结果：只用系统默认浏览器打开 http(s)。
+            # 不接受 file:// 或任何本地路径 —— 那等于给页面一个执行入口。
+            import webbrowser as _wb
+            raw = str(payload.get("url") or "").strip()
+            if not raw.lower().startswith(("http://", "https://")):
+                raise ApiError("只能打开 http 或 https 地址")
+            try:
+                _wb.open(raw, new=2)
+            except Exception as exc:
+                raise ApiError("打不开：" + str(exc)[:80]) from None
+            return self._json({"ok": True})
+
+        if route == "/api/fmhy/status":
+            from . import fmhy as _fmhy
+            return self._json({"ok": True, **_fmhy.status()})
+
+        if route == "/api/fmhy/refresh":
+            from . import fmhy as _fmhy
+            return self._json(_fmhy.refresh())
+
+        if route == "/api/fmhy/search":
+            from . import fmhy as _fmhy
+            return self._json(_fmhy.search(str(payload.get("q") or ""),
+                                           int(payload.get("limit") or 60)))
+
         if route == "/api/shell/open":
             # 只允许打开"我们自己产出的目录"里的东西。
             # 不设白名单的话，这个接口等于给页面一个任意执行文件的入口。

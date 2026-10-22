@@ -9,6 +9,7 @@ import {
   store, renderHome, renderMusic, renderPlayer, renderImage, renderDoc, renderClip,
   renderTasks, renderPapers, renderSettings, renderProjects,
   refreshTasks,
+  renderResources,
 } from './pages.js';
 
 // 通道体检已经并进解析页，所以这里不再有独立的「通道」入口
@@ -24,6 +25,7 @@ const ROUTES = [
   { id: 'player', label: '播放', icon: 'headphones', render: renderPlayer, extras: true },
   { id: 'clip', label: '剪辑', icon: 'videocam', render: renderClip, extras: true },
   { id: 'image', label: '图片', icon: 'image', render: renderImage, extras: true },
+  { id: 'resources', label: '找资源', icon: 'travel_explore', render: renderResources, extras: true },
   { id: 'settings', label: '设置', icon: 'settings', render: renderSettings },
 ];
 

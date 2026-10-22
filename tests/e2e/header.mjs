@@ -9,6 +9,10 @@ const curl = (a) => spawnSync('curl.exe', a, { encoding: 'utf8', windowsHide: tr
 const TK = (() => { try { return JSON.parse(curl(['-s', BASE + '/api/state'])).api_token || ''; } catch { return ''; } })();
 const post = (p, b) => { const raw = curl(['-s', '-X', 'POST', '-H', 'Content-Type: application/json', '-H', 'X-MakiseToolkit-Token: ' + TK, '-d', JSON.stringify(b || {}), BASE + p]); try { return JSON.parse(raw); } catch { return { raw }; } };
 
+// 这套断言的前提是「附加工具箱关着」：页面默认落在项目列表。
+// 机器上如果之前手动开过工具箱，这里先关回去，免得测出来是环境问题。
+post('/api/settings', { settings: { extras_enabled: false } });
+
 // 建一个项目用于测试
 const proj = 'D:\\_e2e_hdr_' + Date.now();
 fs.mkdirSync(proj, { recursive: true });

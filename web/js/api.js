@@ -38,6 +38,11 @@ const post = (path, body) => request(path, { method: 'POST', body: JSON.stringif
 
 export const api = {
   state: () => get('/api/state'),
+  // FMHY 资源目录：本地索引 + 离线搜索
+  fmhyStatus: () => post('/api/fmhy/status', {}),
+  fmhyRefresh: () => post('/api/fmhy/refresh', {}),
+  fmhySearch: (q, limit) => post('/api/fmhy/search', { q, limit: limit || 60 }),
+  openUrl: (url) => post('/api/open-url', { url }),
   // 自绘标题栏的三个按钮
   paperSearch: (query, opts) => post('/api/papers/search', Object.assign({ query }, opts || {})),
   paperDownload: (url, name, meta) => post('/api/papers/download', { url, name, meta: meta || {} }),

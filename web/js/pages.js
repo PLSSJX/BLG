@@ -1562,10 +1562,13 @@ function buildProbeResult() {
 
 /* ================================================================ 追番（下载任务） */
 
+// 用户手动展开的运行日志（跨重绘保留）。buildTaskCard 是独立函数，所以放模块级。
+let openedLogs = new Set();
+
 export function renderTasks(view) {
   // 轮询会重画整页，这里先把"用户展开了哪些运行日志"记下来，重画后恢复，
   // 否则点开日志最多 0.8 秒就自己合上。
-  const openedLogs = new Set(
+  openedLogs = new Set(
     [...view.querySelectorAll('details[data-task-log][open]')].map((el) => el.dataset.taskLog));
   clear(view);
   const page = h('div', { class: 'page' });
@@ -3349,6 +3352,119 @@ export function renderDoc(view) {
   paint();
 }
 
+
+
+/* ================================================================ 找资源（附加工具箱） */
+
+const resourceState = { q: '', items: [], total: 0, loading: false, status: null, error: '' };
+
+export function renderResources(view) {
+  clear(view);
+  const page = h('div', { class: 'page' });
+  const results = h('div', {});
+
+  const paintResults = () => {
+    clear(results);
+    if (resourceState.error) {
+      mount(results, h('div', { class: 'hint-box' },
+        h('span', { html: icon('error_outline', 'outlined', 20) }),
+        h('div', {}, resourceState.error)));
+      return;
+    }
+    if (!resourceState.items.length) {
+      mount(results, h('div', { class: 'card-desc' },
+        resourceState.q ? '没搜到。换个词试试，目录里主要是英文站名。' : '输入关键词开始搜。'));
+      return;
+    }
+    mount(results, h('div', { class: 'card-desc', style: { marginBottom: '6px' } },
+      '找到 ' + resourceState.total + ' 条，显示前 ' + resourceState.items.length + ' 条'));
+    for (const it of resourceState.items) {
+      mount(results, h('div', { class: 'set-row', style: { display: 'flex', gap: '10px',
+        alignItems: 'baseline', padding: '7px 0', borderBottom: '1px solid var(--md-outline-variant)' } },
+        h('div', { style: { flex: '1', minWidth: '0' } },
+          h('div', { style: { fontSize: '13px' } }, it.t),
+          h('div', { class: 'card-desc', style: { marginTop: '1px' } },
+            (it.s ? it.s + ' · ' : '') + it.u.replace(/^https?:\/\//, '').slice(0, 60))),
+        button('打开', { variant: 'text', iconName: 'open_in_new', onClick: async () => {
+          try { await api.openUrl(it.u); } catch (e) { toast('打不开：' + e.message, 4000); }
+        } })));
+    }
+  };
+
+  const search = async () => {
+    if (!resourceState.q.trim()) { resourceState.items = []; paintResults(); return; }
+    resourceState.loading = true;
+    resourceState.error = '';
+    paintResults();
+    try {
+      const r = await api.fmhySearch(resourceState.q, 60);
+      if (!r.ok) { resourceState.error = r.error || '搜索失败'; resourceState.items = []; }
+      else { resourceState.items = r.items || []; resourceState.total = r.total || 0; }
+    } catch (e) {
+      resourceState.error = '搜索失败：' + e.message;
+      resourceState.items = [];
+    }
+    resourceState.loading = false;
+    paintResults();
+  };
+
+  const statusLine = h('div', { class: 'card-desc' }, '正在看目录状态…');
+  const paintStatus = () => {
+    const st = resourceState.status || {};
+    if (st.running) {
+      statusLine.textContent = '正在更新目录，已完成 ' + (st.done || 0) + ' / ' + (st.total || '?') + ' 页…';
+    } else if (st.ready) {
+      const when = st.updated ? new Date(st.updated * 1000).toLocaleString() : '未知时间';
+      statusLine.textContent = '本地目录：' + (st.entries || 0) + ' 条，来自 ' + (st.pages || 0) +
+        ' 个页面，更新于 ' + when + '（搜索不联网）';
+    } else {
+      statusLine.textContent = st.error ? ('目录还没建好：' + st.error) : '还没有本地目录，第一次要联网抓一次（约 1～2 分钟）。';
+    }
+  };
+  const pollStatus = async () => {
+    try { resourceState.status = await api.fmhyStatus(); } catch (e) { resourceState.status = { ready: false, error: e.message }; }
+    paintStatus();
+  };
+
+  mount(page,
+    h('div', { class: 'page-head' },
+      h('h1', { class: 'page-title' }, '找资源'),
+      h('div', { class: 'spacer' }),
+      button('更新目录', { variant: 'text', iconName: 'refresh', onClick: async () => {
+        try {
+          await api.fmhyRefresh();
+          toast('开始更新，可能要点时间');
+          for (let i = 0; i < 200; i++) {
+            await new Promise((r) => setTimeout(r, 1500));
+            await pollStatus();
+            if (resourceState.status && !resourceState.status.running) break;
+          }
+        } catch (e) { toast('更新失败：' + e.message, 5000); }
+      } })),
+    h('p', { class: 'page-sub' },
+      'FreeMediaHeckYeah 那份目录的本地副本。搜的是站名和分组，点「打开」用浏览器去。'),
+    card(
+      h('div', { class: 'card-title', html: icon('travel_explore', 'outlined', 20) + '<span>搜一下</span>' }),
+      statusLine,
+      h('div', { class: 'search-field', style: { marginTop: '10px' } },
+        h('input', {
+          class: 'input', placeholder: '比如 movie、anime、pdf、torrent',
+          value: resourceState.q,
+          oninput: (e) => { resourceState.q = e.target.value; },
+          onkeydown: (e) => { if (e.key === 'Enter') search(); },
+        }),
+        button('搜索', { iconName: 'search', onClick: search })),
+      h('div', { class: 'hint', style: { marginTop: '8px' } },
+        '目录是别人整理的链接集合，程序不托管任何内容，也不替这些站点担保。'
+        + '有些站在你所在的地区可能不合法，点之前自己掂量。'),
+      results,
+    ),
+  );
+  mount(view, page);
+  paintResults();
+  pollStatus();
+  if (resourceState.status && resourceState.status.ready && resourceState.q.trim()) search();
+}
 
 /* ================================================================ 视频剪辑 */
 
