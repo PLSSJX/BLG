@@ -16,8 +16,8 @@ import {
 const ROUTES = [
   { id: 'projects', label: '项目', icon: 'folder_open', render: renderProjects },
   { id: 'doc', label: '文档', icon: 'description', render: renderDoc },
-  { id: 'papers', label: '文献', icon: 'science', render: renderPapers },
-  { id: 'tasks', label: '历史记录', icon: 'history', render: renderTasks },
+  { id: 'papers', label: '参考文献', icon: 'science', render: renderPapers },
+  { id: 'tasks', label: '记录', icon: 'history', render: renderTasks },
   { id: 'home', label: '解析', icon: 'search', render: renderHome, extras: true },
   // 图标名必须是 icons.js 里真实存在的：queue_music 没有，之前整条入口渲染成空白
   { id: 'music', label: '音乐', icon: 'music_note', render: renderMusic, extras: true },
@@ -53,7 +53,7 @@ function buildNavigation() {
   for (const route of visibleRoutes()) {
     const make = (forBottom) => {
       // 工具箱关着时这一页只剩文献，导航上就别再叫「历史记录」了
-      const label = (route.id === 'tasks' && !extrasOn()) ? '文献资料' : route.label;
+      const label = (route.id === 'tasks' && !extrasOn()) ? '下载过的论文' : route.label;
       const node = h('button', {
         class: 'destination' + (current === route.id ? ' active' : ''),
         dataset: { route: route.id },

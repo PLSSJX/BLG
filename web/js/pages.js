@@ -60,8 +60,8 @@ export function renderHome(view) {
         store.config.logged_in ? 'ok' : 'mute') : null,
       buildQuitButton()),
     h('p', { class: 'page-sub' },
-      '粘贴视频链接或 App 分享文案即可。程序会自动识别平台，并列出真实可下载的档位。'
-      + '音乐平台请到左边的「音乐」页处理。'),
+      '把视频链接或者 App 里复制的那段分享文案粘进来。认出平台之后，它会列出真能下的画质。'
+      + '音乐去左边「音乐」页。'),
     buildSearchCard(),
   );
 
@@ -1576,7 +1576,7 @@ export function renderTasks(view) {
 
   mount(page, 
     h('div', { class: 'page-head' },
-      h('h1', { class: 'page-title' }, extrasOn ? '历史记录' : '文献资料'),
+      h('h1', { class: 'page-title' }, extrasOn ? '记录' : '下载过的论文'),
       h('div', { class: 'spacer' }),
       // 直接打开下载目录，不用先回解析页
       extrasOn ? button('打开下载目录', { variant: 'text', iconName: 'folder_open', onClick: () => safeOpen() }) : null,
@@ -1589,8 +1589,8 @@ export function renderTasks(view) {
         refreshTasks();
       } }) : null),
     h('p', { class: 'page-sub' }, extrasOn
-      ? '所有下载任务的历史记录，进行中的任务每 0.8 秒刷新一次进度。记录保存在 data/tasks.json，重启程序后依然在。'
-      : '下载过的文献和入库的引用条目。搜索和下载在「文献」页，这里看已经拿到的。'),
+      ? '下载过的东西都在这儿。还在跑的任务每 0.8 秒刷一次进度。关掉程序也不会丢，记录存在 data/tasks.json。'
+      : '下回来的论文和引文条目都堆在这儿。要搜新的去「参考文献」页。'),
     // 未登录失败的聚合成一条提示，按平台分开列 —— 视频和音乐要找的登录项不是同一个
     (() => {
       const nl = stats.need_login || [];
@@ -2459,23 +2459,23 @@ function buildAICard(settings) {
 function buildToolboxCard(settings) {
   const on = settings.extras_enabled === true;
   return card(
-    h('div', { class: 'card-title', html: icon('grid_view', 'outlined', 20) + '<span>附加工具箱</span>' }),
+    h('div', { class: 'card-title', html: icon('grid_view', 'outlined', 20) + '<span>其他功能</span>' }),
     h('div', { class: 'card-desc' },
-      '视频下载、音乐、剪辑、图片放大。这些是媒体处理工具，和论文写作没有直接关系，默认不显示在左侧。'),
-    switchRow('启用附加工具箱', '打开后左侧导航会多出「解析 / 音乐 / 播放 / 剪辑 / 图片」五个入口', on,
+      '下视频、听歌、剪片子、放大图片。这些跟写论文没关系，所以默认藏起来，左边导航看不到。'),
+    switchRow('把其他功能放出来', '开了以后左边会多五个：解析、音乐、播放、剪辑、图片', on,
       async (value) => {
         if (value) {
           const ok = await dialog({
-            title: '启用附加工具箱',
+            title: '把其他功能放出来',
             body: [
-              '这些功能是媒体下载与处理，与论文写作无关。',
+              '这几个是下东西、剪视频用的，跟写论文不搭。',
               '',
-              '下载受版权保护的内容请自行确认合法性，本程序不提供任何绕过付费或加密的能力。',
+              '下什么自己看着办，别拿去传别人的付费内容。程序里没有任何绕开付费或加密的东西。',
               '',
-              '确定 = 打开，左侧会多出五个入口',
-              '取消 = 保持现在的样子',
+              '确定 = 放出来，左边多五个入口',
+              '取消 = 算了，先这样',
             ].join('\n'),
-            confirm: '打开',
+            confirm: '放出来',
           });
           if (!ok) { renderSettings(document.getElementById('view')); return; }
         }
@@ -2484,7 +2484,7 @@ function buildToolboxCard(settings) {
         renderSettings(document.getElementById('view'));
       }),
     h('div', { class: 'hint', style: { marginTop: '8px' } },
-      '关掉它不影响已经下载的文件，也不会删任何数据；文献、文档、项目、历史记录始终可用。'),
+      '关掉只是不显示，已经下好的文件一个不动。论文、文档、项目记录照常在。'),
   );
 }
 
@@ -3585,13 +3585,13 @@ export function renderPapers(view) {
     const d = paperState.data;
     mount(holder,
       card(
-        h('div', { class: 'card-title', html: icon('search', 'outlined', 20) + '<span>文献检索</span>' }),
+        h('div', { class: 'card-title', html: icon('search', 'outlined', 20) + '<span>搜论文</span>' }),
         h('div', { class: 'card-desc' },
-          '同时查多个开放学术源，只接有公开 API 的，对方改版也不会突然失效。'),
+          '一次问几个库，回来的结果按来源排好。只接有公开接口的库，免得人家一改版就悄悄坏掉。'),
         h('div', { class: 'search-field', style: { marginTop: '10px' } },
           h('input', {
             class: 'input',
-            placeholder: '输入关键词，例如 transformer、阿尔茨海默病、urban planning',
+            placeholder: '想找什么？比如 transformer、阿尔茨海默病、旧城改造',
             value: paperState.query,
             oninput: (e) => { paperState.query = e.target.value; },
             onkeydown: (e) => { if (e.key === 'Enter') run(); },
@@ -3705,9 +3705,9 @@ export function renderPapers(view) {
 
   paint();
   mount(view, h('div', { class: 'page' },
-    h('div', { class: 'page-head' }, h('h1', { class: 'page-title' }, '文献')),
+    h('div', { class: 'page-head' }, h('h1', { class: 'page-title' }, '参考文献')),
     h('p', { class: 'page-sub' },
-      '聚合开放学术源检索。没有公开接口的国内平台（PubScholar、OpenSign 等）不接，避免改版后静默失效。'),
+      '几个开放学术库一起搜。国内那些没公开接口的平台（PubScholar、OpenSign 之类）没接 —— 接了也是过两天悄悄失效。'),
     holder));
 }
 
@@ -3745,9 +3745,9 @@ function buildPaperDownloadsCard() {
     clear(holder);
     const items = (data && data.items) || [];
     mount(holder,
-      h('div', { class: 'card-title', html: icon('science', 'outlined', 20) + '<span>文献下载</span>' }),
+      h('div', { class: 'card-title', html: icon('science', 'outlined', 20) + '<span>下回来的论文</span>' }),
       h('div', { class: 'card-desc' },
-        items.length ? '共 ' + items.length + ' 篇，保存在 ' + data.dir : '还没有下载过文献。'),
+        items.length ? '共 ' + items.length + ' 篇，放在 ' + data.dir : '还没下过论文。'),
       items.length
         ? h('div', { style: { marginTop: '8px', maxHeight: '220px', overflow: 'auto' } },
             ...items.slice(0, 20).map((it) => h('div', {
@@ -3862,17 +3862,17 @@ function buildLibraryCard() {
           } })
         : null,
       button('移除', { variant: 'text', onClick: async () => {
-        const yes = await dialog({ title: '从文献库移除？', body: '只去掉这条记录，PDF 文件不会删除。', confirm: '移除' });
+        const yes = await dialog({ title: '从列表里拿掉？', body: '只去掉这条记录，PDF 还在原地。', confirm: '拿掉' });
         if (!yes) return;
         await api.paperLibraryRemove(it.id);
         load();
       } })));
 
     mount(holder,
-      h('div', { class: 'card-title', html: icon('bookmark', 'outlined', 20) + '<span>文献库</span>' }),
+      h('div', { class: 'card-title', html: icon('bookmark', 'outlined', 20) + '<span>收着的论文</span>' }),
       h('div', { class: 'card-desc' },
         state.items.length
-          ? '共 ' + state.items.length + ' 篇。选一种格式，点「复制引用」就能粘进参考文献。'
+          ? '共 ' + state.items.length + ' 篇。挑个格式，点「复制引用」粘到稿子里就行。'
           : '还没有入库的文献。在「文献」页搜索并下载全文，会自动进库。'),
       state.items.length
         ? h('div', { class: 'btn-row', style: { marginTop: '8px', gap: '6px' } },
@@ -3909,7 +3909,7 @@ function buildLibraryCard() {
       paint();
     } catch (e) {
       clear(holder);
-      mount(holder, h('div', { class: 'card-desc' }, '文献库读取失败：' + e.message));
+      mount(holder, h('div', { class: 'card-desc' }, '读不出来：' + e.message));
     }
   };
 

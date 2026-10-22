@@ -1,6 +1,6 @@
 {
  "version": "4.0.0",
- "generated": "2026-10-21 23:53:52 UTC",
+ "generated": "2026-10-22 04:00:12 UTC",
  "notes": "",
  "release_page": "https://github.com/PLSSJX/BLG/releases/latest",
  "files": [
@@ -21,8 +21,8 @@
   },
   {
    "path": "web/js/app.js",
-   "sha256": "9537806768e52f7bd992a7e2ca4cdbf331f01ea9386b89e330515c1e97544cf8",
-   "size": 26645
+   "sha256": "b0ed65ed3532895376946c9a990e0c3519ad6e75d7d53c872929897be5bdae2a",
+   "size": 26651
   },
   {
    "path": "web/js/ask.js",
@@ -36,8 +36,8 @@
   },
   {
    "path": "web/js/pages.js",
-   "sha256": "b0da823387d0f2b8386212bb5fac4d13a4b25c7eb03cdfc1183cb0349857a170",
-   "size": 207077
+   "sha256": "24ca30b3b2ebaf318119d4b9d0c4f2df2bafe40a22e37159f3d60a5598770196",
+   "size": 207021
   },
   {
    "path": "web/js/player.js",
@@ -76,8 +76,8 @@
   },
   {
    "path": "web/projects/js/canvas.js",
-   "sha256": "8623f2412da4cdd4d7e6c8ddf463085c163dc8dad77941e3b5e09b485ce8b30c",
-   "size": 131293
+   "sha256": "2fd95be613c8dcf9060fcf9214fc8b5bec2f5a38a1c1b69f5a2b3e4a801a0e9c",
+   "size": 131272
   },
   {
    "path": "web/projects/js/data.js",
@@ -91,8 +91,8 @@
   },
   {
    "path": "web/projects/project.html",
-   "sha256": "07d214f8b7bc81d7c66ff0f76cbcbaa3f1e041afcb74ef9df140c595430f1d52",
-   "size": 10006
+   "sha256": "9015114911b15f5ff93ae872b68645747ba36e9fa599064650db6f0df5cd0f1c",
+   "size": 10003
   },
   {
    "path": "web/vendor/material-color-utilities.js",
@@ -138,8 +138,8 @@
   },
   {
    "path": "README.md",
-   "sha256": "103b94a50a47ca6d18fc3cdfaac3d1a273287d331df500d00dbc7fd86aa1abff",
-   "size": 16118
+   "sha256": "425fea4714a2b42af18e3987503f323333b01d0a13b3e6a9a0b2eceef8e0bc48",
+   "size": 16001
   },
   {
    "path": "videograb/__init__.py",
@@ -448,7 +448,7 @@
   },
   {
    "path": "videograb/tray.py",
-   "sha256": "78baaddfb69fee55a9115f071ba67352e47dd35bd199e3c48908d5faf4d70093",
+   "sha256": "31659041edf0dc0360e1aa9eee71c8e0085e76784cf5c71d86a19bdb4cd2339c",
    "size": 18342
   },
   {
@@ -476,11 +476,5 @@
    "sha256": "23602fd10c0396933edc298195f128c0410cad0ff0ce7d49c21799d0ee97cab1",
    "size": 13341
   }
- ],
- "installer": {
-  "name": "MakiseToolkit-Setup-4.0.0.exe",
-  "size": 128681174,
-  "sha256": "48dc51cf5e2a756c40402d023d80d66a787cdf971258f2def8b966c9ce3c0446",
-  "url": "https://github.com/PLSSJX/BLG/releases/download/v4.0.0-snapshot/MakiseToolkit-Setup-4.0.0.exe"
- }
+ ]
 }

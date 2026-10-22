@@ -907,7 +907,7 @@ saveBtn.addEventListener('click', async () => {
   if (online && window.MTApi) {
     try {
       const r = await window.MTApi.commitNow(projectId);
-      toastMsg(r.committed ? '已保存版本' : ('没有需要保存的改动：' + (r.reason || '')));
+      toastMsg(r.committed ? '存好了' : ('没东西要存：' + (r.reason || '')));
       markDirty(false);
     } catch (e) { toastMsg('保存失败：' + e.message); }
     return;
@@ -918,7 +918,7 @@ saveBtn.addEventListener('click', async () => {
       const r = await window.MTApi.commit(projectId, snapshot, 'mt: 保存画布改动');
       markDirty(false);
       if (!r.committed) { toastMsg('没有改动，不用保存'); return; }
-      toastMsg('已保存版本 ' + String(r.sha).slice(0, 7));
+      toastMsg('存好了 ' + String(r.sha).slice(0, 7));
       return;
     } catch (e) {
       toastMsg('保存失败：' + e.message);
@@ -1344,7 +1344,7 @@ async function openAssetEditor(assetPath, name) {
   host.innerHTML =
     '<div class="editor" style="width:min(720px,94vw)">' +
       '<div class="editor-head"><h3>编辑 ' + name + '</h3>' +
-        '<span class="hint">保存后自动保存到 git</span></div>' +
+        '<span class="hint">存一次就是一个版本</span></div>' +
       '<div class="md-body" style="flex:1"><textarea id="assetText"></textarea></div>' +
       '<div class="row"><button class="btn text" id="assetCancel">取消</button>' +
         '<button class="btn" id="assetSave">保存</button></div>' +
@@ -2680,7 +2680,7 @@ canvas.addEventListener('contextmenu', (e) => {
   showCtxMenu(e.clientX, e.clientY, null);
 });
 
-/* 删除节点：连带子孙一起删，文件去留让用户决定，删完保存版本 */
+/* 删除卡片：底下的子卡片一起删，文件要不要留让用户选，删完记一个版本 */
 document.getElementById('editorDelete').addEventListener('click', async () => {
   const node = editingId ? byId(editingId) : null;
   if (!node) { closeEditor(); return; }
@@ -3078,7 +3078,7 @@ async function rollbackToCommit(c) {
     const r = await window.MTApi.restore(projectId, c.sha, []);
     await applyGraphFromServer(r);
     await reportSkippedFiles(r, c.short);
-    toastMsg('已整体回到 ' + c.short + '，确认无误后点「保存版本」记成一个新版本', 6000);
+    toastMsg('整份退到 ' + c.short + ' 了。看着没问题就点「存一版」把它记下来', 6000);
   } catch (e) {
     mtAlert('恢复失败：' + e.message);
   }
@@ -3113,7 +3113,7 @@ async function cleanHistory() {
 /** 把快照历史导出成真正的 git 仓库 */
 async function exportGit() {
   const ok = await mtDialog({
-    title: '导出为 Git 仓库',
+    title: '导成 Git 仓库',
     body: '会在项目旁边建一个「项目名-git」的文件夹，把这套历史重放成真正的 git 提交。\n\n'
       + '需要系统里装了 Git；原来的项目不受影响。',
     okText: '导出',

@@ -114,14 +114,14 @@
     <div class="hint">按时间从新到旧排列，按天分组。可以整份回到某个版本，也可以只还原单个文件。</div>
     <div id="historyList" style="flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px"></div>
     <div class="row"><button class="btn text" id="historyGc" title="清理没有被任何版本引用的旧数据">清理历史数据</button>
-      <button class="btn text" id="historyBackup" title="把整个项目（含版本库）打包成 zip">一键备份</button>
+      <button class="btn text" id="historyBackup" title="把整个项目连版本库一起打成 zip">整个备份</button>
       <button class="btn text" id="historyExport" title="用系统 git 打开这份历史">导出为 Git 仓库</button>
       <button class="btn text" id="historyClose">关闭</button></div>
   </div>
 </div>
 <div class="editor-host" id="editorHost">
   <div id="editorResizer" title="拖动调整编辑栏宽度（双击恢复默认）"></div>
-  <div class="editor-empty" id="editorEmpty">点击左侧任意节点<br>即可在这里编辑</div>
+  <div class="editor-empty" id="editorEmpty">点左边随便一张卡片<br>在这儿写正文</div>
   <div class="editor">
     <div class="editor-head">
       <h3 id="editorTitle">编辑节点</h3>

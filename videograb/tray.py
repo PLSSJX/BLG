@@ -151,9 +151,9 @@ class Tray:
         ("播放", "#player", True),
         ("剪辑", "#clip", True),
         ("文档", "#doc", False),
-        ("文献", "#papers", False),
+        ("参考文献", "#papers", False),
         ("图片", "#image", True),
-        ("历史记录", "#tasks", False),
+        ("记录", "#tasks", False),
         ("设置", "#settings", False),
     ]
 
@@ -277,7 +277,7 @@ class Tray:
         self._menu_pages = pages        # 命令号要跟这次真正放进去的列表对齐
         for index, (label, _hash, _x) in enumerate(pages):
             # 关掉工具箱时这一页只剩文献，名字跟着界面一起改
-            shown = "文献资料" if (label == "历史记录" and not extras) else label
+            shown = "下载过的论文" if (label == "记录" and not extras) else label
             user32.AppendMenuW(menu, MF_STRING, 300 + index, "　" + shown)
         user32.AppendMenuW(menu, MF_SEPARATOR, 0, None)
         # 系统：方便出问题时自查，不用去翻安装目录
