@@ -1,35 +1,46 @@
-# 用 GitHub Token 一键创建 4.0.0 快照版 Release（含安装包）
+# 用 GitHub Token 创建快照版 Release（含安装包）
 # 用法：$env:GITHUB_TOKEN="ghp_xxx"; .\scripts\create-release.ps1
+#   可选：-Tag v4.0.1-snapshot -Installer dist\MakiseToolkit-Setup-4.0.1.exe
 param(
-  [string]$Tag = "v4.0.0-snapshot",
+  [string]$Tag = "v4.0.1-snapshot",
   [string]$Repo = "PLSSJX/BLG",
-  [string]$Installer = "$PSScriptRoot\..\dist\MakiseToolkit-Setup-4.0.0.exe"
+  [string]$Installer = ""
 )
 $ErrorActionPreference = "Stop"
 if (-not $env:GITHUB_TOKEN) { throw "先设置环境变量 GITHUB_TOKEN" }
+
+$root = Split-Path $PSScriptRoot -Parent
+if (-not $Installer) {
+  $ver = (Select-String -Path "$root\videograb\__init__.py" -Pattern '__version__ = "(.*)"').Matches[0].Groups[1].Value
+  $Installer = "$root\dist\MakiseToolkit-Setup-$ver.exe"
+}
 if (-not (Test-Path $Installer)) { throw "找不到安装包：$Installer" }
+
+# 清单里的安装包地址必须和标签一致，否则自动更新 404
+Write-Host "重新生成清单（标签 $Tag）…"
+& python "$root\make_manifest.py" --tag $Tag
+if ($LASTEXITCODE -ne 0) { throw "清单生成失败" }
+
+$notesFile = Join-Path $root "release-notes\$Tag.md"
+if (-not (Test-Path $notesFile)) { throw "找不到发布说明：$notesFile" }
 
 $headers = @{ Authorization = "Bearer $($env:GITHUB_TOKEN)"; Accept = "application/vnd.github+json" }
 $body = @{
   tag_name   = $Tag
-  name       = "4.0.0 快照版（不稳定）"
-  body       = Get-Content "$PSScriptRoot\..\release-notes\v4.0.0-snapshot.md" -Raw
+  name       = (Get-Content $notesFile -TotalCount 1).TrimStart('# ')
+  body       = Get-Content $notesFile -Raw
   draft      = $false
   prerelease = $true
 } | ConvertTo-Json -Depth 3
 
 Write-Host "创建 Release $Tag …"
-$release = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$Repo/releases" `
-  -Headers $headers -Body $body -ContentType "application/json"
-Write-Host "Release 已创建：$($release.html_url)"
+$release = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$Repo/releases" -Headers $headers -Body $body -ContentType "application/json"
+Write-Host "已创建：$($release.html_url)"
 
 $name = Split-Path $Installer -Leaf
-$upload = "https://uploads.github.com/repos/$Repo/releases/$($release.id)/assets?name=$name"
-Write-Host "上传安装包 $name（122 MB，可能要几分钟）…"
+Write-Host "上传 $name …"
 $upHeaders = @{ Authorization = "Bearer $($env:GITHUB_TOKEN)"; "Content-Type" = "application/octet-stream" }
-$asset = Invoke-RestMethod -Method Post -Uri $upload -Headers $upHeaders -InFile $Installer
+$asset = Invoke-RestMethod -Method Post -Uri "https://uploads.github.com/repos/$Repo/releases/$($release.id)/assets?name=$name" -Headers $upHeaders -InFile $Installer
 Write-Host "上传完成：$($asset.browser_download_url)"
-# 清单里的安装包地址必须和这个标签一致，否则自动更新会 404
-Write-Host "提醒：给 make_manifest.py 传 --tag $Tag 重新生成清单，再提交 update/manifest.json"
 Write-Host ""
-Write-Host "别忘了把 dist\MakiseToolkit-Setup-4.0.0.exe 的 sha256 更新到 update/manifest.json（构建时已自动写入）。"
+Write-Host "别忘了提交 update/manifest.json（哈希已按新安装包生成）。"
