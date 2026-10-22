@@ -2464,20 +2464,20 @@ function buildToolboxCard(settings) {
     h('div', { class: 'card-title', html: icon('grid_view', 'outlined', 20) + '<span>其他功能</span>' }),
     h('div', { class: 'card-desc' },
       '下视频、听歌、剪片子、放大图片。这些跟写论文没关系，所以默认藏起来，左边导航看不到。'),
-    switchRow('把其他功能放出来', '开了以后左边会多五个：解析、音乐、播放、剪辑、图片', on,
+    switchRow('显示其他功能', '开启后左侧将增加解析、音乐、播放、剪辑、图片五个入口', on,
       async (value) => {
         if (value) {
           const ok = await dialog({
-            title: '把其他功能放出来',
+            title: '显示其他功能',
             body: [
               '这几个是下东西、剪视频用的，跟写论文不搭。',
               '',
               '下什么自己看着办，别拿去传别人的付费内容。程序里没有任何绕开付费或加密的东西。',
               '',
-              '确定 = 放出来，左边多五个入口',
+              '确定 = 开启，左侧增加五个入口',
               '取消 = 保持现状',
             ].join('\n'),
-            confirm: '放出来',
+            confirm: '开启',
           });
           if (!ok) { renderSettings(document.getElementById('view')); return; }
         }
@@ -3721,7 +3721,7 @@ export function renderPapers(view) {
         h('div', { class: 'search-field', style: { marginTop: '10px' } },
           h('input', {
             class: 'input',
-            placeholder: '想找什么？比如 transformer、阿尔茨海默病、旧城改造',
+            placeholder: '输入关键词，如 transformer、阿尔茨海默病、urban planning',
             value: paperState.query,
             oninput: (e) => { paperState.query = e.target.value; },
             onkeydown: (e) => { if (e.key === 'Enter') run(); },
@@ -3837,7 +3837,7 @@ export function renderPapers(view) {
   mount(view, h('div', { class: 'page' },
     h('div', { class: 'page-head' }, h('h1', { class: 'page-title' }, '参考文献')),
     h('p', { class: 'page-sub' },
-      '几个开放学术库一起搜。国内那些没公开接口的平台（PubScholar、OpenSign 之类）没接 —— 接了也是过两天悄悄失效。'),
+      '同时检索多个开放学术数据库。缺少公开接口的国内平台（如 PubScholar、OpenSign）未接入，以免对方改版后无声失效。'),
     holder));
 }
 
@@ -3992,7 +3992,7 @@ function buildLibraryCard() {
           } })
         : null,
       button('移除', { variant: 'text', onClick: async () => {
-        const yes = await dialog({ title: '从列表里拿掉？', body: '只去掉这条记录，PDF 还在原地。', confirm: '拿掉' });
+        const yes = await dialog({ title: '从列表中移除？', body: '仅移除该条记录，PDF 文件仍保留在原位。', confirm: '移除' });
         if (!yes) return;
         await api.paperLibraryRemove(it.id);
         load();
