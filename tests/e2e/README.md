@@ -13,6 +13,19 @@
     node tests/e2e/buttons-list.mjs             # 列表页与新建立/改名/删除（17 项）
     node tests/e2e/link.mjs                     # 下载结果存进项目（联动，8 项）
 
+## 跑完之后
+
+每套脚本都会在 `D:\` 或系统临时目录下建测试项目，并登记进 `data/projects.json`。
+跑完记得清一次（不会碰「演示项目」和你自己的项目）：
+
+```
+python scripts/prune_test_projects.py --dry   # 先看会删什么
+python scripts/prune_test_projects.py         # 真删
+```
+
+判定规则：名字像测试用例、路径在临时目录或以 `_` / `mt-` 开头、登记的目录已经不在了。
+三类任一命中就删，所以忘了删的旧条目也会被这次一并带走。
+
 约定：
 
 * 每个脚本用独立临时项目目录和独立浏览器配置目录
