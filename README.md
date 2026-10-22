@@ -3,14 +3,14 @@
 > 写论文用的本地工具。提纲与正文并列呈现，一个节点对应一段内容，每次保存生成一个版本，可随时回退。
 > 转格式、找论文、认扫描件也在这儿，不联网也能写。
 
-**v4.0.1 快照版** · Windows 10/11 x64
+**v4.0.2 快照版** · Windows 10/11 x64
 
 > ⚠️ 快照版，不是稳定版。日常能用，但还没被长时间折腾过。
 > 先拿新项目试，重要的稿子另外存一份普通文件夹。
 > 稳定版请看 [Releases](https://github.com/PLSSJX/BLG/releases)。
 >
-> 安装包：`MakiseToolkit-Setup-4.0.1.exe`（122 MB，Windows 10/11 x64）——
-> 在 [v4.0.1-snapshot](https://github.com/PLSSJX/BLG/releases/tag/v4.0.1-snapshot) 下下载。
+> 安装包：`MakiseToolkit-Setup-4.0.2.exe`（122 MB，Windows 10/11 x64）——
+> 在 [v4.0.2-snapshot](https://github.com/PLSSJX/BLG/releases/tag/v4.0.2-snapshot) 下下载。
 
 ![播放页](docs/screenshots/12-player.png)
 
@@ -192,7 +192,7 @@ python start.py serve      # 只起服务，用浏览器访问 127.0.0.1:8931
 > - ❌ 酷狗 —— 接口需要 md5 签名
 > - ❌ Spotify —— API 需要 OAuth，且本身不提供音频流
 
-上表三家的**单曲链接**仍可尝试直接解析，只是「整张歌单」用不了。
+上表三家的**单曲链接**仍可尝试直接解析，只是「整张歌单」不可用。
 
 ### 换源搜索
 

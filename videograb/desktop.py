@@ -181,7 +181,9 @@ def _run_webview(url: str, on_closed=None, ctx=None) -> bool:
             tray = Tray(
                 window_getter=lambda: window,
                 icon_path=app_icon_path(),
-                on_quit=(ctx.on_quit if ctx is not None else None),
+                # 建托盘时 ctx.on_quit 还没挂上（要等窗口建好才有），
+                # 所以这里传个取值函数，点「退出」时再取最新的回调。
+                on_quit=(lambda: (ctx.on_quit() if (ctx is not None and ctx.on_quit) else None)),
             )
             tray.start()
             if ctx is not None:
@@ -250,7 +252,7 @@ def open_window(url: str, ctx=None) -> str:
         holder["window"] = window
         if ctx is not None:
             # 界面上的"退出程序"按钮会先停服务，再把窗口一起关掉
-            ctx.on_quit = lambda: _safe_destroy(window)
+            ctx.on_quit = lambda: _request_quit(window)
 
     def announce(mode: str) -> str:
         if ctx is not None:
@@ -292,6 +294,22 @@ def _explain_failure(url: str) -> None:
     except Exception as exc:
         print("  （无法弹出提示框：" + str(exc)[:80] + "）")
         print(reason)
+
+
+def _request_quit(window) -> None:
+    """退出前先让界面判断一下：项目还开着、或者有下载没跑完，要问一句。
+
+    前端会弹应用内对话框，确认后自己调 /api/quit 再关窗口；
+    所以这里只管把话递过去。前端没起来或者报错时才直接关，
+    否则会出现"点了退出却没反应"。
+    """
+    try:
+        ready = bool(getattr(window, "_mt_ready", False)) or True
+        window.evaluate_js("window.__mtAskQuit && window.__mtAskQuit()")
+        return
+    except Exception:
+        pass
+    _safe_destroy(window)
 
 
 def _safe_destroy(window) -> None:

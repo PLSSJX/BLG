@@ -149,14 +149,14 @@ host.onclick = (e) => { if (e.target === host) host.classList.remove('open'); };
 document.getElementById('confirm').onclick = async () => {
   const name = document.getElementById('projectName').value.trim();
   const path = document.getElementById('projectPath').value.trim();
-  if (!name || !path) { await askDialog({ title: '还差一点', body: '项目名和文件夹路径都要填。', okText: '知道了', cancelText: '关闭' }); return; }
+  if (!name || !path) { await askDialog({ title: '即将完成', body: '项目名和文件夹路径都要填。', okText: '确定', cancelText: '关闭' }); return; }
   try {
     const p = MTOnline ? await MTApi.create(name, path) : MTD.createProject(name, path);
     host.classList.remove('open');
     await render();
     if (p && p.id) location.href = 'project.html?id=' + encodeURIComponent(p.id) + '&embed=1';
   } catch (e) {
-    await askDialog({ title: '创建失败', body: e.message, okText: '知道了', cancelText: '关闭' });
+    await askDialog({ title: '创建失败', body: e.message, okText: '确定', cancelText: '关闭' });
   }
 };
 
@@ -197,7 +197,7 @@ async function onCardAction(p, act) {
     const name = await askDialog({ title: '重命名项目', input: p.name, okText: '改名' });
     if (!name || !name.trim() || name === p.name) return;
     try { await MTApi.rename(p.id, name.trim()); await render(); }
-    catch (e) { await askDialog({ title: '改名失败', body: e.message, okText: '知道了', cancelText: '关闭' }); }
+    catch (e) { await askDialog({ title: '改名失败', body: e.message, okText: '确定', cancelText: '关闭' }); }
     return;
   }
   if (act === 'delete') {
@@ -218,7 +218,7 @@ async function onCardAction(p, act) {
       });
       if (only) {
         try { await MTApi.deleteProject(p.id, false); await render(); }
-        catch (e2) { await askDialog({ title: '移除失败', body: e2.message, okText: '知道了', cancelText: '关闭' }); }
+        catch (e2) { await askDialog({ title: '移除失败', body: e2.message, okText: '确定', cancelText: '关闭' }); }
       }
     }
   }

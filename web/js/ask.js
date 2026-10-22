@@ -26,7 +26,7 @@ function renderMessages() {
   clear(listEl);
   if (!state.messages.length) {
     mount(listEl, el('div', { class: 'chat-empty' },
-      '还没有对话。试试问：「我关于时钟门控的部分写了什么？」'));
+      '暂无对话记录。可以这样提问：「我关于时钟门控的部分写了什么？」'));
     return;
   }
   for (const msg of state.messages) {

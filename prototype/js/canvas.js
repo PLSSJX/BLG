@@ -266,7 +266,7 @@ function render() {
         : (data.note ? '<div class="note">' + data.note + '</div>' : '')) +
       (data.file ? '<div class="filerow">' + data.file + '</div>' : '') +
       ((data.assets && data.assets.length)
-        ? '<div class="docrow" title="点一下用外部程序打开。项目里存的是副本，改它不影响原文件">' +
+        ? '<div class="docrow" title="点击后用外部程序打开。项目内保存的是副本，修改不影响原文件">' +
           (/\.[a-z0-9]+$/i.test(data.assets[0].name) && /\.(md|txt)$/i.test(data.assets[0].name)
             ? '📄 ' : '📎 ') + data.assets[0].name +
           (data.assets.length > 1 ? ' +' + (data.assets.length - 1) : '') + '</div>'
@@ -276,7 +276,7 @@ function render() {
         : '');
     const fileRow = el.querySelector('.filerow');
     if (fileRow && data.file) {
-      fileRow.title = '点一下用系统程序打开这个文件';
+      fileRow.title = '点击后用系统程序打开此文件';
       fileRow.style.cursor = 'pointer';
       fileRow.onclick = (e) => {
         e.stopPropagation();
@@ -391,8 +391,8 @@ function mtDialog(opts) {
 
 function mtAlert(title, body) {
   // 单参数时当作正文，标题用「提示」
-  if (body === undefined) return mtDialog({ title: '提示', body: String(title), okText: '知道了', cancelText: '关闭' });
-  return mtDialog({ title, body, okText: '知道了', cancelText: '关闭' });
+  if (body === undefined) return mtDialog({ title: '提示', body: String(title), okText: '确定', cancelText: '关闭' });
+  return mtDialog({ title, body, okText: '确定', cancelText: '关闭' });
 }
 
 /** 带输入框的对话框，返回输入值；取消返回 null */
@@ -1174,7 +1174,7 @@ function finishLink(targetId) {
   pushUndo('建立关联');
   const exists = graph.links.some((l) =>
     (l.from === from && l.to === targetId) || (l.from === targetId && l.to === from));
-  if (exists) { toastMsg('这两个节点已经有关联了，可以接着点别的'); return; }
+  if (exists) { toastMsg('两个节点已建立关联，可继续选择其他节点'); return; }
 
   graph.links.push({ id: 'l' + Date.now(), from: from, to: targetId, label: '' });
   markDirty();
@@ -1281,7 +1281,7 @@ function showAssetPopover(node, anchorEl) {
     const size = a.size > 1048576 ? (a.size / 1048576).toFixed(1) + ' MB'
       : Math.round(a.size / 1024) + ' KB';
     row.innerHTML = '<span class="asset-pop-name">' + a.name + '</span><span class="asset-pop-size">' + size + '</span>';
-    row.title = '点一下用系统程序打开';
+    row.title = '点击后用系统程序打开';
     row.onclick = () => window.MTApi.openFile(projectId, a.path)
       .then(() => toastMsg('已打开 ' + a.name))
       .catch((e) => mtAlert('打不开：' + e.message));
@@ -1726,7 +1726,7 @@ canvas.addEventListener('drop', (e) => {
       toastMsg('已挂上 ' + ((node && node.assets && node.assets.length) || 0) + ' 个文件（项目里放的是副本，改它不影响原文件）', 4200);
     } catch (e) {
       const msg = String(e.message || e);
-      fail(/找不到这个文件/.test(msg) ? '这个文件已经不在原位置了，请用「📎 文件」重新选一次' : msg);
+      fail(/找不到这个文件/.test(msg) ? '该文件已不在原位置，请通过「📎 文件」重新选择' : msg);
     }
   })();
 });
@@ -2203,7 +2203,7 @@ function initMarkdownEditor() {
         : projectPath + '\\' + clean.replace(/\//g, '\\');
       await window.MTApi.shellOpen(full, false);
     } catch (err) {
-      await mtAlert('打不开这个链接', href + '\n\n' + (err && err.message ? err.message : '文件可能不在了'));
+      await mtAlert('打不开这个链接', href + '\n\n' + (err && err.message ? err.message : '文件可能已不存在'));
     }
   });
 
@@ -2831,6 +2831,7 @@ async function bootAsync() {
     // 首次进项目时把内容框进视野，省得用户一进来啥也看不到
     if (!window.__autoFitted) {
       window.__autoFitted = true;
+      tellHostTitle();
       // 适配交给 autoFitSoon（render 之后自动做），这里不再插一脚
     }
     const h = await api.head(projectId);
@@ -2844,7 +2845,7 @@ async function bootAsync() {
           + '<span style="flex:1"></span>';
         const btn = document.createElement('button');
         btn.className = 'btn text';
-        btn.textContent = '知道了';
+        btn.textContent = '确定';
         btn.onclick = () => { api.remember(projectId).catch(() => {}); b.remove(); };
         b.append(btn);
         host.append(b);
@@ -2922,7 +2923,7 @@ function initWatchUI() {
         chip.textContent = '监听中 · 已自动保存 ' + (w.commits || 0) + ' 次';
         chip.style.color = '';
       }
-      if (w.last_error) { chip.textContent = '出错了：' + w.last_error; chip.style.color = '#ffb4ab'; }
+      if (w.last_error) { chip.textContent = '发生错误：' + w.last_error; chip.style.color = '#ffb4ab'; }
       saveBtn2.disabled = !w.pending_count;
       // 顺便记住磁盘状态：有没有未保存、有没有被别的程序占着
       window.MTApi.status(projectId).then((s) => { lastStatus = s; }).catch(() => {});
@@ -3168,7 +3169,7 @@ if (exportBtnEl) exportBtnEl.onclick = () => exportGit();
 async function backupProject() {
   const ok = await mtDialog({
     title: '备份整个项目',
-    body: '会把项目文件夹里的所有东西打成一个 zip：正文、附件、还有版本库（.mt 目录）。\n\n'
+    body: '会将项目文件夹的全部内容打包为 zip：正文、附件与版本库（.mt 目录）。\n\n'
       + '解开这个 zip 就是一份完整的项目，不依赖程序本身。\n\n'
       + '默认存到「文档」文件夹，文件名带时间戳。',
     okText: '开始备份',
@@ -3203,6 +3204,17 @@ function autoFitSoon() {
   autoFitTimer = setTimeout(() => {
     try { fitView(false); } catch (e) { /* 忽略 */ }
   }, 80);
+}
+
+/** 项目名是异步取回来的，拿到之后补报一次状态，
+ *  否则外层（退出确认、返回箭头提示）看到的名字永远是默认的「项目」。 */
+function tellHostTitle() {
+  try {
+    const name = (document.getElementById('pName') || {}).textContent || '';
+    const p = new URLSearchParams(location.search);
+    parent.postMessage({ type: 'mt-state', view: 'canvas', id: p.get('id') || '',
+      title: name.trim() }, location.origin);
+  } catch (e) { /* 忽略 */ }
 }
 
 select(null);

@@ -12,6 +12,7 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes as wt
 import os
+import time
 import threading
 from pathlib import Path
 
@@ -313,17 +314,38 @@ class Tray:
             self.quit()
 
     def quit(self) -> None:
-        """退出：先让主程序收尾（关窗口、停服务），再结束进程。"""
+        """退出：先让界面确认（项目还开着 / 有下载没跑完时要问一句）。
+
+        确认逻辑在界面里，它会调 /api/quit 关窗口、停服务；
+        这里只负责递话，并且留一条兜底 —— 界面 3 秒内没反应就直接退，
+        免得出现"点了退出却没动静"。
+        """
+        asked = False
         try:
             if self._on_quit:
                 self._on_quit()
+                asked = True
         except Exception:
-            pass
+            asked = False
+        if not asked:
+            self._finish()
+            return
+        # 界面弹窗期间不要杀进程，等它自己走 /api/quit；
+        # 5 秒还没退（界面没响应）就兜底退出。
+        import threading as _threading
+
+        def _fallback():
+            time.sleep(5.0)
+            self._finish()
+
+        _threading.Thread(target=_fallback, daemon=True).start()
+
+    def _finish(self) -> None:
+        """真正退出：收掉图标，然后结束进程（服务是 daemon 线程）。"""
         try:
             self._remove_icon()
         except Exception:
             pass
-        # 服务是 daemon 线程，进程退出即结束
         os._exit(0)
 
     # ------------------------------------------------------------ 图标

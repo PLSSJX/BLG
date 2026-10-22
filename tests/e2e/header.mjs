@@ -98,7 +98,11 @@ check('返回箭头回到没退出的项目', String(await ev("document.querySel
   await ev("document.querySelector('.projects-frame').contentWindow.location.pathname"));
 await ev("document.querySelector('.destination[data-route=\"projects\"]').click()");
 await new Promise((r) => setTimeout(r, 3000));
-check('点导航「项目」回列表', String(await ev("document.querySelector('.projects-frame').contentWindow.location.pathname")).indexOf('index.html') >= 0,
+// 改过行为：在项目里点侧边栏「项目」应当留在当前项目，不再把人踢回列表
+await ev("document.querySelector('.destination[data-route=\"projects\"]').click()");
+await new Promise((r) => setTimeout(r, 2500));
+check('项目内点侧边栏不会退出项目',
+  String(await ev("document.querySelector('.projects-frame').contentWindow.location.pathname")).indexOf('project.html') >= 0,
   await ev("document.querySelector('.projects-frame').contentWindow.location.pathname"));
 
 try { await send('Browser.close'); } catch (e) {}

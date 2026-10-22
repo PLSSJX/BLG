@@ -122,7 +122,7 @@ function buildMusicSearchCard() {
         h('div', {}, '❌ 酷狗 —— 接口需要 md5 签名，未接入'),
         h('div', {}, '❌ Spotify —— API 需要 OAuth，且本身不提供音频流，可用下面的「换源搜索」'),
         h('div', { style: { marginTop: '6px', opacity: '.85' } },
-          '上面三家单曲链接仍可尝试直接解析下载，只是「整张歌单」用不了。'))),
+          '以上三家的单曲链接仍可直接解析下载，但「整张歌单」不可用。'))),
     h('div', { class: 'btn-row', style: { marginTop: '10px' } },
       button('解析第一个', { variant: 'tonal', iconName: 'search', onClick: () => {
         const first = lines()[0];
@@ -239,7 +239,7 @@ function buildMusicSearchCard() {
         let lists = [];
         try { lists = (await api.playlistList()).playlists || []; }
         catch (err) { toast('读取歌单失败：' + err.message, 8000); return; }
-        if (!lists.length) { toast('还没有歌单，先用「导入并下载全部」建一个', 5000); return; }
+        if (!lists.length) { toast('暂无歌单，请先使用「导入并下载全部」创建', 5000); return; }
         const target = { value: null };
         const rows = lists.map((pl) => h('label', {
           style: { display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 0', fontSize: '13px' },
@@ -324,7 +324,7 @@ function buildSourceSwapCard() {
   function paintResults() {
     clear(holder);
     const items = swapState.items || [];
-    if (!items.length) { mount(holder, h('div', { class: 'card-desc' }, '没有搜到。换个「歌名 歌手」试试。')); return; }
+    if (!items.length) { mount(holder, h('div', { class: 'card-desc' }, '未找到结果，请尝试「歌名 歌手」格式。')); return; }
     mount(holder, h('div', { class: 'btn-row', style: { marginBottom: '8px' } },
       button('全部加入下载', { iconName: 'download', onClick: async (e) => {
         const btn = e.currentTarget; btn.disabled = true;
@@ -1800,7 +1800,7 @@ function buildTaskCard(task) {
       if (!items.length) {
         const yes = await dialog({
           title: '没有需要清理的文件',
-          body: '这个任务目录里已经没有本程序生成的文件了。要把记录移出列表吗？',
+          body: '该任务目录已无本程序生成的文件，是否将记录移出列表？',
           confirm: '移出',
         });
         if (yes) { await api.removeTask(task.id, false); refreshTasks(); }
@@ -2126,7 +2126,7 @@ function buildDownloadCard2(settings) {
     const actual = info?.settings?.download_dir || '';
     if (info?.settings?.download_dir_ok === false) {
       // 配置了但没生效 —— 必须说出来，否则用户以为改成功了
-      mount(dirHint, pill('这个路径用不了，已回落到默认目录', 'warn'),
+      mount(dirHint, pill('该路径不可用，已回退到默认目录', 'warn'),
         h('div', { class: 'hint', style: { marginTop: '4px' } },
           '实际下载到：' + actual + '。请检查盘符是否存在、路径是否合法。'));
     } else {
@@ -2470,9 +2470,9 @@ function buildToolboxCard(settings) {
           const ok = await dialog({
             title: '显示其他功能',
             body: [
-              '这几个是下东西、剪视频用的，跟写论文不搭。',
+              '这些功能用于下载与视频编辑，与论文写作无关。',
               '',
-              '下什么自己看着办，别拿去传别人的付费内容。程序里没有任何绕开付费或加密的东西。',
+              '下载内容请自行确保来源合法。程序不包含任何绕过付费或加密的机制。',
               '',
               '确定 = 开启，左侧增加五个入口',
               '取消 = 保持现状',
@@ -2761,9 +2761,14 @@ function buildQuitButton() {
   return button('退出程序', {
     variant: 'text', iconName: 'stop',
     onClick: async () => {
+      const active = (store.tasks || []).filter(
+        (t) => t.status === 'running' || t.status === 'queued' || t.status === 'merging');
+      const lines = [];
+      if (active.length) lines.push('有 ' + active.length + ' 个下载任务尚未完成');
+      lines.push('后台服务将停止，未完成的下载会中断（重新启动后可以继续）');
       const yes = await dialog({
-        title: '退出程序？',
-        body: '后台服务会停止，正在进行的下载会中断（可重启后重试）。',
+        title: '退出程序',
+        body: lines.join('\n') + '\n\n项目内容已保存在磁盘上，不会丢失。',
         confirm: '退出', danger: true,
       });
       if (!yes) return;
@@ -3085,7 +3090,7 @@ function buildPdfStrategyCard() {
     borderTop: '1px solid var(--md-outline-variant)', borderTopWidth: '.5px', fontSize: '12.5px' } },
     h('b', { style: { minWidth: '92px', flex: 'none' } }, name),
     h('span', { style: { flex: '1', opacity: '.85' } }, how),
-    pill(ok ? '可以做' : '做不了', ok ? 'ok' : 'mute'));
+    pill(ok ? '可以做' : '不支持', ok ? 'ok' : 'mute'));
 
   return card(
     h('div', { class: 'card-title', html: icon('page_info', 'outlined', 20) + '<span>PDF 是怎么处理的</span>' }),
@@ -3118,7 +3123,7 @@ function openOcrPanel() {
       line('系统 OCR（Windows 自带）', st.windows_ocr ? '可用' : '不可用', !!st.windows_ocr),
       line('Tesseract', st.tesseract ? st.tesseract : '未安装（可选，装上版式复杂的更稳）', !!st.tesseract),
       h('div', { class: 'card-desc', style: { marginTop: '10px' } },
-        '系统 OCR 已经能用，不装任何东西也能识别。多装一个 Tesseract 只是让复杂版式更准。'),
+        '系统自带的 OCR 已可使用，无需安装其他组件。另装 Tesseract 可提升复杂版式的识别率。'),
       h('div', { class: 'btn-row', style: { marginTop: '12px', gap: '6px' } },
         !st.renderer ? button('安装渲染组件', { variant: 'tonal', onClick: async () => {
           toast('正在下载渲染组件…', 6000);
@@ -3131,7 +3136,7 @@ function openOcrPanel() {
           toast('正在下载 Tesseract（约 50 MB），装到用户目录，不会弹权限框…', 10000);
           try {
             await api.ocrInstallTesseract();
-            toast('Tesseract 装好了', 6000);
+            toast('Tesseract 已安装', 6000);
           } catch (err) {
             const go = await dialog({
               title: '自动安装没成功',
@@ -3149,7 +3154,7 @@ function openOcrPanel() {
             if (!picked.paths || !picked.paths.length) return;
             toast('正在安装…', 6000);
             await api.ocrInstallFrom(picked.paths[0]);
-            toast('Tesseract 装好了', 6000);
+            toast('Tesseract 已安装', 6000);
           } catch (e) {
             toast('安装失败：' + e.message, 9000);
           }
@@ -3257,7 +3262,7 @@ export function renderDoc(view) {
                           title: '转换完成',
                           body: '已生成 ' + r.done.length + ' 个文件' + (summary ? '（' + summary + '）' : '') + '，放在：' + (r.dir || '下载目录'),
                           confirm: '打开文件夹',
-                          cancel: '知道了',
+                          cancel: '确定',
                         }).then((ok) => {
                           if (ok) api.shellOpen(r.dir, false).catch((e) => toast(e.message, 8000));
                         });
@@ -3303,7 +3308,7 @@ export function renderDoc(view) {
               h('b', {}, '② 无头 Edge / Chrome 打印'), '—— 不需要装 Office，'
               + '把文档转成 A4 网页再打印成 PDF。快（1–2 秒），但复杂文档的排版会和 Word 原样不同。'),
             h('div', { style: { marginTop: '6px', opacity: '.85' } },
-              '装了 Office 就走 ①，没装自动落 ②。两条都不通时会明确告诉你原因，不会产出坏文件。'))),
+              '安装 Office 时使用通道 ①，未安装则自动改用 ②。两者均不可用时会说明原因，不会输出异常文件。'))),
         h('div', { class: 'hint-box', style: { marginTop: '8px' } },
           h('span', { html: icon('warning_amber', 'outlined', 20) }),
           h('div', {},
@@ -3822,13 +3827,13 @@ export function renderPapers(view) {
                                           fontWeight: '600' } }, e.source),
                     h('span', { style: { opacity: '.8', wordBreak: 'break-all' } },
                       e.error.includes('CERTIFICATE_VERIFY_FAILED')
-                        ? '证书校验失败 —— 通常是本机有代理或防火墙在中间拦截，不是接口挂了'
+                        ? '证书校验失败：通常是本机代理或防火墙拦截，并非接口不可用'
                         : (e.error.includes('429')
-                            ? '被限速了（429），这个源没给密钥的调用有频率上限，过一会儿再试'
+                            ? '请求被限速（429）：该来源在未提供密钥时有频率上限，请稍后重试'
                             : e.error)))))
               : null,
             ...(d.items.length ? paperGrouped(d, resultRow)
-              : [h('div', { class: 'card-desc', style: { marginTop: '10px' } }, '没有命中结果，换个关键词试试。')]))
+              : [h('div', { class: 'card-desc', style: { marginTop: '10px' } }, '未检索到结果，请更换关键词。')]))
         : null);
     return holder;
   };
@@ -3944,9 +3949,9 @@ function buildLibraryCard() {
         } else {
           // 剪贴板被拒时，把文字摆出来让用户自己选
           await dialog({
-            title: '复制不了，手动选择吧',
+            title: '无法自动复制，请手动选择文本',
             body: text,
-            confirm: '知道了',
+            confirm: '确定',
             cancel: null,
           });
         }
@@ -4128,7 +4133,7 @@ function buildConvertPathCard(settings) {
     (!office && !browser)
       ? h('div', { class: 'hint-box', style: { marginTop: '8px' } },
           h('span', { html: icon('warning_amber', 'outlined', 20) }),
-          h('div', {}, '两条都关掉了，转 PDF 会直接报错。至少打开一条。'))
+          h('div', {}, '两条通道均已关闭，转换为 PDF 时会直接报错，请至少开启一条。'))
       : null);
 }
 

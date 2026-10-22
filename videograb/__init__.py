@@ -5,6 +5,6 @@
 附加工具箱（默认关闭）：视频下载、音乐、剪辑、图片放大。
 """
 
-__version__ = "4.0.1"
+__version__ = "4.0.2"
 APP_NAME = "Makise Toolkit"
 APP_NAME_CN = "多平台视频采集器"

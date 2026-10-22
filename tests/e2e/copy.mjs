@@ -15,7 +15,7 @@ const rules = [
   {
     name: '口语词',
     // 面向用户的中文里不该出现的聊天腔
-    pattern: /(搞定|搞成|弄成|随便|别当|算了|吧[。！]|啦[。！]|哦[。，]|呗|哈[。！]|嘛[。，]|存好了|点左边|粘进来|掂量|一口气|瞎|贼|想找什么|一起搜|过两天|悄悄|没接|看看|试一下|放出来|拿掉|堆在这儿)/,
+    pattern: /(搞定|搞成|弄成|随便|别当|算了|吧[。！]|啦[。！]|哦[。，]|呗|哈[。！]|嘛[。，]|存好了|点左边|粘进来|掂量|一口气|瞎|贼|想找什么|一起搜|过两天|悄悄|没接|看看|试一下|放出来|拿掉|堆在这儿|做不了|装好了|知道了|试试|点了没反应|其实|反正|干脆|过一会儿|用不了|不在了)/,
     hint: '换成书面表达',
   },
   {
@@ -69,10 +69,20 @@ for (const rel of FILES) {
   const file = path.join(ROOT, rel);
   if (!fs.existsSync(file)) continue;
   const lines = fs.readFileSync(file, 'utf8').split('\n');
+  let inBlock = false;
   lines.forEach((line, i) => {
     const trimmed = line.trim();
+    // 块注释要跨行跟踪：/* … */ 里的中文是写给人看的，不是界面文案
+    if (inBlock) {
+      if (trimmed.includes('*/')) inBlock = false;
+      return;
+    }
+    if (trimmed.startsWith('/*')) {
+      if (!trimmed.includes('*/')) inBlock = true;
+      return;
+    }
     // 整行注释直接跳过
-    if (trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*') || trimmed.startsWith('#')) return;
+    if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('#')) return;
     for (const text of visibleTexts(rel, line)) {
       if (!text) continue;
       for (const rule of rules) {
@@ -98,9 +108,12 @@ for (const group of GROUPS) {
       const file = path.join(ROOT, rel);
       if (!fs.existsSync(file)) continue;
       // 只数"用户看得到的文字"，注释不算：歌单卡片、设置卡片这些说法和思维导图的节点不是一回事
+      let block = false;
       for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
         const trimmed = line.trim();
-        if (trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) continue;
+        if (block) { if (trimmed.includes('*/')) block = false; continue; }
+        if (trimmed.startsWith('/*')) { if (!trimmed.includes('*/')) block = true; continue; }
+        if (trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
         for (const text of visibleTexts(rel, line)) {
           bad += (text.match(new RegExp(drop, 'g')) || []).length;
         }

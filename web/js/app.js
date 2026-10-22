@@ -60,8 +60,9 @@ function buildNavigation() {
         class: 'destination' + (current === route.id ? ' active' : ''),
         dataset: { route: route.id },
         onclick: () => {
-          // 点导航的「项目」是想看列表；左上角那颗返回箭头才是"回到刚才的项目"
-          if (route.id === 'projects') openProject = null;
+          // 已经在某个项目里：点侧边栏的「项目」应当留在当前项目，
+          // 而不是把人踢回列表（要回列表请用项目页自己的返回箭头）。
+          if (route.id === 'projects' && projectView === 'canvas' && current === 'projects') return;
           navigate(route.id);
         },
       },
@@ -285,6 +286,33 @@ export function routeNow() { return current; }
 // 这里用运行时钩子转一手（初始化时不存在也不影响，调用时已经挂好了）。
 window.__mtNavigate = (id) => navigate(id);
 window.__mtRepaint = (routeId) => { if (current === routeId) paint(); };
+
+/** 退出前确认：项目开着、或有没跑完的下载时，先把情况列清楚再问一句。
+ *  由托盘「退出」和窗口关闭触发（后端 evaluate_js 调它），
+ *  确认后前端自己调 /api/quit，后端不再直接关窗口。 */
+window.__mtAskQuit = async () => {
+  const active = (store.tasks || []).filter(
+    (t) => t.status === 'running' || t.status === 'queued' || t.status === 'merging');
+  const reasons = [];
+  if (openProject && openProject.id) {
+    reasons.push('项目「' + (openProject.title || openProject.id) + '」仍处于打开状态');
+  }
+  if (active.length) {
+    reasons.push('有 ' + active.length + ' 个下载任务尚未完成');
+  }
+  if (!reasons.length) {
+    try { await api.quit(); } catch (e) { /* 后端已停 */ }
+    return;
+  }
+  const ok = await dialog({
+    title: '确定要退出吗',
+    body: reasons.join('\n') + '\n\n退出后未完成的下载会中断；项目内容已保存在磁盘上，下次打开可以继续。',
+    confirm: '退出',
+    danger: true,
+  });
+  if (!ok) return;
+  try { await api.quit(); } catch (e) { /* 后端已停 */ }
+};
 
 /** 异步操作回来后的安全重绘：用户已经切走就什么都不做。
  *  以前直接 renderXxx(view)，解析几秒后回来会把用户正在看的页面覆盖掉。 */
